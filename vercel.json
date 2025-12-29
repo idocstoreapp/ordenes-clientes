@@ -1,8 +1,7 @@
 {
-  "buildCommand": "cd sistema-gestion-ordenes && npm install && npm run build",
+  "buildCommand": "cd sistema-gestion-ordenes && npm run build",
   "outputDirectory": "sistema-gestion-ordenes/.vercel/output",
   "installCommand": "cd sistema-gestion-ordenes && npm install",
-  "framework": "astro",
-  "rootDirectory": "sistema-gestion-ordenes"
+  "framework": "astro"
 }
 
