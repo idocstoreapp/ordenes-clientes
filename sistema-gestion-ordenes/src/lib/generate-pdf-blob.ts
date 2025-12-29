@@ -1,0 +1,487 @@
+import jsPDF from "jspdf";
+import QRCode from "qrcode";
+import { supabase } from "./supabase";
+import type { WorkOrder, Service, Customer, Branch, DeviceChecklistItem } from "@/types";
+import { formatCLP } from "./currency";
+import { formatDate, formatDateTime } from "./date";
+import { getSystemSettings } from "./settings";
+
+export async function generatePDFBlob(
+  order: WorkOrder & { customer?: Customer; sucursal?: Branch | null },
+  services: Service[],
+  serviceValue: number,
+  replacementCost: number,
+  warrantyDays: number,
+  checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null,
+  notes?: string[]
+): Promise<Blob> {
+  // Cargar items del checklist si existen
+  let checklistItems: DeviceChecklistItem[] = [];
+  if (checklistData && Object.keys(checklistData).length > 0) {
+    const { data } = await supabase
+      .from("device_checklist_items")
+      .select("*")
+      .eq("device_type", order.device_type)
+      .order("item_order");
+    if (data) {
+      checklistItems = data;
+    }
+  }
+
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 15;
+  const contentWidth = pageWidth - 2 * margin;
+  let yPosition = margin;
+
+  // Cargar configuración del sistema
+  const settings = await getSystemSettings();
+
+  // Color de las franjas
+  const stripeColor: [number, number, number] = [59, 130, 246];
+  const darkStripeColor: [number, number, number] = [30, 58, 138];
+
+  // Generar QR Code
+  let qrDataUrl = "";
+  try {
+    qrDataUrl = await QRCode.toDataURL(
+      `https://ordenes.idocstore.cl/${order.order_number}`,
+      { width: 60, margin: 1 }
+    );
+  } catch (error) {
+    console.error("Error generando QR:", error);
+  }
+
+  // Cargar logo desde configuración
+  let logoDataUrl = "";
+  try {
+    if (settings.pdf_logo.url.startsWith("data:")) {
+      logoDataUrl = settings.pdf_logo.url;
+    } else {
+      const logoResponse = await fetch(settings.pdf_logo.url);
+      if (logoResponse.ok) {
+        const logoBlob = await logoResponse.blob();
+        logoDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(logoBlob);
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error cargando logo:", error);
+  }
+
+  // === HEADER CON FRANJA AZUL OSCURA ===
+  doc.setFillColor(...darkStripeColor);
+  doc.rect(0, 0, pageWidth, 32, "F");
+
+  // Logo de la empresa (sobre la franja, izquierda)
+  if (logoDataUrl) {
+    const logoHeight = settings.pdf_logo.height;
+    const logoWidth = settings.pdf_logo.width;
+    const logoY = (32 - logoHeight) / 2;
+    doc.addImage(logoDataUrl, "PNG", margin, logoY, logoWidth, logoHeight);
+  }
+
+  // N° Orden y fecha en caja negra (CENTRO del header)
+  doc.setFillColor(0, 0, 0);
+  const orderBoxWidth = 75;
+  const orderBoxX = (pageWidth - orderBoxWidth) / 2;
+  doc.rect(orderBoxX, 10, orderBoxWidth, 12, "F");
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.text(`N° Orden: ${order.order_number}`, orderBoxX + 3, 16);
+  doc.text(formatDateTime(order.created_at), orderBoxX + 3, 21);
+
+  // QR Code (esquina superior derecha del header)
+  if (qrDataUrl) {
+    const qrSize = 20;
+    doc.addImage(qrDataUrl, "PNG", pageWidth - margin - qrSize, 6, qrSize, qrSize);
+  }
+
+  yPosition = 45;
+
+  // === PANEL NEGOCIO (Izquierda) ===
+  const hasAddress = !!order.sucursal?.address;
+  const hasPhone = !!order.sucursal?.phone;
+  const hasEmail = !!order.sucursal?.email;
+  const panelHeight = 35 + (hasAddress ? 12 : 0) + (hasPhone ? 6 : 0) + (hasEmail ? 6 : 0);
+  
+  doc.setFillColor(250, 250, 250);
+  doc.rect(margin, yPosition, (contentWidth - 10) / 2, panelHeight, "F");
+  doc.setDrawColor(200, 200, 200);
+  doc.rect(margin, yPosition, (contentWidth - 10) / 2, panelHeight, "S");
+
+  // Título del panel con franja azul
+  doc.setFillColor(...stripeColor);
+  doc.rect(margin, yPosition, (contentWidth - 10) / 2, 8, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("iDocStore", margin + 3, yPosition + 6);
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  let panelY = yPosition + 15;
+
+  // Nombre de la sucursal
+  const branchName = order.sucursal?.name || "Sucursal";
+  doc.setFont("helvetica", "bold");
+  doc.text("Sucursal:", margin + 3, panelY);
+  doc.setFont("helvetica", "normal");
+  const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
+  doc.text(nameLines, margin + 25, panelY);
+  panelY += nameLines.length * 6;
+
+  if (order.sucursal?.address) {
+    doc.setFont("helvetica", "bold");
+    doc.text("Dirección:", margin + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
+    doc.text(addressLines, margin + 25, panelY);
+    panelY += addressLines.length * 6;
+  }
+
+  if (order.sucursal?.phone) {
+    doc.setFont("helvetica", "bold");
+    doc.text("Teléfono:", margin + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    doc.text(order.sucursal.phone, margin + 25, panelY);
+    panelY += 6;
+  }
+
+  if (order.sucursal?.email) {
+    doc.setFont("helvetica", "bold");
+    doc.text("Correo:", margin + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    doc.text(order.sucursal.email, margin + 25, panelY);
+  }
+
+  // === PANEL CLIENTE (Derecha) ===
+  const clientPanelX = margin + (contentWidth - 10) / 2 + 10;
+  doc.setFillColor(250, 250, 250);
+  doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, panelHeight, "F");
+  doc.setDrawColor(200, 200, 200);
+  doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, panelHeight, "S");
+
+  doc.setFillColor(...stripeColor);
+  doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, 8, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("CLIENTE", clientPanelX + 3, yPosition + 6);
+
+  if (order.customer) {
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(9);
+    panelY = yPosition + 15;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Nombre:", clientPanelX + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    doc.text(order.customer.name, clientPanelX + 25, panelY);
+    panelY += 6;
+
+    const phoneText = order.customer.phone_country_code
+      ? `${order.customer.phone_country_code} ${order.customer.phone}`
+      : order.customer.phone;
+    doc.setFont("helvetica", "bold");
+    doc.text("Teléfono:", clientPanelX + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    doc.text(phoneText, clientPanelX + 25, panelY);
+    panelY += 6;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Correo:", clientPanelX + 3, panelY);
+    doc.setFont("helvetica", "normal");
+    doc.text(order.customer.email, clientPanelX + 25, panelY);
+    panelY += 6;
+
+    if (order.customer.address) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Dirección:", clientPanelX + 3, panelY);
+      doc.setFont("helvetica", "normal");
+      const addressLines = doc.splitTextToSize(order.customer.address, (contentWidth - 10) / 2 - 30);
+      doc.text(addressLines, clientPanelX + 25, panelY);
+    }
+  }
+
+  yPosition = yPosition + panelHeight + 5;
+
+  // === PANEL DATOS DEL EQUIPO ===
+  const panelStartY = yPosition;
+  const estimatedPanelHeight = 300;
+  doc.setFillColor(250, 250, 250);
+  doc.rect(margin, yPosition, contentWidth, estimatedPanelHeight, "F");
+  
+  doc.setFillColor(...stripeColor);
+  doc.rect(margin, yPosition, contentWidth, 8, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("DATOS DEL EQUIPO", margin + 3, yPosition + 6);
+
+  yPosition += 12;
+
+  // Tabla
+  const tableY = yPosition;
+  const colWidths = [10, 32, 95, 37];
+  let colX = margin + 3;
+
+  doc.setFillColor(230, 230, 230);
+  const totalTableWidth = Math.min(colWidths.reduce((sum, w) => sum + w, 0), contentWidth - 6);
+  doc.rect(margin + 3, tableY, totalTableWidth, 7, "F");
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text("#", colX + 2, tableY + 5);
+  colX += colWidths[0];
+  doc.text("Modelo", colX + 2, tableY + 5);
+  colX += colWidths[1];
+  doc.text("Nota [Descripción]", colX + 2, tableY + 5);
+  colX += colWidths[2];
+  const totalHeaderText = "Total";
+  const totalHeaderWidth = doc.getTextWidth(totalHeaderText);
+  doc.text(totalHeaderText, colX + colWidths[3] - totalHeaderWidth - 2, tableY + 5);
+
+  yPosition = tableY + 10;
+
+  // Fila 1: Equipo
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  const equipmentRowY = yPosition;
+  colX = margin + 3;
+  doc.text("1", colX, yPosition);
+  colX += colWidths[0];
+  
+  let modelText = order.device_model || "";
+  if (order.device_serial_number) {
+    modelText += `\nIMEI: ${order.device_serial_number}`;
+  }
+  if (order.device_unlock_code) {
+    modelText += `\nPASSCODE: ${order.device_unlock_code}`;
+  }
+  if (order.device_unlock_pattern && Array.isArray(order.device_unlock_pattern)) {
+    modelText += `\nPASSCODE: ${order.device_unlock_pattern.join("")}`;
+  }
+  
+  const modelColWidth = colWidths[1] - 4;
+  const modelLines = doc.splitTextToSize(modelText, modelColWidth);
+  let modelY = yPosition;
+  modelLines.forEach((line: string) => {
+    doc.text(line, colX + 2, modelY);
+    modelY += 4;
+  });
+  
+  colX += colWidths[1];
+  
+  let deviceDescription = "";
+  if (order.problem_description) {
+    deviceDescription += order.problem_description;
+  }
+  
+  if (notes && notes.length > 0) {
+    if (deviceDescription) deviceDescription += "\n";
+    notes.forEach((note) => {
+      deviceDescription += `${note}\n`;
+    });
+  }
+  
+  const descriptionColWidth = colWidths[2] - 6;
+  const descriptionLines = doc.splitTextToSize(deviceDescription || "-", descriptionColWidth);
+  
+  let descY = yPosition;
+  descriptionLines.forEach((line: string) => {
+    doc.text(line, colX, descY);
+    descY += 4;
+  });
+  
+  const maxDescHeight = Math.max(
+    Math.max(7, modelLines.length * 4),
+    Math.max(7, descriptionLines.length * 4)
+  );
+  yPosition = equipmentRowY + maxDescHeight;
+  
+  colX = margin + 3 + colWidths[0] + colWidths[1] + colWidths[2];
+  const totalDash = "-";
+  const totalDashWidth = doc.getTextWidth(totalDash);
+  doc.text(totalDash, colX + colWidths[3] - totalDashWidth - 2, equipmentRowY);
+
+  // Servicios
+  services.forEach((service) => {
+    const precioServicio = service.default_price || 0;
+    colX = margin + 3;
+    doc.text("-", colX + 2, yPosition);
+    colX += colWidths[0];
+    const serviceNameText = service.name.toUpperCase();
+    const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
+    doc.text(serviceNameLines, colX + 2, yPosition);
+    colX += colWidths[1];
+    const serviceNote = service.description || order.problem_description.substring(0, 30);
+    const noteLines = doc.splitTextToSize((serviceNote || "Servicio de reparación"), colWidths[2] - 4);
+    doc.text(noteLines, colX + 2, yPosition);
+    colX += colWidths[2];
+    const totalAmount = precioServicio;
+    const totalText = formatCLP(totalAmount, { withLabel: false });
+    doc.setFontSize(8);
+    const totalWidth = doc.getTextWidth(totalText);
+    const totalX = colX + colWidths[3] - totalWidth - 2;
+    doc.text(totalText, totalX, yPosition);
+    doc.setFontSize(5);
+    doc.setTextColor(100, 100, 100);
+    const detailText = `1 x ${formatCLP(precioServicio, { withLabel: false })}`;
+    const detailWidth = doc.getTextWidth(detailText);
+    const detailX = colX + colWidths[3] - detailWidth - 2;
+    doc.text(detailText, detailX, yPosition + 3);
+    doc.setFontSize(8);
+    doc.setTextColor(0, 0, 0);
+    
+    const maxHeight = Math.max(
+      serviceNameLines.length * 4,
+      noteLines.length * 4,
+      7 + 3
+    );
+    yPosition += maxHeight;
+  });
+
+  // Repuesto
+  if (replacementCost > 0) {
+    colX = margin + 3;
+    doc.text("-", colX + 2, yPosition);
+    colX += colWidths[0];
+    doc.text("REPUESTO", colX, yPosition);
+    colX += colWidths[1];
+    const repuestoNote = doc.splitTextToSize("Repuesto original", colWidths[2] - 2);
+    doc.text(repuestoNote, colX, yPosition);
+    colX += colWidths[2];
+    const repuestoTotalAmount = replacementCost;
+    const repuestoTotalText = formatCLP(repuestoTotalAmount, { withLabel: false });
+    doc.setFontSize(8);
+    const repuestoTotalWidth = doc.getTextWidth(repuestoTotalText);
+    const repuestoTotalX = colX + colWidths[3] - repuestoTotalWidth - 2;
+    doc.text(repuestoTotalText, repuestoTotalX, yPosition);
+    doc.setFontSize(5);
+    doc.setTextColor(100, 100, 100);
+    const repuestoDetailText = `1 x ${formatCLP(replacementCost, { withLabel: false })}`;
+    const repuestoDetailWidth = doc.getTextWidth(repuestoDetailText);
+    const repuestoDetailX = colX + colWidths[3] - repuestoDetailWidth - 2;
+    doc.text(repuestoDetailText, repuestoDetailX, yPosition + 3);
+    doc.setFontSize(8);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 7;
+  }
+
+  // Checklist
+  if (checklistItems.length > 0 && checklistData) {
+    yPosition += 5;
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0, 0, 0);
+    
+    const checklistItemsList: string[] = [];
+    checklistItems.forEach((item) => {
+      const status = checklistData[item.item_name];
+      if (status) {
+        checklistItemsList.push(`${item.item_name} *`);
+      }
+    });
+    
+    const checklistText = checklistItemsList.join(", ");
+    const checklistLines = doc.splitTextToSize(checklistText, contentWidth - 6);
+    
+    checklistLines.forEach((line: string) => {
+      doc.text(line, margin + 3, yPosition);
+      yPosition += 4;
+    });
+  }
+
+  // Total
+  const totalBoxWidth = 30;
+  const totalBoxX = margin + contentWidth - totalBoxWidth - 3;
+  const totalYPosition = yPosition + 5;
+  const totalBoxHeight = 20;
+  const panelEndY = Math.max(yPosition + 10, totalYPosition + totalBoxHeight + 5);
+  const finalPanelHeight = panelEndY - panelStartY;
+  
+  doc.setFillColor(240, 240, 240);
+  doc.rect(totalBoxX, totalYPosition, totalBoxWidth, totalBoxHeight, "F");
+  doc.setDrawColor(150, 150, 150);
+  doc.rect(totalBoxX, totalYPosition, totalBoxWidth, totalBoxHeight, "S");
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(5);
+  doc.setFont("helvetica", "normal");
+  doc.text("Anticipo:", totalBoxX + 2, totalYPosition + 4);
+  doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 4);
+  doc.text("Impuesto:", totalBoxX + 2, totalYPosition + 8);
+  doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 8);
+  doc.setDrawColor(150, 150, 150);
+  doc.line(totalBoxX, totalYPosition + 12, totalBoxX + totalBoxWidth, totalYPosition + 12);
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.text("TOTAL:", totalBoxX + 2, totalYPosition + 16);
+  const totalCalculado = serviceValue + replacementCost;
+  doc.setFontSize(6);
+  const totalText = formatCLP(totalCalculado, { withLabel: false });
+  const totalTextWidth = doc.getTextWidth(totalText);
+  const totalTextX = Math.max(totalBoxX + 2, totalBoxX + totalBoxWidth - totalTextWidth - 2);
+  doc.text(totalText, totalTextX, totalYPosition + 19);
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Garantía ${warrantyDays} días`, margin + 3, totalYPosition + 6);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.5);
+  doc.rect(margin, panelStartY, contentWidth, finalPanelHeight, "S");
+  yPosition = panelEndY + 10;
+
+  // Políticas de garantía
+  doc.setFillColor(250, 250, 250);
+  doc.rect(margin, yPosition, contentWidth, 38, "F");
+  doc.setDrawColor(200, 200, 200);
+  doc.rect(margin, yPosition, contentWidth, 38, "S");
+  doc.setFillColor(...stripeColor);
+  doc.rect(margin, yPosition, contentWidth, 6, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.text("POLÍTICAS DE GARANTÍA", margin + 3, yPosition + 4.5);
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "normal");
+  yPosition += 10;
+  const warrantyText = settings.warranty_policies.policies.map(policy => {
+    return policy.replace("{warrantyDays}", warrantyDays.toString());
+  });
+  warrantyText.forEach((text) => {
+    const lines = doc.splitTextToSize(text, contentWidth - 6);
+    doc.text(lines, margin + 3, yPosition);
+    yPosition += lines.length * 3 + 1;
+  });
+
+  // Firma
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const signatureBoxHeight = 18;
+  const signatureBoxWidth = 50;
+  const signatureBoxY = pageHeight - margin - signatureBoxHeight - 10;
+  const signatureBoxX = (pageWidth - signatureBoxWidth) / 2;
+  doc.setFillColor(230, 230, 230);
+  doc.setDrawColor(150, 150, 150);
+  doc.setLineWidth(0.5);
+  doc.rect(signatureBoxX, signatureBoxY, signatureBoxWidth, signatureBoxHeight, "FD");
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0, 0, 0);
+  const signatureText = "FIRMA DEL CLIENTE";
+  const signatureTextWidth = doc.getTextWidth(signatureText);
+  const signatureTextY = signatureBoxY + signatureBoxHeight + 6;
+  doc.text(signatureText, signatureBoxX + (signatureBoxWidth - signatureTextWidth) / 2, signatureTextY);
+
+  // Retornar blob
+  return doc.output("blob");
+}
+
