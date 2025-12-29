@@ -339,14 +339,29 @@ export const POST: APIRoute = async ({ request }) => {
       }
     );
   } catch (error: any) {
-    console.error("[EMAIL API] ERROR EXCEPCIÓN:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error("[EMAIL API] ========================================");
+    console.error("[EMAIL API] ERROR EXCEPCIÓN CAPTURADA:");
+    console.error("[EMAIL API] Message:", error.message);
+    console.error("[EMAIL API] Name:", error.name);
+    console.error("[EMAIL API] Stack:", error.stack);
+    console.error("[EMAIL API] ========================================");
+    
+    // Asegurar que siempre devolvemos JSON válido
+    const errorResponse = {
+      error: error.message || "Error interno del servidor",
+      details: error.name || "Error desconocido",
+      timestamp: new Date().toISOString()
+    };
+    
     return new Response(
-      JSON.stringify({ error: error.message || "Error interno del servidor" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      JSON.stringify(errorResponse),
+      { 
+        status: 500, 
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        } 
+      }
     );
   }
 };
