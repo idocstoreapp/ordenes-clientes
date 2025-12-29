@@ -155,14 +155,17 @@ export default function BranchPermissionsModal({
 
       if (authError) throw authError;
 
-      // Crear usuario en tabla users
+      // Crear usuario en tabla users con permisos por defecto
       const { error: userError } = await supabase.from("users").insert({
         id: authData.user.id,
         email: newUserEmail,
         name: newUserName,
         role: "technician",
         sucursal_id: branch.id,
-        permissions: {},
+        permissions: {
+          create_orders: true, // Por defecto pueden crear órdenes
+          modify_orders: true, // Por defecto pueden editar órdenes
+        },
       });
 
       if (userError) throw userError;

@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Branch, User } from "@/types";
 import { formatDate } from "@/lib/date";
+import { hasPermission } from "@/lib/permissions";
 import BranchPermissionsModal from "./BranchPermissionsModal";
 
 interface BranchesListProps {
@@ -163,7 +164,7 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
         if (authError) throw authError;
         if (!authData.user) throw new Error("No se pudo crear el usuario en auth");
 
-        // Crear registro en tabla users
+        // Crear registro en tabla users con permisos por defecto
         const { error: userError } = await supabase
           .from("users")
           .insert({
@@ -172,6 +173,10 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
             name: `Usuario ${branchId.substring(0, 8)}`, // Nombre temporal
             role: "encargado", // Rol por defecto para usuarios de sucursal
             sucursal_id: branchId,
+            permissions: {
+              create_orders: true, // Por defecto pueden crear órdenes
+              modify_orders: true, // Por defecto pueden editar órdenes
+            },
           });
 
         if (userError) {
@@ -213,7 +218,7 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
         )}
       </div>
 
-      {showForm && (isAdmin || (editingBranch && editingBranch.id === userBranch)) && (
+      {showForm && (isAdmin || hasPermission(currentUser, "use_branch_panel") || (editingBranch && editingBranch.id === userBranch)) && (
         <BranchForm
           branch={editingBranch}
           onSave={handleSave}

@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import type { User } from "@/types";
+import { canAccessSection } from "@/lib/permissions";
 
 export type DashboardSection = 
   | "dashboard" 
@@ -12,7 +14,7 @@ export type DashboardSection =
   | "security";
 
 interface SidebarProps {
-  userRole: string;
+  user: User;
   currentSection: DashboardSection;
   onSectionChange: (section: DashboardSection) => void;
   isOpen: boolean;
@@ -20,7 +22,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  userRole,
+  user,
   currentSection,
   onSectionChange,
   isOpen,
@@ -41,20 +43,20 @@ export default function Sidebar({
     id: DashboardSection;
     label: string;
     icon: string;
-    roles: string[];
   }> = [
-    { id: "dashboard", label: "Dashboard", icon: "📊", roles: ["admin", "technician", "encargado", "recepcionista"] },
-    { id: "new-order", label: "Nueva Orden", icon: "➕", roles: ["admin", "technician"] },
-    { id: "orders", label: "Órdenes", icon: "📋", roles: ["admin", "technician", "encargado", "recepcionista"] },
-    { id: "customers", label: "Clientes", icon: "👥", roles: ["admin", "technician", "recepcionista"] },
-    { id: "branches", label: "Sucursales", icon: "🏢", roles: ["admin"] },
-    { id: "users", label: "Usuarios", icon: "👤", roles: ["admin"] },
-    { id: "reports", label: "Reportes", icon: "📈", roles: ["admin"] },
-    { id: "settings", label: "Configuración", icon: "⚙️", roles: ["admin"] },
-    { id: "security", label: "Seguridad", icon: "🔒", roles: ["admin"] },
+    { id: "dashboard", label: "Dashboard", icon: "📊" },
+    { id: "new-order", label: "Nueva Orden", icon: "➕" },
+    { id: "orders", label: "Órdenes", icon: "📋" },
+    { id: "customers", label: "Clientes", icon: "👥" },
+    { id: "branches", label: "Sucursales", icon: "🏢" },
+    { id: "users", label: "Usuarios", icon: "👤" },
+    { id: "reports", label: "Reportes", icon: "📈" },
+    { id: "settings", label: "Configuración", icon: "⚙️" },
+    { id: "security", label: "Seguridad", icon: "🔒" },
   ];
 
-  const filteredItems = menuItems.filter(item => item.roles.includes(userRole));
+  // Filtrar items según permisos del usuario
+  const filteredItems = menuItems.filter(item => canAccessSection(user, item.id));
 
   return (
     <>

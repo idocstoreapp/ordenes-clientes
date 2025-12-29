@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { WorkOrder, Service, Customer } from "@/types";
+import type { WorkOrder, Service, Customer, User } from "@/types";
 import { formatCLP } from "@/lib/currency";
 import { formatDate } from "@/lib/date";
+import { hasPermission } from "@/lib/permissions";
 import OrderDetail from "./OrderDetail";
 import PDFPreview from "./PDFPreview";
 import CustomerEditModal from "./CustomerEditModal";
@@ -11,10 +12,11 @@ import { generatePDFBlob } from "@/lib/generate-pdf-blob";
 interface OrdersTableProps {
   technicianId?: string;
   isAdmin?: boolean;
+  user?: User;
   onNewOrder?: () => void;
 }
 
-export default function OrdersTable({ technicianId, isAdmin = false, onNewOrder }: OrdersTableProps) {
+export default function OrdersTable({ technicianId, isAdmin = false, user, onNewOrder }: OrdersTableProps) {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -130,6 +132,12 @@ export default function OrdersTable({ technicianId, isAdmin = false, onNewOrder 
   };
 
   async function handleStatusChange(orderId: string, newStatus: string) {
+    // Verificar permiso para modificar órdenes
+    if (!hasPermission(user, "modify_orders") && !isAdmin) {
+      alert("No tienes permisos para modificar órdenes");
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("work_orders")

@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP } from "@/lib/currency";
+import type { User } from "@/types";
+import { canViewFullMetrics } from "@/lib/permissions";
 import KpiCard from "./KpiCard";
 
 interface TechnicianDashboardProps {
   technicianId: string;
   isEncargado?: boolean;
+  user?: User;
   onNewOrder?: () => void;
 }
 
-export default function TechnicianDashboard({ technicianId, isEncargado, onNewOrder }: TechnicianDashboardProps) {
+export default function TechnicianDashboard({ technicianId, isEncargado, user, onNewOrder }: TechnicianDashboardProps) {
   const [kpis, setKpis] = useState({
     weekOrders: 0,
     monthOrders: 0,
@@ -22,6 +25,18 @@ export default function TechnicianDashboard({ technicianId, isEncargado, onNewOr
     async function load() {
       setLoading(true);
       try {
+        // Si no tiene permisos para ver métricas completas, mostrar vacías
+        if (!canViewFullMetrics(user)) {
+          setKpis({
+            weekOrders: 0,
+            monthOrders: 0,
+            pendingOrders: 0,
+            completedOrders: 0,
+          });
+          setLoading(false);
+          return;
+        }
+
         const now = new Date();
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
@@ -67,7 +82,7 @@ export default function TechnicianDashboard({ technicianId, isEncargado, onNewOr
       }
     }
     load();
-  }, [technicianId]);
+  }, [technicianId, user]);
 
   if (loading) {
     return (

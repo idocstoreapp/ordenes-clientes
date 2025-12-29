@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { Customer, WorkOrder } from "@/types";
+import type { Customer, WorkOrder, User } from "@/types";
 import { formatDate } from "@/lib/date";
 import { getCountryByDialCode } from "@/lib/countries";
 import { formatCLP } from "@/lib/currency";
+import { hasPermission } from "@/lib/permissions";
 import CustomerEditModal from "./CustomerEditModal";
 
-export default function CustomersList() {
+interface CustomersListProps {
+  user?: User;
+}
+
+export default function CustomersList({ user }: CustomersListProps) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -21,6 +26,13 @@ export default function CustomersList() {
   async function loadCustomers() {
     setLoading(true);
     try {
+      // Verificar permiso para ver clientes
+      if (!hasPermission(user, "view_all_business_orders") && user?.role !== "admin") {
+        setCustomers([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("customers")
         .select("*")

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { User } from "@/types";
 import { getSystemSettings, type LogoConfig } from "@/lib/settings";
+import { canAccessSection } from "@/lib/permissions";
 import Sidebar, { type DashboardSection } from "./components/Sidebar";
 import AdminDashboard from "./components/AdminDashboard";
 import TechnicianDashboard from "./components/TechnicianDashboard";
@@ -38,7 +39,7 @@ function Header({
     window.location.href = "/login";
   }
 
-  const hasSidebar = userRole === "admin" || userRole === "encargado";
+  const hasSidebar = userRole === "admin" || userRole === "encargado" || userRole === "technician" || userRole === "recepcionista";
 
   return (
     <header className="bg-brand shadow-lg border-b-2 border-brand-light fixed top-0 left-0 right-0 z-30">
@@ -137,27 +138,43 @@ export default function Dashboard() {
   }
 
   const renderContent = () => {
+    // Verificar permisos antes de renderizar
+    if (!canAccessSection(user, section)) {
+      return (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="text-center py-12">
+            <p className="text-slate-600 text-lg mb-2">Acceso Denegado</p>
+            <p className="text-slate-500">No tienes permisos para acceder a esta sección.</p>
+            <button
+              onClick={() => setSection("dashboard")}
+              className="mt-4 px-4 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark"
+            >
+              Volver al Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     switch (section) {
       case "dashboard":
         if (user.role === "admin") {
           return <AdminDashboard onNewOrder={() => setSection("new-order")} />;
-        } else if (user.role === "encargado") {
-          return <TechnicianDashboard technicianId={user.id} isEncargado onNewOrder={() => setSection("new-order")} />;
         } else {
-          return <TechnicianDashboard technicianId={user.id} onNewOrder={() => setSection("new-order")} />;
+          return <TechnicianDashboard technicianId={user.id} isEncargado={user.role === "encargado"} user={user} onNewOrder={() => setSection("new-order")} />;
         }
       case "new-order":
         return <OrderForm technicianId={user.id} onSaved={() => setSection("orders")} />;
       case "orders":
-        return <OrdersTable technicianId={user.id} isAdmin={user.role === "admin"} onNewOrder={() => setSection("new-order")} />;
+        return <OrdersTable technicianId={user.id} isAdmin={user.role === "admin"} user={user} onNewOrder={() => setSection("new-order")} />;
       case "customers":
-        return <CustomersList />;
+        return <CustomersList user={user} />;
       case "branches":
         return <BranchesList currentUser={user} />;
       case "users":
         return <UsersList />;
       case "reports":
-        return <Reports />;
+        return <Reports user={user} />;
       case "settings":
         return <Settings />;
       case "security":
@@ -167,7 +184,13 @@ export default function Dashboard() {
     }
   };
 
-  const showSidebar = user.role === "admin" || user.role === "encargado";
+  // Mostrar sidebar si tiene acceso a alguna sección además del dashboard
+  const showSidebar = user.role === "admin" || 
+    canAccessSection(user, "new-order") || 
+    canAccessSection(user, "orders") || 
+    canAccessSection(user, "customers") || 
+    canAccessSection(user, "branches") || 
+    canAccessSection(user, "reports");
 
   return (
     <div className="min-h-screen bg-slate-50 pt-20">
@@ -180,7 +203,7 @@ export default function Dashboard() {
       <div className="flex">
         {showSidebar && (
           <Sidebar
-            userRole={user.role}
+            user={user}
             currentSection={section}
             onSectionChange={setSection}
             isOpen={sidebarOpen}
