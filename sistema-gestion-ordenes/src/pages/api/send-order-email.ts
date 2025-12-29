@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { Resend } from "resend";
+import { getSystemSettings } from "@/lib/settings";
 
 const resendApiKey = import.meta.env.RESEND_API_KEY;
 
@@ -22,6 +23,42 @@ export const POST: APIRoute = async ({ request }) => {
     console.log("[EMAIL API] API Key length:", resendApiKey ? resendApiKey.length : 0);
 
     const resend = new Resend(resendApiKey);
+
+    // Cargar configuración del sistema para obtener el logo
+    const settings = await getSystemSettings();
+    let logoDataUrl = "";
+    try {
+      // Si el logo es una data URL (base64), usarla directamente
+      if (settings.header_logo.url.startsWith("data:")) {
+        logoDataUrl = settings.header_logo.url;
+      } else {
+        // Si es una URL normal, intentar convertirla a base64
+        const logoUrl = settings.header_logo.url.startsWith("http") 
+          ? settings.header_logo.url 
+          : `https://app.idocstore.cl${settings.header_logo.url.startsWith("/") ? "" : "/"}${settings.header_logo.url}`;
+        
+        // Intentar cargar y convertir a base64
+        try {
+          const logoResponse = await fetch(logoUrl);
+          if (logoResponse.ok) {
+            const logoBlob = await logoResponse.blob();
+            const logoArrayBuffer = await logoBlob.arrayBuffer();
+            const logoBase64 = Buffer.from(logoArrayBuffer).toString('base64');
+            const logoMimeType = logoBlob.type || 'image/png';
+            logoDataUrl = `data:${logoMimeType};base64,${logoBase64}`;
+          } else {
+            // Si falla, usar la URL directamente
+            logoDataUrl = logoUrl;
+          }
+        } catch (fetchError) {
+          // Si falla la conversión, usar la URL directamente
+          logoDataUrl = logoUrl;
+        }
+      }
+    } catch (error) {
+      console.error("[EMAIL API] Error cargando logo:", error);
+      // Continuar sin logo si hay error
+    }
 
     const body = await request.json();
     const { 
@@ -105,11 +142,18 @@ export const POST: APIRoute = async ({ request }) => {
                 padding: 20px;
               }
               .header {
-                background-color: #4b5563;
+                background-color: #1e3a8a;
                 color: white;
                 padding: 20px;
                 text-align: center;
                 border-radius: 5px 5px 0 0;
+              }
+              .logo-container {
+                margin-bottom: 15px;
+              }
+              .logo-container img {
+                max-width: 150px;
+                height: auto;
               }
               .content {
                 background-color: #f9fafb;
@@ -117,7 +161,7 @@ export const POST: APIRoute = async ({ request }) => {
                 border-radius: 0 0 5px 5px;
               }
               .order-number {
-                background-color: #6b7280;
+                background-color: #3b82f6;
                 color: white;
                 padding: 10px 20px;
                 border-radius: 5px;
@@ -127,8 +171,8 @@ export const POST: APIRoute = async ({ request }) => {
                 font-weight: bold;
               }
               .highlight-box {
-                background-color: #e5e7eb;
-                border-left: 4px solid #4b5563;
+                background-color: #dbeafe;
+                border-left: 4px solid #3b82f6;
                 padding: 15px;
                 margin: 20px 0;
                 border-radius: 4px;
@@ -146,6 +190,11 @@ export const POST: APIRoute = async ({ request }) => {
           <body>
             <div class="container">
               <div class="header">
+                ${logoDataUrl ? `
+                  <div class="logo-container">
+                    <img src="${logoDataUrl}" alt="iDocStore Logo" />
+                  </div>
+                ` : ''}
                 <h1>✅ iDocStore</h1>
                 <p>¡Su equipo está listo!</p>
               </div>
@@ -208,11 +257,18 @@ export const POST: APIRoute = async ({ request }) => {
                 padding: 20px;
               }
               .header {
-                background-color: #4b5563;
+                background-color: #1e3a8a;
                 color: white;
                 padding: 20px;
                 text-align: center;
                 border-radius: 5px 5px 0 0;
+              }
+              .logo-container {
+                margin-bottom: 15px;
+              }
+              .logo-container img {
+                max-width: 150px;
+                height: auto;
               }
               .content {
                 background-color: #f9fafb;
@@ -220,7 +276,7 @@ export const POST: APIRoute = async ({ request }) => {
                 border-radius: 0 0 5px 5px;
               }
               .order-number {
-                background-color: #6b7280;
+                background-color: #3b82f6;
                 color: white;
                 padding: 10px 20px;
                 border-radius: 5px;
@@ -242,6 +298,11 @@ export const POST: APIRoute = async ({ request }) => {
           <body>
             <div class="container">
               <div class="header">
+                ${logoDataUrl ? `
+                  <div class="logo-container">
+                    <img src="${logoDataUrl}" alt="iDocStore Logo" />
+                  </div>
+                ` : ''}
                 <h1>iDocStore</h1>
                 <p>Servicio Especializado en Reparación</p>
               </div>
