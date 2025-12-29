@@ -14,6 +14,21 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
     console.log("[EMAIL API] API Key encontrada");
+    console.log("[EMAIL API] API Key length:", resendApiKey ? resendApiKey.length : 0);
+
+    try {
+      const resend = new Resend(resendApiKey);
+      console.log("[EMAIL API] Cliente Resend creado exitosamente");
+    } catch (resendError: any) {
+      console.error("[EMAIL API] Error creando cliente Resend:", resendError);
+      return new Response(
+        JSON.stringify({ 
+          error: "Error inicializando Resend",
+          details: resendError.message || "Error desconocido"
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     const resend = new Resend(resendApiKey);
 

@@ -190,17 +190,46 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           });
 
           if (!emailResponse.ok) {
-            const errorData = await emailResponse.json();
+            let errorData: any = {};
+            try {
+              const text = await emailResponse.text();
+              console.error("[ORDERS TABLE] Respuesta de error (texto):", text);
+              if (text) {
+                try {
+                  errorData = JSON.parse(text);
+                } catch (parseError) {
+                  errorData = { error: text || 'Error desconocido', status: emailResponse.status };
+                }
+              } else {
+                errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+              }
+            } catch (textError) {
+              console.error("[ORDERS TABLE] Error leyendo respuesta:", textError);
+              errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+            }
             console.error("[ORDERS TABLE] Error enviando email de notificación:", errorData);
             alert(`Orden actualizada, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}\n\nEmail de origen usado: ${errorData.from || 'No especificado'}`);
           } else {
-            const successData = await emailResponse.json();
+            let successData: any = {};
+            try {
+              const text = await emailResponse.text();
+              if (text) {
+                try {
+                  successData = JSON.parse(text);
+                } catch (parseError) {
+                  successData = { message: text || 'Email enviado' };
+                }
+              }
+            } catch (textError) {
+              console.error("[ORDERS TABLE] Error leyendo respuesta exitosa:", textError);
+              successData = { message: 'Email enviado (sin respuesta del servidor)' };
+            }
             console.log("[ORDERS TABLE] Email de notificación enviado exitosamente:", successData);
             alert(`✅ Orden actualizada y email de notificación enviado a ${order.customer.email}`);
           }
-        } catch (emailError) {
+        } catch (emailError: any) {
           console.error("[ORDERS TABLE] Excepción al enviar email de notificación:", emailError);
-          alert(`⚠️ Orden actualizada, pero hubo un error al enviar el email. Revisa la consola para más detalles.`);
+          alert(`⚠️ Orden actualizada, pero hubo un error al enviar el email: ${emailError.message || 'Error de red'}\n\nRevisa la consola para más detalles.`);
           // No fallar el cambio de estado si el email falla
         }
         }
