@@ -52,8 +52,8 @@ export async function generateNotePDFBlob(
     doc.addImage(logoDataUrl, "PNG", margin, logoY, logoWidth, logoHeight);
   }
 
-  // Título "NOTA DE ORDEN" en caja negra (CENTRO del header)
-  doc.setFillColor(0, 0, 0);
+  // Título "NOTA DE ORDEN" en caja gris oscuro (CENTRO del header) - para ahorrar tinta
+  doc.setFillColor(80, 80, 80); // Gris oscuro en lugar de negro
   const titleBoxWidth = 60;
   const titleBoxX = (pageWidth - titleBoxWidth) / 2;
   doc.rect(titleBoxX, 10, titleBoxWidth, 12, "F");

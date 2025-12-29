@@ -87,7 +87,7 @@ export const POST: APIRoute = async ({ request }) => {
     
     if (emailType === 'ready_for_pickup') {
       // Email para cuando el equipo está listo para retirar
-      subject = `Orden ${orderNumber} - ¡Su equipo está listo para retirar!`;
+      subject = `Notificación: Orden ${orderNumber} - Equipo listo para retirar`;
       htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -105,7 +105,7 @@ export const POST: APIRoute = async ({ request }) => {
                 padding: 20px;
               }
               .header {
-                background-color: #10b981;
+                background-color: #4b5563;
                 color: white;
                 padding: 20px;
                 text-align: center;
@@ -117,7 +117,7 @@ export const POST: APIRoute = async ({ request }) => {
                 border-radius: 0 0 5px 5px;
               }
               .order-number {
-                background-color: #059669;
+                background-color: #6b7280;
                 color: white;
                 padding: 10px 20px;
                 border-radius: 5px;
@@ -127,8 +127,8 @@ export const POST: APIRoute = async ({ request }) => {
                 font-weight: bold;
               }
               .highlight-box {
-                background-color: #d1fae5;
-                border-left: 4px solid #10b981;
+                background-color: #e5e7eb;
+                border-left: 4px solid #4b5563;
                 padding: 15px;
                 margin: 20px 0;
                 border-radius: 4px;
@@ -190,7 +190,7 @@ export const POST: APIRoute = async ({ request }) => {
       `;
     } else {
       // Email para cuando se crea la orden (comportamiento original)
-      subject = `Orden ${orderNumber} - Equipo ingresado con éxito`;
+      subject = `Notificación: Orden ${orderNumber} - Equipo ingresado`;
       htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -208,7 +208,7 @@ export const POST: APIRoute = async ({ request }) => {
                 padding: 20px;
               }
               .header {
-                background-color: #3b82f6;
+                background-color: #4b5563;
                 color: white;
                 padding: 20px;
                 text-align: center;
@@ -220,7 +220,7 @@ export const POST: APIRoute = async ({ request }) => {
                 border-radius: 0 0 5px 5px;
               }
               .order-number {
-                background-color: #1e40af;
+                background-color: #6b7280;
                 color: white;
                 padding: 10px 20px;
                 border-radius: 5px;
@@ -288,6 +288,20 @@ export const POST: APIRoute = async ({ request }) => {
       to: [to],
       subject: subject,
       html: htmlContent,
+      // Headers para que el email llegue a la bandeja principal (no promociones)
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+        'Importance': 'high',
+        'Precedence': 'bulk',
+        'X-Auto-Response-Suppress': 'All',
+        'Auto-Submitted': 'auto-generated',
+      },
+      // Tags para identificar como email transaccional
+      tags: [
+        { name: 'transactional', value: 'order-notification' },
+        { name: 'order-number', value: orderNumber },
+      ],
     };
 
     // Solo adjuntar PDF si está disponible y es para orden creada

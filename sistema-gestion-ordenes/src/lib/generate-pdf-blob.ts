@@ -86,8 +86,8 @@ export async function generatePDFBlob(
     doc.addImage(logoDataUrl, "PNG", margin, logoY, logoWidth, logoHeight);
   }
 
-  // N° Orden y fecha en caja negra (CENTRO del header)
-  doc.setFillColor(0, 0, 0);
+  // N° Orden y fecha en caja gris oscuro (CENTRO del header) - para ahorrar tinta
+  doc.setFillColor(80, 80, 80); // Gris oscuro en lugar de negro
   const orderBoxWidth = 75;
   const orderBoxX = (pageWidth - orderBoxWidth) / 2;
   doc.rect(orderBoxX, 10, orderBoxWidth, 12, "F");
