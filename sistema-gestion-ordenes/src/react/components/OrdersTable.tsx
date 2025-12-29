@@ -138,6 +138,40 @@ export default function OrdersTable({ technicianId, isAdmin = false, onNewOrder 
 
       if (error) throw error;
 
+      // Obtener la orden actualizada con relaciones
+      const order = orders.find(o => o.id === orderId);
+      
+      // Si el estado cambió a "por_entregar" y hay cliente con email, enviar notificación
+      if (newStatus === 'por_entregar' && order?.customer?.email) {
+        try {
+          const emailResponse = await fetch('/api/send-order-email', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: order.customer.email,
+              customerName: order.customer.name,
+              orderNumber: order.order_number,
+              branchName: order.sucursal?.name,
+              branchEmail: order.sucursal?.email,
+              emailType: 'ready_for_pickup',
+            }),
+          });
+
+          if (!emailResponse.ok) {
+            const errorData = await emailResponse.json();
+            console.error("Error enviando email de notificación:", errorData);
+            // No fallar el cambio de estado si el email falla
+          } else {
+            console.log("Email de notificación enviado exitosamente");
+          }
+        } catch (emailError) {
+          console.error("Error al enviar email de notificación:", emailError);
+          // No fallar el cambio de estado si el email falla
+        }
+      }
+
       // Actualizar estado local
       setOrders(orders.map(order => 
         order.id === orderId ? { ...order, status: newStatus as any } : order
