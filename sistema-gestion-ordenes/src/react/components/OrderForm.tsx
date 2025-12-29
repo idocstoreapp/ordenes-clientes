@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType } from "@/types";
@@ -20,6 +20,9 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [deviceType, setDeviceType] = useState<DeviceType | null>(null);
   const [deviceModel, setDeviceModel] = useState("");
   const [deviceSuggestions, setDeviceSuggestions] = useState<string[]>([]);
+  const [showDeviceSuggestions, setShowDeviceSuggestions] = useState(false);
+  const deviceInputRef = useRef<HTMLInputElement>(null);
+  const deviceSuggestionsRef = useRef<HTMLDivElement>(null);
   const [deviceSerial, setDeviceSerial] = useState("");
   const [unlockType, setUnlockType] = useState<"code" | "pattern" | "none">("none");
   const [deviceUnlockCode, setDeviceUnlockCode] = useState("");
@@ -43,8 +46,29 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       setDeviceType(detected);
       const suggestions = getSmartSuggestions(deviceModel);
       setDeviceSuggestions(suggestions.slice(0, 5));
+      setShowDeviceSuggestions(true);
+    } else {
+      setDeviceSuggestions([]);
+      setShowDeviceSuggestions(false);
     }
   }, [deviceModel]);
+
+  // Cerrar sugerencias al hacer click fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        deviceInputRef.current && 
+        deviceSuggestionsRef.current &&
+        !deviceInputRef.current.contains(event.target as Node) &&
+        !deviceSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setShowDeviceSuggestions(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -232,28 +256,45 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
       {/* Información del Dispositivo */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
+        <div className="relative">
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Dispositivo (Marca y Modelo) *
           </label>
           <input
+            ref={deviceInputRef}
             type="text"
             className="w-full border border-slate-300 rounded-md px-3 py-2"
             placeholder="Ej: iPhone 13 Pro Max"
             value={deviceModel}
             onChange={(e) => setDeviceModel(e.target.value)}
+            onFocus={() => {
+              if (deviceSuggestions.length > 0) {
+                setShowDeviceSuggestions(true);
+              }
+            }}
+            onBlur={() => {
+              // Pequeño delay para permitir que el click en la sugerencia se procese
+              setTimeout(() => {
+                setShowDeviceSuggestions(false);
+              }, 200);
+            }}
             required
           />
-          {deviceSuggestions.length > 0 && (
-            <div className="mt-2 space-y-1">
+          {showDeviceSuggestions && deviceSuggestions.length > 0 && (
+            <div 
+              ref={deviceSuggestionsRef}
+              className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
+            >
               {deviceSuggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
-                  className="block w-full text-left px-3 py-1 text-sm text-slate-600 hover:bg-slate-100 rounded"
-                  onClick={() => {
+                  className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // Prevenir que onBlur se ejecute antes del click
                     setDeviceModel(suggestion);
                     setDeviceSuggestions([]);
+                    setShowDeviceSuggestions(false);
                   }}
                 >
                   {suggestion}
