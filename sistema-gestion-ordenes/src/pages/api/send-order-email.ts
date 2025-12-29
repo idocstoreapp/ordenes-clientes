@@ -321,17 +321,23 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    console.log("[EMAIL API] Email enviado exitosamente:", {
-      emailId: result.data?.id,
-      to: to ? `${to.substring(0, 3)}***` : 'no especificado',
-      from: fromEmail
-    });
+    // Logging más visible y detallado
+    console.log("[EMAIL API] ========================================");
+    console.log("[EMAIL API] ✅ EMAIL ENVIADO EXITOSAMENTE");
+    console.log("[EMAIL API] Email ID de Resend:", result.data?.id);
+    console.log("[EMAIL API] Para:", to ? `${to.substring(0, 3)}***` : 'no especificado');
+    console.log("[EMAIL API] Desde:", fromEmail);
+    console.log("[EMAIL API] Tipo:", emailType);
+    console.log("[EMAIL API] Orden:", orderNumber);
+    console.log("[EMAIL API] Timestamp:", new Date().toISOString());
+    console.log("[EMAIL API] ========================================");
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: "Email enviado exitosamente",
-        emailId: result.data?.id 
+        emailId: result.data?.id,
+        timestamp: new Date().toISOString()
       }),
       { 
         status: 200, 
