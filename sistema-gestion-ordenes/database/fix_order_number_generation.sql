@@ -11,37 +11,31 @@
 -- ============================================
 
 -- 1. Crear secuencia para números de orden (si no existe)
+CREATE SEQUENCE IF NOT EXISTS order_number_seq;
+
+-- 2. Inicializar la secuencia con el último número de orden existente + 1
 DO $$ 
 DECLARE
   max_order_num INTEGER := 0;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_sequences WHERE sequencename = 'order_number_seq'
-  ) THEN
-    -- Crear la secuencia
-    CREATE SEQUENCE order_number_seq;
-    
-    -- Buscar el número más alto de orden existente
-    SELECT COALESCE(MAX(
-      CASE 
-        WHEN order_number ~ '^ORD-(\d+)$' 
-        THEN (regexp_match(order_number, '^ORD-(\d+)$'))[1]::INTEGER
-        ELSE 0
-      END
-    ), 0) INTO max_order_num
-    FROM work_orders
-    WHERE order_number ~ '^ORD-(\d+)$';
-    
-    -- Establecer el siguiente valor de la secuencia
-    PERFORM setval('order_number_seq', GREATEST(max_order_num, 0) + 1, false);
-    
-    RAISE NOTICE 'Secuencia order_number_seq creada e inicializada con valor: %', max_order_num + 1;
-  ELSE
-    RAISE NOTICE 'La secuencia order_number_seq ya existe';
-  END IF;
+  -- Buscar el número más alto de orden existente
+  SELECT COALESCE(MAX(
+    CASE 
+      WHEN order_number ~ '^ORD-(\d+)$' 
+      THEN (regexp_match(order_number, '^ORD-(\d+)$'))[1]::INTEGER
+      ELSE 0
+    END
+  ), 0) INTO max_order_num
+  FROM work_orders
+  WHERE order_number ~ '^ORD-(\d+)$';
+  
+  -- Establecer el siguiente valor de la secuencia
+  PERFORM setval('order_number_seq', GREATEST(max_order_num, 0) + 1, false);
+  
+  RAISE NOTICE 'Secuencia order_number_seq inicializada con valor: %', max_order_num + 1;
 END $$;
 
--- 2. Crear función para generar número de orden automáticamente
+-- 3. Crear función para generar número de orden automáticamente
 CREATE OR REPLACE FUNCTION generate_order_number()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -71,16 +65,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. Eliminar trigger existente si existe
+-- 4. Eliminar trigger existente si existe
 DROP TRIGGER IF EXISTS generate_order_number_trigger ON work_orders;
 
--- 4. Crear trigger que se ejecuta ANTES de insertar
+-- 5. Crear trigger que se ejecuta ANTES de insertar
 CREATE TRIGGER generate_order_number_trigger
   BEFORE INSERT ON work_orders
   FOR EACH ROW
   EXECUTE FUNCTION generate_order_number();
 
--- 5. Verificar que el trigger se creó correctamente
+-- 6. Verificar que el trigger se creó correctamente
 DO $$
 BEGIN
   IF EXISTS (
@@ -114,4 +108,3 @@ SELECT
     THEN 'Activo'
     ELSE 'No encontrado'
   END AS valor;
-
