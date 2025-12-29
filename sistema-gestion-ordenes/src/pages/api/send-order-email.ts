@@ -289,15 +289,15 @@ export const POST: APIRoute = async ({ request }) => {
       subject: subject,
       html: htmlContent,
       // Headers para que el email llegue a la bandeja principal (no promociones)
+      // Importante: NO usar 'Precedence: bulk' ni 'Auto-Submitted' ya que pueden marcar como promocional
       headers: {
         'X-Priority': '1',
-        'X-MSMail-Priority': 'High',
         'Importance': 'high',
-        'Precedence': 'bulk',
         'X-Auto-Response-Suppress': 'All',
-        'Auto-Submitted': 'auto-generated',
+        // Marcar como transaccional para evitar que vaya a promociones
+        'X-Mailer': 'iDocStore-Order-System',
       },
-      // Tags para identificar como email transaccional
+      // Tags para identificar como email transaccional en Resend
       tags: [
         { name: 'transactional', value: 'order-notification' },
         { name: 'order-number', value: orderNumber },
