@@ -173,6 +173,12 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           console.warn("[ORDERS TABLE] No se puede enviar email: el cliente no tiene email configurado");
         } else {
           console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
+          console.log("[ORDERS TABLE] URL completa:", window.location.origin + '/api/send-order-email');
+          console.log("[ORDERS TABLE] Datos a enviar:", {
+            to: order.customer.email,
+            orderNumber: order.order_number,
+            emailType: 'ready_for_pickup'
+          });
           try {
           const emailResponse = await fetch('/api/send-order-email', {
             method: 'POST',

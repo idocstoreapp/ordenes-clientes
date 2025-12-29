@@ -4,7 +4,12 @@ import { Resend } from "resend";
 const resendApiKey = import.meta.env.RESEND_API_KEY;
 
 export const POST: APIRoute = async ({ request }) => {
-  console.log("[EMAIL API] Iniciando envío de email");
+  // Logging inmediato para verificar que la función se ejecuta
+  console.log("[EMAIL API] ========================================");
+  console.log("[EMAIL API] FUNCIÓN EJECUTADA - Iniciando envío de email");
+  console.log("[EMAIL API] Timestamp:", new Date().toISOString());
+  console.log("[EMAIL API] ========================================");
+  
   try {
     if (!resendApiKey) {
       console.error("[EMAIL API] ERROR: RESEND_API_KEY no configurada");
