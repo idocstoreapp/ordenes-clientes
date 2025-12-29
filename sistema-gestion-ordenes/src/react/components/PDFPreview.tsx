@@ -10,6 +10,7 @@ import { getSystemSettings } from "@/lib/settings";
 interface PDFPreviewProps {
   order: WorkOrder & { customer?: Customer; sucursal?: Branch | null };
   services: Service[];
+  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>;
   serviceValue: number;
   replacementCost: number;
   warrantyDays: number;
@@ -22,6 +23,7 @@ interface PDFPreviewProps {
 export default function PDFPreview({
   order,
   services,
+  orderServices,
   serviceValue,
   replacementCost,
   warrantyDays,
@@ -380,24 +382,40 @@ export default function PDFPreview({
       doc.text(totalDash, colX + colWidths[3] - totalDashWidth - 2, equipmentRowY);
 
       // Filas de servicios - cada servicio es una fila separada SIN número (# vacío o guion)
-      // Usar el precio individual de cada servicio (default_price)
-      services.forEach((service, index) => {
-        const precioServicio = service.default_price || 0;
+      // Usar orderServices si está disponible (con quantity y total_price), sino usar services
+      const servicesToShow = orderServices && orderServices.length > 0 
+        ? orderServices.map(os => ({
+            name: os.service_name,
+            quantity: os.quantity || 1,
+            unit_price: os.unit_price || 0,
+            total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+            description: null
+          }))
+        : services.map(s => ({
+            name: s.name,
+            quantity: 1,
+            unit_price: s.default_price || 0,
+            total_price: s.default_price || 0,
+            description: s.description
+          }));
+
+      servicesToShow.forEach((serviceItem, index) => {
         colX = margin + 3;
         // No poner número, solo un guion o espacio en blanco
         doc.text("-", colX + 2, yPosition);
         colX += colWidths[0];
         // Ajustar nombre del servicio si es muy largo
-        const serviceNameText = service.name.toUpperCase();
+        const serviceNameText = serviceItem.name.toUpperCase();
         const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
         doc.text(serviceNameLines, colX + 2, yPosition);
         colX += colWidths[1];
-        const serviceNote = service.description || order.problem_description.substring(0, 30);
+        const serviceNote = serviceItem.description || order.problem_description.substring(0, 30);
         const noteLines = doc.splitTextToSize((serviceNote || "Servicio de reparación"), colWidths[2] - 4);
         doc.text(noteLines, colX + 2, yPosition);
         colX += colWidths[2];
         // Formatear total con cantidad y precio unitario de manera discreta
-        const totalAmount = precioServicio;
+        // Usar total_price del item (quantity * unit_price)
+        const totalAmount = serviceItem.total_price;
         const totalText = formatCLP(totalAmount, { withLabel: false });
         doc.setFontSize(8);
         const totalWidth = doc.getTextWidth(totalText);
@@ -406,7 +424,7 @@ export default function PDFPreview({
         // Mostrar cantidad y precio unitario de manera discreta (texto pequeño debajo)
         doc.setFontSize(5);
         doc.setTextColor(100, 100, 100); // Gris discreto
-        const detailText = `1 x ${formatCLP(precioServicio, { withLabel: false })}`;
+        const detailText = `${serviceItem.quantity} x ${formatCLP(serviceItem.unit_price, { withLabel: false })}`;
         const detailWidth = doc.getTextWidth(detailText);
         const detailX = colX + colWidths[3] - detailWidth - 2;
         doc.text(detailText, detailX, yPosition + 3);
@@ -504,11 +522,24 @@ export default function PDFPreview({
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(5);
       doc.setFont("helvetica", "normal");
-      doc.text("Anticipo:", totalBoxX + 2, totalYPosition + 4);
-      doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 4);
+      
+      // Calcular total con IVA
+      const totalConIva = serviceValue + replacementCost;
+      // Calcular total sin IVA (si el total incluye IVA del 19%)
+      const totalSinIva = totalConIva / 1.19;
+      const iva = totalConIva - totalSinIva;
+      
+      // Mostrar total sin IVA
+      doc.text("Subtotal:", totalBoxX + 2, totalYPosition + 4);
+      const subtotalText = formatCLP(totalSinIva, { withLabel: false });
+      const subtotalWidth = doc.getTextWidth(subtotalText);
+      doc.text(subtotalText, totalBoxX + totalBoxWidth - subtotalWidth - 2, totalYPosition + 4);
 
-      doc.text("Impuesto:", totalBoxX + 2, totalYPosition + 8);
-      doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 8);
+      // Mostrar IVA (19%)
+      doc.text("IVA (19%):", totalBoxX + 2, totalYPosition + 8);
+      const ivaText = formatCLP(iva, { withLabel: false });
+      const ivaWidth = doc.getTextWidth(ivaText);
+      doc.text(ivaText, totalBoxX + totalBoxWidth - ivaWidth - 2, totalYPosition + 8);
 
       doc.setDrawColor(150, 150, 150);
       doc.line(totalBoxX, totalYPosition + 12, totalBoxX + totalBoxWidth, totalYPosition + 12);
@@ -517,10 +548,9 @@ export default function PDFPreview({
       doc.setFont("helvetica", "bold");
       doc.text("TOTAL:", totalBoxX + 2, totalYPosition + 16);
       
-      // Calcular total correctamente (serviceValue ya es el total de todos los servicios)
-      const totalCalculado = serviceValue + replacementCost;
+      // Mostrar total con IVA
       doc.setFontSize(6);
-      const totalText = formatCLP(totalCalculado, { withLabel: false });
+      const totalText = formatCLP(totalConIva, { withLabel: false });
       // Ajustar si el texto es muy largo para que quepa en el ancho reducido
       const totalTextWidth = doc.getTextWidth(totalText);
       const totalTextX = Math.max(totalBoxX + 2, totalBoxX + totalBoxWidth - totalTextWidth - 2);
@@ -770,15 +800,35 @@ export default function PDFPreview({
         yPosition += 5;
       }
 
-      // Valor presupuestado
+      // Valor presupuestado con desglose de IVA
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("VALOR PRESUPUESTADO", margin, yPosition);
       yPosition += 8;
+      
+      // Calcular total con IVA
+      const totalConIva = serviceValue + replacementCost;
+      const totalSinIva = totalConIva / 1.19;
+      const iva = totalConIva - totalSinIva;
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.text("Subtotal:", margin, yPosition);
+      doc.text(formatCLP(totalSinIva, { withLabel: false }), margin + 50, yPosition);
+      yPosition += 6;
+      
+      doc.text("IVA (19%):", margin, yPosition);
+      doc.text(formatCLP(iva, { withLabel: false }), margin + 50, yPosition);
+      yPosition += 6;
+      
+      doc.setDrawColor(150, 150, 150);
+      doc.line(margin, yPosition, margin + 80, yPosition);
+      yPosition += 6;
+      
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      const totalCalculado = serviceValue + replacementCost;
-      doc.text(formatCLP(totalCalculado, { withLabel: true }), margin, yPosition);
+      doc.text("TOTAL:", margin, yPosition);
+      doc.text(formatCLP(totalConIva, { withLabel: true }), margin + 50, yPosition);
       yPosition += 15;
 
       // Recuadro de firma

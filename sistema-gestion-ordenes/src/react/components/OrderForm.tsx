@@ -522,13 +522,27 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </div>
       </div>
 
-      {/* Total */}
-      <div className="bg-slate-50 p-4 rounded">
+      {/* Total con desglose de IVA */}
+      <div className="bg-slate-50 p-4 rounded space-y-2">
         <div className="flex justify-between items-center">
-          <span className="text-lg font-medium text-slate-700">Total:</span>
-          <span className="text-2xl font-bold text-brand">
-            {formatCLP(replacementCost + serviceValue)}
+          <span className="text-sm text-slate-600">Subtotal:</span>
+          <span className="text-sm font-medium text-slate-700">
+            {formatCLP((replacementCost + serviceValue) / 1.19)}
           </span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-slate-600">IVA (19%):</span>
+          <span className="text-sm font-medium text-slate-700">
+            {formatCLP((replacementCost + serviceValue) - ((replacementCost + serviceValue) / 1.19))}
+          </span>
+        </div>
+        <div className="border-t border-slate-300 pt-2 mt-2">
+          <div className="flex justify-between items-center">
+            <span className="text-lg font-medium text-slate-700">Total:</span>
+            <span className="text-2xl font-bold text-brand">
+              {formatCLP(replacementCost + serviceValue)}
+            </span>
+          </div>
         </div>
       </div>
 

@@ -243,6 +243,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       setPdfOrderData({
         order,
         services,
+        orderServices: orderServices || undefined,
         serviceValue,
         replacementCost,
         warrantyDays,

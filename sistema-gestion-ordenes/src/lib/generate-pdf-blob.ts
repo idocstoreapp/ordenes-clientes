@@ -13,7 +13,8 @@ export async function generatePDFBlob(
   replacementCost: number,
   warrantyDays: number,
   checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null,
-  notes?: string[]
+  notes?: string[],
+  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>
 ): Promise<Blob> {
   // Cargar items del checklist si existen
   let checklistItems: DeviceChecklistItem[] = [];
@@ -312,21 +313,37 @@ export async function generatePDFBlob(
   const totalDashWidth = doc.getTextWidth(totalDash);
   doc.text(totalDash, colX + colWidths[3] - totalDashWidth - 2, equipmentRowY);
 
-  // Servicios
-  services.forEach((service) => {
-    const precioServicio = service.default_price || 0;
+  // Servicios - usar orderServices si está disponible
+  const servicesToShow = orderServices && orderServices.length > 0 
+    ? orderServices.map(os => ({
+        name: os.service_name,
+        quantity: os.quantity || 1,
+        unit_price: os.unit_price || 0,
+        total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+        description: null
+      }))
+    : services.map(s => ({
+        name: s.name,
+        quantity: 1,
+        unit_price: s.default_price || 0,
+        total_price: s.default_price || 0,
+        description: s.description
+      }));
+
+  servicesToShow.forEach((serviceItem) => {
     colX = margin + 3;
     doc.text("-", colX + 2, yPosition);
     colX += colWidths[0];
-    const serviceNameText = service.name.toUpperCase();
+    const serviceNameText = serviceItem.name.toUpperCase();
     const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
     doc.text(serviceNameLines, colX + 2, yPosition);
     colX += colWidths[1];
-    const serviceNote = service.description || order.problem_description.substring(0, 30);
+    const serviceNote = serviceItem.description || order.problem_description.substring(0, 30);
     const noteLines = doc.splitTextToSize((serviceNote || "Servicio de reparación"), colWidths[2] - 4);
     doc.text(noteLines, colX + 2, yPosition);
     colX += colWidths[2];
-    const totalAmount = precioServicio;
+    // Usar total_price del item (quantity * unit_price)
+    const totalAmount = serviceItem.total_price;
     const totalText = formatCLP(totalAmount, { withLabel: false });
     doc.setFontSize(8);
     const totalWidth = doc.getTextWidth(totalText);
@@ -334,7 +351,7 @@ export async function generatePDFBlob(
     doc.text(totalText, totalX, yPosition);
     doc.setFontSize(5);
     doc.setTextColor(100, 100, 100);
-    const detailText = `1 x ${formatCLP(precioServicio, { withLabel: false })}`;
+    const detailText = `${serviceItem.quantity} x ${formatCLP(serviceItem.unit_price, { withLabel: false })}`;
     const detailWidth = doc.getTextWidth(detailText);
     const detailX = colX + colWidths[3] - detailWidth - 2;
     doc.text(detailText, detailX, yPosition + 3);
@@ -416,18 +433,33 @@ export async function generatePDFBlob(
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(5);
   doc.setFont("helvetica", "normal");
-  doc.text("Anticipo:", totalBoxX + 2, totalYPosition + 4);
-  doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 4);
-  doc.text("Impuesto:", totalBoxX + 2, totalYPosition + 8);
-  doc.text("$0.00", totalBoxX + totalBoxWidth - 12, totalYPosition + 8);
+  
+  // Calcular total con IVA
+  const totalConIva = serviceValue + replacementCost;
+  // Calcular total sin IVA (si el total incluye IVA del 19%)
+  const totalSinIva = totalConIva / 1.19;
+  const iva = totalConIva - totalSinIva;
+  
+  // Mostrar total sin IVA
+  doc.text("Subtotal:", totalBoxX + 2, totalYPosition + 4);
+  const subtotalText = formatCLP(totalSinIva, { withLabel: false });
+  const subtotalWidth = doc.getTextWidth(subtotalText);
+  doc.text(subtotalText, totalBoxX + totalBoxWidth - subtotalWidth - 2, totalYPosition + 4);
+
+  // Mostrar IVA (19%)
+  doc.text("IVA (19%):", totalBoxX + 2, totalYPosition + 8);
+  const ivaText = formatCLP(iva, { withLabel: false });
+  const ivaWidth = doc.getTextWidth(ivaText);
+  doc.text(ivaText, totalBoxX + totalBoxWidth - ivaWidth - 2, totalYPosition + 8);
+  
   doc.setDrawColor(150, 150, 150);
   doc.line(totalBoxX, totalYPosition + 12, totalBoxX + totalBoxWidth, totalYPosition + 12);
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
   doc.text("TOTAL:", totalBoxX + 2, totalYPosition + 16);
-  const totalCalculado = serviceValue + replacementCost;
+  // Mostrar total con IVA
   doc.setFontSize(6);
-  const totalText = formatCLP(totalCalculado, { withLabel: false });
+  const totalText = formatCLP(totalConIva, { withLabel: false });
   const totalTextWidth = doc.getTextWidth(totalText);
   const totalTextX = Math.max(totalBoxX + 2, totalBoxX + totalBoxWidth - totalTextWidth - 2);
   doc.text(totalText, totalTextX, totalYPosition + 19);

@@ -19,6 +19,7 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const [pdfOrderData, setPdfOrderData] = useState<{
     order: WorkOrder;
     services: Service[];
+    orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>;
     serviceValue: number;
     replacementCost: number;
     warrantyDays: number;
@@ -201,6 +202,7 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                 setPdfOrderData({
                   order,
                   services,
+                  orderServices: orderServices || undefined,
                   serviceValue,
                   replacementCost,
                   warrantyDays,
