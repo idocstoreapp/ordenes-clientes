@@ -179,9 +179,10 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           if (!emailResponse.ok) {
             const errorData = await emailResponse.json();
             console.error("Error enviando email de notificación:", errorData);
-            // No fallar el cambio de estado si el email falla
+            alert(`Orden actualizada, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}\n\nEmail de origen usado: ${errorData.from || 'No especificado'}`);
           } else {
-            console.log("Email de notificación enviado exitosamente");
+            const successData = await emailResponse.json();
+            console.log("Email de notificación enviado exitosamente:", successData);
           }
         } catch (emailError) {
           console.error("Error al enviar email de notificación:", emailError);

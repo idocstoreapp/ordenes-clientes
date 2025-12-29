@@ -41,8 +41,28 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     // Email de origen (usar el de la sucursal si está disponible, o uno por defecto)
+    // IMPORTANTE: El email debe ser del dominio verificado en Resend
     const fromEmail = branchEmail || "noreply@idocstore.com";
     const fromName = branchName ? `${branchName} - iDocStore` : "iDocStore";
+    
+    // Validar que el email del destinatario sea válido
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(to)) {
+      console.error("Email del destinatario inválido:", to);
+      return new Response(
+        JSON.stringify({ error: `Email del destinatario inválido: ${to}` }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Log para debugging (sin exponer información sensible)
+    console.log("Enviando email:", {
+      to: to,
+      from: fromEmail,
+      subject: emailType === 'ready_for_pickup' ? `Orden ${orderNumber} - Listo` : `Orden ${orderNumber} - Creada`,
+      emailType: emailType,
+      hasPdf: !!pdfBase64
+    });
 
     // Determinar contenido del email según el tipo
     let htmlContent = '';
@@ -266,12 +286,28 @@ export const POST: APIRoute = async ({ request }) => {
     const result = await resend.emails.send(emailData);
 
     if (result.error) {
-      console.error("Error enviando email:", result.error);
+      console.error("Error enviando email desde Resend:", {
+        error: result.error,
+        message: result.error.message,
+        name: result.error.name,
+        from: fromEmail,
+        to: to
+      });
       return new Response(
-        JSON.stringify({ error: result.error.message || "Error enviando email" }),
+        JSON.stringify({ 
+          error: result.error.message || "Error enviando email",
+          details: result.error.name || "Error desconocido",
+          from: fromEmail
+        }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
+
+    console.log("Email enviado exitosamente:", {
+      emailId: result.data?.id,
+      to: to,
+      from: fromEmail
+    });
 
     return new Response(
       JSON.stringify({ 

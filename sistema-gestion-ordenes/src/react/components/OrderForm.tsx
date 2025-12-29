@@ -219,9 +219,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
           console.error("Error enviando email:", errorData);
-          // No fallar la creación de la orden si el email falla
+          alert(`Orden creada exitosamente, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}`);
         } else {
-          console.log("Email enviado exitosamente");
+          const successData = await emailResponse.json();
+          console.log("Email enviado exitosamente:", successData);
         }
       } catch (emailError) {
         console.error("Error al enviar email:", emailError);
