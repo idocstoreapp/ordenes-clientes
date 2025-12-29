@@ -58,7 +58,7 @@ export interface Service {
 
 export interface DeviceChecklistItem {
   id: string;
-  device_type: 'iphone' | 'ipad' | 'macbook' | 'apple_watch';
+  device_type: string; // Ahora permite cualquier tipo de dispositivo
   item_name: string;
   item_order: number;
 }
@@ -69,7 +69,7 @@ export interface WorkOrder {
   customer_id: string;
   technician_id?: string | null;
   sucursal_id?: string | null;
-  device_type: 'iphone' | 'ipad' | 'macbook' | 'apple_watch';
+  device_type: string; // Ahora permite cualquier tipo de dispositivo
   device_model: string;
   device_serial_number?: string | null;
   device_unlock_code?: string | null; // Código numérico
@@ -118,7 +118,7 @@ export interface OrderNote {
   user?: User;
 }
 
-export type DeviceType = 'iphone' | 'ipad' | 'macbook' | 'apple_watch';
+export type DeviceType = string; // Ahora permite cualquier tipo de dispositivo
 export type OrderStatus = 'en_proceso' | 'por_entregar' | 'entregada' | 'rechazada' | 'sin_solucion' | 'garantia';
 export type Priority = 'baja' | 'media' | 'urgente';
 export type PaymentMethod = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA';

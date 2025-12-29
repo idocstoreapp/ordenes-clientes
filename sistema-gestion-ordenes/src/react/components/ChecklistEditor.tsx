@@ -2,21 +2,25 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DeviceChecklistItem } from "@/types";
 
-const deviceTypes = [
+const defaultDeviceTypes = [
   { value: 'iphone', label: 'iPhone' },
   { value: 'ipad', label: 'iPad' },
   { value: 'macbook', label: 'MacBook' },
   { value: 'apple_watch', label: 'Apple Watch' },
-] as const;
+];
 
 export default function ChecklistEditor() {
-  const [selectedDeviceType, setSelectedDeviceType] = useState<'iphone' | 'ipad' | 'macbook' | 'apple_watch' | null>(null);
+  const [selectedDeviceType, setSelectedDeviceType] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<Record<string, DeviceChecklistItem[]>>({});
+  const [availableDeviceTypes, setAvailableDeviceTypes] = useState<Array<{ value: string; label: string }>>(defaultDeviceTypes);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState("");
   const [editingItemName, setEditingItemName] = useState("");
+  const [showNewDeviceTypeForm, setShowNewDeviceTypeForm] = useState(false);
+  const [newDeviceTypeValue, setNewDeviceTypeValue] = useState("");
+  const [newDeviceTypeLabel, setNewDeviceTypeLabel] = useState("");
 
   useEffect(() => {
     loadAllChecklists();
@@ -34,10 +38,28 @@ export default function ChecklistEditor() {
       if (error) throw error;
 
       if (data) {
+        // Agrupar por device_type
         const grouped: Record<string, DeviceChecklistItem[]> = {};
-        deviceTypes.forEach(({ value }) => {
-          grouped[value] = data.filter(item => item.device_type === value);
+        const uniqueTypes = new Set<string>();
+        
+        data.forEach((item) => {
+          if (!grouped[item.device_type]) {
+            grouped[item.device_type] = [];
+          }
+          grouped[item.device_type].push(item);
+          uniqueTypes.add(item.device_type);
         });
+
+        // Actualizar lista de tipos disponibles (incluyendo los personalizados)
+        const knownTypes = new Set(defaultDeviceTypes.map(d => d.value));
+        const customTypes = Array.from(uniqueTypes)
+          .filter(type => !knownTypes.has(type))
+          .map(type => ({
+            value: type,
+            label: type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')
+          }));
+
+        setAvailableDeviceTypes([...defaultDeviceTypes, ...customTypes]);
         setChecklists(grouped);
       }
     } catch (error: any) {
@@ -45,6 +67,49 @@ export default function ChecklistEditor() {
       alert(`Error al cargar checklists: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAddNewDeviceType() {
+    if (!newDeviceTypeValue.trim() || !newDeviceTypeLabel.trim()) {
+      alert("Por favor ingresa un valor y un nombre para el nuevo tipo de dispositivo");
+      return;
+    }
+
+    // Normalizar el valor (minúsculas, sin espacios, usar guiones bajos)
+    const normalizedValue = newDeviceTypeValue.trim().toLowerCase().replace(/\s+/g, '_');
+
+    // Verificar que no exista ya
+    if (availableDeviceTypes.some(dt => dt.value === normalizedValue)) {
+      alert("Este tipo de dispositivo ya existe");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Agregar el nuevo tipo a la lista
+      const newType = {
+        value: normalizedValue,
+        label: newDeviceTypeLabel.trim()
+      };
+      
+      setAvailableDeviceTypes([...availableDeviceTypes, newType]);
+      setChecklists({
+        ...checklists,
+        [normalizedValue]: [] // Inicializar con lista vacía
+      });
+      
+      setSelectedDeviceType(normalizedValue);
+      setShowNewDeviceTypeForm(false);
+      setNewDeviceTypeValue("");
+      setNewDeviceTypeLabel("");
+      
+      alert(`Tipo de dispositivo "${newDeviceTypeLabel}" creado. Ahora puedes agregar items a su checklist.`);
+    } catch (error: any) {
+      console.error("Error agregando tipo de dispositivo:", error);
+      alert(`Error al agregar tipo de dispositivo: ${error.message}`);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -178,7 +243,7 @@ export default function ChecklistEditor() {
       {selectedDeviceType && (
         <div className="mt-6">
           <h4 className="text-md font-semibold text-slate-800 mb-4">
-            Checklist de {deviceTypes.find(d => d.value === selectedDeviceType)?.label}
+            Checklist de {availableDeviceTypes.find(d => d.value === selectedDeviceType)?.label || selectedDeviceType}
           </h4>
 
           {/* Lista de items existentes */}

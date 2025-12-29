@@ -81,25 +81,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
     try {
       // Validar checklist primero antes de continuar
-      if (deviceType) {
-        const { data: checklistItems } = await supabase
-          .from("device_checklist_items")
-          .select("item_name")
-          .eq("device_type", deviceType);
-
-        if (checklistItems && checklistItems.length > 0) {
-          const missingItems: string[] = [];
-          checklistItems.forEach((item) => {
-            if (!checklistData[item.item_name] || checklistData[item.item_name] === "") {
-              missingItems.push(item.item_name);
-            }
-          });
-
-          if (missingItems.length > 0) {
-            setLoading(false);
-            alert(`Por favor selecciona una opción para todos los items del checklist. Faltan: ${missingItems.join(", ")}`);
-            return;
+      // Si hay items en checklistData, todos deben tener un valor seleccionado
+      const checklistItemNames = Object.keys(checklistData);
+      if (checklistItemNames.length > 0) {
+        const missingItems: string[] = [];
+        checklistItemNames.forEach((itemName) => {
+          if (!checklistData[itemName] || checklistData[itemName] === "") {
+            missingItems.push(itemName);
           }
+        });
+
+        if (missingItems.length > 0) {
+          setLoading(false);
+          alert(`Por favor selecciona una opción para todos los items del checklist. Faltan: ${missingItems.join(", ")}`);
+          return;
         }
       }
 
