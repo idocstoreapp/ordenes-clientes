@@ -1,0 +1,284 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import type { DeviceChecklistItem } from "@/types";
+
+const deviceTypes = [
+  { value: 'iphone', label: 'iPhone' },
+  { value: 'ipad', label: 'iPad' },
+  { value: 'macbook', label: 'MacBook' },
+  { value: 'apple_watch', label: 'Apple Watch' },
+] as const;
+
+export default function ChecklistEditor() {
+  const [selectedDeviceType, setSelectedDeviceType] = useState<'iphone' | 'ipad' | 'macbook' | 'apple_watch' | null>(null);
+  const [checklists, setChecklists] = useState<Record<string, DeviceChecklistItem[]>>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [newItemName, setNewItemName] = useState("");
+  const [editingItemName, setEditingItemName] = useState("");
+
+  useEffect(() => {
+    loadAllChecklists();
+  }, []);
+
+  async function loadAllChecklists() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("device_checklist_items")
+        .select("*")
+        .order("device_type")
+        .order("item_order");
+
+      if (error) throw error;
+
+      if (data) {
+        const grouped: Record<string, DeviceChecklistItem[]> = {};
+        deviceTypes.forEach(({ value }) => {
+          grouped[value] = data.filter(item => item.device_type === value);
+        });
+        setChecklists(grouped);
+      }
+    } catch (error: any) {
+      console.error("Error cargando checklists:", error);
+      alert(`Error al cargar checklists: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAddItem() {
+    if (!selectedDeviceType || !newItemName.trim()) {
+      alert("Por favor selecciona un tipo de dispositivo e ingresa un nombre para el item");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // Obtener el siguiente item_order
+      const currentItems = checklists[selectedDeviceType] || [];
+      const maxOrder = currentItems.length > 0 
+        ? Math.max(...currentItems.map(item => item.item_order))
+        : 0;
+
+      const { error } = await supabase
+        .from("device_checklist_items")
+        .insert({
+          device_type: selectedDeviceType,
+          item_name: newItemName.trim(),
+          item_order: maxOrder + 1,
+        });
+
+      if (error) throw error;
+
+      setNewItemName("");
+      await loadAllChecklists();
+    } catch (error: any) {
+      console.error("Error agregando item:", error);
+      alert(`Error al agregar item: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUpdateItem(itemId: string, newName: string) {
+    if (!newName.trim()) {
+      alert("El nombre del item no puede estar vacío");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("device_checklist_items")
+        .update({ item_name: newName.trim() })
+        .eq("id", itemId);
+
+      if (error) throw error;
+
+      setEditingItem(null);
+      await loadAllChecklists();
+    } catch (error: any) {
+      console.error("Error actualizando item:", error);
+      alert(`Error al actualizar item: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!confirm("¿Estás seguro de que deseas eliminar este item del checklist?")) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("device_checklist_items")
+        .delete()
+        .eq("id", itemId);
+
+      if (error) throw error;
+
+      await loadAllChecklists();
+    } catch (error: any) {
+      console.error("Error eliminando item:", error);
+      alert(`Error al eliminar item: ${error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function startEditing(item: DeviceChecklistItem) {
+    setEditingItem(item.id);
+    setEditingItemName(item.item_name);
+  }
+
+  function cancelEditing() {
+    setEditingItem(null);
+    setEditingItemName("");
+  }
+
+  if (loading) {
+    return (
+      <div className="border-b border-slate-200 pb-6">
+        <p className="text-slate-600">Cargando checklists...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border-b border-slate-200 pb-6">
+      <h3 className="text-lg font-semibold text-slate-900 mb-4">Checklists por Dispositivo</h3>
+
+      {/* Selector de tipo de dispositivo */}
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Selecciona un tipo de dispositivo para editar su checklist:
+        </label>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {deviceTypes.map(({ value, label }) => (
+            <button
+              key={value}
+              onClick={() => setSelectedDeviceType(value)}
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                selectedDeviceType === value
+                  ? "bg-brand-light text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lista de items del checklist seleccionado */}
+      {selectedDeviceType && (
+        <div className="mt-6">
+          <h4 className="text-md font-semibold text-slate-800 mb-4">
+            Checklist de {deviceTypes.find(d => d.value === selectedDeviceType)?.label}
+          </h4>
+
+          {/* Lista de items existentes */}
+          <div className="space-y-2 mb-4">
+            {(checklists[selectedDeviceType] || []).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center gap-2 p-3 bg-slate-50 rounded-md border border-slate-200"
+              >
+                {editingItem === item.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editingItemName}
+                      onChange={(e) => setEditingItemName(e.target.value)}
+                      className="flex-1 border border-slate-300 rounded-md px-3 py-2"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleUpdateItem(item.id, editingItemName);
+                        } else if (e.key === "Escape") {
+                          cancelEditing();
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleUpdateItem(item.id, editingItemName)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      disabled={saving}
+                      className="px-3 py-2 bg-slate-400 text-white rounded-md hover:bg-slate-500 disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-slate-700">{item.item_name}</span>
+                    <button
+                      onClick={() => startEditing(item)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 text-sm"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50 text-sm"
+                    >
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Agregar nuevo item */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              placeholder="Nombre del nuevo item..."
+              className="flex-1 border border-slate-300 rounded-md px-3 py-2"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleAddItem();
+                }
+              }}
+            />
+            <button
+              onClick={handleAddItem}
+              disabled={saving || !newItemName.trim()}
+              className="px-4 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
+            >
+              + Agregar Item
+            </button>
+          </div>
+
+          {checklists[selectedDeviceType]?.length === 0 && (
+            <p className="text-sm text-slate-500 mt-4">
+              No hay items en este checklist. Agrega el primero arriba.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!selectedDeviceType && (
+        <p className="text-sm text-slate-500 mt-4">
+          Selecciona un tipo de dispositivo arriba para ver y editar su checklist.
+        </p>
+      )}
+    </div>
+  );
+}
+

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { getSystemSettings, clearSettingsCache, type SystemSettings } from "@/lib/settings";
+import ChecklistEditor from "./ChecklistEditor";
 
 export default function Settings() {
   const [loading, setLoading] = useState(true);
@@ -359,6 +360,9 @@ export default function Settings() {
             </div>
           </div>
         </div>
+
+        {/* Editor de Checklists */}
+        <ChecklistEditor />
 
         {/* Políticas de Garantía */}
         <div className="border-b border-slate-200 pb-6">
