@@ -42,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     // Email de origen (usar el de la sucursal si está disponible, o uno por defecto)
     // IMPORTANTE: El email debe ser del dominio verificado en Resend
-    const fromEmail = branchEmail || "noreply@idocstore.com";
+    const fromEmail = branchEmail || "informacion@app.idocstore.cl";
     const fromName = branchName ? `${branchName} - iDocStore` : "iDocStore";
     
     // Validar que el email del destinatario sea válido
