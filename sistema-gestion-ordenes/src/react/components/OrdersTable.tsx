@@ -160,6 +160,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       
       // Si el estado cambió a "por_entregar" y hay cliente con email, enviar notificación
       if (newStatus === 'por_entregar' && order?.customer?.email) {
+        console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
         try {
           const emailResponse = await fetch('/api/send-order-email', {
             method: 'POST',
@@ -178,14 +179,14 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
           if (!emailResponse.ok) {
             const errorData = await emailResponse.json();
-            console.error("Error enviando email de notificación:", errorData);
+            console.error("[ORDERS TABLE] Error enviando email de notificación:", errorData);
             alert(`Orden actualizada, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}\n\nEmail de origen usado: ${errorData.from || 'No especificado'}`);
           } else {
             const successData = await emailResponse.json();
-            console.log("Email de notificación enviado exitosamente:", successData);
+            console.log("[ORDERS TABLE] Email de notificación enviado exitosamente:", successData);
           }
         } catch (emailError) {
-          console.error("Error al enviar email de notificación:", emailError);
+          console.error("[ORDERS TABLE] Excepción al enviar email de notificación:", emailError);
           // No fallar el cambio de estado si el email falla
         }
       }

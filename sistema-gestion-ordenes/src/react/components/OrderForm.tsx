@@ -201,6 +201,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         });
 
         // Enviar email
+        console.log("[ORDER FORM] Enviando email de creación de orden:", order.order_number);
         const emailResponse = await fetch('/api/send-order-email', {
           method: 'POST',
           headers: {
@@ -218,14 +219,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
         if (!emailResponse.ok) {
           const errorData = await emailResponse.json();
-          console.error("Error enviando email:", errorData);
+          console.error("[ORDER FORM] Error enviando email:", errorData);
           alert(`Orden creada exitosamente, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}`);
         } else {
           const successData = await emailResponse.json();
-          console.log("Email enviado exitosamente:", successData);
+          console.log("[ORDER FORM] Email enviado exitosamente:", successData);
         }
       } catch (emailError) {
-        console.error("Error al enviar email:", emailError);
+        console.error("[ORDER FORM] Excepción al enviar email:", emailError);
         // No fallar la creación de la orden si el email falla
       }
       

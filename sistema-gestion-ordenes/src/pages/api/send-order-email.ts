@@ -4,13 +4,16 @@ import { Resend } from "resend";
 const resendApiKey = import.meta.env.RESEND_API_KEY;
 
 export const POST: APIRoute = async ({ request }) => {
+  console.log("[EMAIL API] Iniciando envío de email");
   try {
     if (!resendApiKey) {
+      console.error("[EMAIL API] ERROR: RESEND_API_KEY no configurada");
       return new Response(
         JSON.stringify({ error: "RESEND_API_KEY no configurada" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
+    console.log("[EMAIL API] API Key encontrada");
 
     const resend = new Resend(resendApiKey);
 
@@ -24,6 +27,14 @@ export const POST: APIRoute = async ({ request }) => {
       branchEmail,
       emailType = 'order_created' // 'order_created' o 'ready_for_pickup'
     } = body;
+    
+    console.log("[EMAIL API] Datos recibidos:", {
+      to: to ? `${to.substring(0, 3)}***` : 'no especificado',
+      orderNumber,
+      emailType,
+      hasPdf: !!pdfBase64,
+      branchName: branchName || 'no especificado'
+    });
 
     if (!to || !orderNumber) {
       return new Response(
@@ -56,8 +67,8 @@ export const POST: APIRoute = async ({ request }) => {
     }
     
     // Log para debugging (sin exponer información sensible)
-    console.log("Enviando email:", {
-      to: to,
+    console.log("[EMAIL API] Preparando email:", {
+      to: to ? `${to.substring(0, 3)}***` : 'no especificado',
       from: fromEmail,
       subject: emailType === 'ready_for_pickup' ? `Orden ${orderNumber} - Listo` : `Orden ${orderNumber} - Creada`,
       emailType: emailType,
@@ -283,15 +294,16 @@ export const POST: APIRoute = async ({ request }) => {
       ];
     }
 
+    console.log("[EMAIL API] Enviando email a Resend...");
     const result = await resend.emails.send(emailData);
 
     if (result.error) {
-      console.error("Error enviando email desde Resend:", {
+      console.error("[EMAIL API] ERROR desde Resend:", {
         error: result.error,
         message: result.error.message,
         name: result.error.name,
         from: fromEmail,
-        to: to
+        to: to ? `${to.substring(0, 3)}***` : 'no especificado'
       });
       return new Response(
         JSON.stringify({ 
@@ -303,9 +315,9 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    console.log("Email enviado exitosamente:", {
+    console.log("[EMAIL API] Email enviado exitosamente:", {
       emailId: result.data?.id,
-      to: to,
+      to: to ? `${to.substring(0, 3)}***` : 'no especificado',
       from: fromEmail
     });
 
@@ -321,7 +333,11 @@ export const POST: APIRoute = async ({ request }) => {
       }
     );
   } catch (error: any) {
-    console.error("Error en send-order-email:", error);
+    console.error("[EMAIL API] ERROR EXCEPCIÓN:", {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return new Response(
       JSON.stringify({ error: error.message || "Error interno del servidor" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
