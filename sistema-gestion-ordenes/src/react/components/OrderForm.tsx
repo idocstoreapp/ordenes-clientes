@@ -145,8 +145,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       }
 
       // Preparar datos de inserción
+      // NOTA: Si el trigger de la BD está activo, order_number puede ser NULL
+      // y la BD lo generará automáticamente. Si no, usamos el generado aquí.
       const orderData: any = {
-          order_number: finalOrderNumber,
+          order_number: finalOrderNumber, // El trigger de BD lo sobrescribirá si está activo
           customer_id: selectedCustomer.id,
           technician_id: technicianId,
           sucursal_id: sucursalId,
