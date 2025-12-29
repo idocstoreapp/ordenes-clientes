@@ -166,7 +166,8 @@ export default function Dashboard() {
       case "new-order":
         return <OrderForm technicianId={user.id} onSaved={() => setSection("orders")} />;
       case "orders":
-        return <OrdersTable technicianId={user.id} isAdmin={user.role === "admin"} user={user} onNewOrder={() => setSection("new-order")} />;
+        // Solo admin tiene isAdmin=true, los demás usuarios (incluido encargado) no son admin
+        return <OrdersTable technicianId={user.id} isAdmin={false} user={user} onNewOrder={() => setSection("new-order")} />;
       case "customers":
         return <CustomersList user={user} />;
       case "branches":

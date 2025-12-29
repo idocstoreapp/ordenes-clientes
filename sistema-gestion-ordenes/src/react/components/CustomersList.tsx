@@ -26,8 +26,8 @@ export default function CustomersList({ user }: CustomersListProps) {
   async function loadCustomers() {
     setLoading(true);
     try {
-      // Verificar permiso para ver clientes
-      if (!hasPermission(user, "view_all_business_orders") && user?.role !== "admin") {
+      // Verificar permiso para ver clientes (solo admin o con permiso explícito)
+      if (!hasPermission(user, "view_all_business_orders")) {
         setCustomers([]);
         setLoading(false);
         return;
