@@ -218,14 +218,43 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         });
 
         if (!emailResponse.ok) {
-          const errorData = await emailResponse.json();
+          let errorData: any = {};
+          try {
+            const text = await emailResponse.text();
+            console.error("[ORDER FORM] Respuesta de error (texto):", text);
+            if (text) {
+              try {
+                errorData = JSON.parse(text);
+              } catch (parseError) {
+                errorData = { error: text || 'Error desconocido', status: emailResponse.status };
+              }
+            } else {
+              errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+            }
+          } catch (textError) {
+            console.error("[ORDER FORM] Error leyendo respuesta:", textError);
+            errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+          }
           console.error("[ORDER FORM] Error enviando email:", errorData);
           alert(`Orden creada exitosamente, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}`);
         } else {
-          const successData = await emailResponse.json();
+          let successData: any = {};
+          try {
+            const text = await emailResponse.text();
+            if (text) {
+              try {
+                successData = JSON.parse(text);
+              } catch (parseError) {
+                successData = { message: text || 'Email enviado' };
+              }
+            }
+          } catch (textError) {
+            console.error("[ORDER FORM] Error leyendo respuesta exitosa:", textError);
+            successData = { message: 'Email enviado (sin respuesta del servidor)' };
+          }
           console.log("[ORDER FORM] Email enviado exitosamente:", successData);
         }
-      } catch (emailError) {
+      } catch (emailError: any) {
         console.error("[ORDER FORM] Excepción al enviar email:", emailError);
         // No fallar la creación de la orden si el email falla
       }
