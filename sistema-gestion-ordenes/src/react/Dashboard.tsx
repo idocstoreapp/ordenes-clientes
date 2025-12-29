@@ -134,7 +134,10 @@ export default function Dashboard() {
 
       const { data: userData } = await supabase
         .from("users")
-        .select("*")
+        .select(`
+          *,
+          sucursal:branches(id, name, razon_social)
+        `)
         .eq("id", authUser.id)
         .single();
 
