@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { Resend } from "resend";
-import { getSystemSettings } from "@/lib/settings";
+import { getSystemSettings } from "../../lib/settings";
 
 const resendApiKey = import.meta.env.RESEND_API_KEY;
 
@@ -32,12 +32,16 @@ export const POST: APIRoute = async ({ request }) => {
       if (settings.header_logo.url.startsWith("data:")) {
         logoDataUrl = settings.header_logo.url;
       } else {
-        // Si es una URL normal, intentar convertirla a base64
-        const logoUrl = settings.header_logo.url.startsWith("http") 
-          ? settings.header_logo.url 
-          : `https://app.idocstore.cl${settings.header_logo.url.startsWith("/") ? "" : "/"}${settings.header_logo.url}`;
+        // Si es una URL normal, construir la URL completa si es relativa
+        let logoUrl = settings.header_logo.url;
+        if (!logoUrl.startsWith("http")) {
+          // Si es relativa, construir URL completa usando el dominio de producción
+          // En producción, usar el dominio real; en desarrollo, usar localhost
+          const baseUrl = import.meta.env.PUBLIC_SITE_URL || "https://app.idocstore.cl";
+          logoUrl = `${baseUrl}${logoUrl.startsWith("/") ? "" : "/"}${logoUrl}`;
+        }
         
-        // Intentar cargar y convertir a base64
+        // Intentar cargar y convertir a base64 para mejor compatibilidad con clientes de email
         try {
           const logoResponse = await fetch(logoUrl);
           if (logoResponse.ok) {
@@ -46,17 +50,18 @@ export const POST: APIRoute = async ({ request }) => {
             const logoBase64 = Buffer.from(logoArrayBuffer).toString('base64');
             const logoMimeType = logoBlob.type || 'image/png';
             logoDataUrl = `data:${logoMimeType};base64,${logoBase64}`;
+            console.log("[EMAIL API] Logo cargado y convertido a base64 exitosamente");
           } else {
-            // Si falla, usar la URL directamente
+            console.warn("[EMAIL API] No se pudo cargar el logo, usando URL directamente");
             logoDataUrl = logoUrl;
           }
         } catch (fetchError) {
-          // Si falla la conversión, usar la URL directamente
+          console.warn("[EMAIL API] Error cargando logo, usando URL directamente:", fetchError);
           logoDataUrl = logoUrl;
         }
       }
     } catch (error) {
-      console.error("[EMAIL API] Error cargando logo:", error);
+      console.error("[EMAIL API] Error cargando configuración del logo:", error);
       // Continuar sin logo si hay error
     }
 
