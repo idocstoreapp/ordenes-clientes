@@ -219,9 +219,70 @@ export default function ChecklistEditor() {
 
       {/* Selector de tipo de dispositivo */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Selecciona un tipo de dispositivo para editar su checklist:
-        </label>
+        <div className="flex justify-between items-center mb-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Selecciona un tipo de dispositivo para editar su checklist:
+          </label>
+          <button
+            onClick={() => setShowNewDeviceTypeForm(!showNewDeviceTypeForm)}
+            className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+          >
+            + Nuevo Tipo
+          </button>
+        </div>
+
+        {/* Formulario para nuevo tipo de dispositivo */}
+        {showNewDeviceTypeForm && (
+          <div className="mb-4 p-4 bg-slate-50 rounded-md border border-slate-200">
+            <h4 className="text-sm font-semibold text-slate-800 mb-3">Agregar Nuevo Tipo de Dispositivo</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Valor (se usará internamente, ej: parlante, auriculares)
+                </label>
+                <input
+                  type="text"
+                  value={newDeviceTypeValue}
+                  onChange={(e) => setNewDeviceTypeValue(e.target.value)}
+                  placeholder="parlante"
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">
+                  Nombre para mostrar (ej: Parlante, Auriculares)
+                </label>
+                <input
+                  type="text"
+                  value={newDeviceTypeLabel}
+                  onChange={(e) => setNewDeviceTypeLabel(e.target.value)}
+                  placeholder="Parlante"
+                  className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddNewDeviceType}
+                disabled={saving || !newDeviceTypeValue.trim() || !newDeviceTypeLabel.trim()}
+                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50 text-sm"
+              >
+                Crear Tipo
+              </button>
+              <button
+                onClick={() => {
+                  setShowNewDeviceTypeForm(false);
+                  setNewDeviceTypeValue("");
+                  setNewDeviceTypeLabel("");
+                }}
+                className="px-4 py-2 bg-slate-400 text-white rounded-md hover:bg-slate-500 text-sm"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {availableDeviceTypes.map(({ value, label }) => (
             <button
