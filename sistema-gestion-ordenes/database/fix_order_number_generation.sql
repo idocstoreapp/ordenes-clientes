@@ -12,37 +12,30 @@
 
 -- 1. Crear secuencia para números de orden (si no existe)
 DO $$ 
+DECLARE
+  max_order_num INTEGER := 0;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_sequences WHERE sequencename = 'order_number_seq'
   ) THEN
-    -- Obtener el último número de orden existente
+    -- Crear la secuencia
     CREATE SEQUENCE order_number_seq;
     
-    -- Inicializar la secuencia con el último número de orden + 1
-    DO $$
-    DECLARE
-      max_order_num INTEGER := 0;
-      last_order_text TEXT;
-    BEGIN
-      -- Buscar el número más alto de orden existente
-      SELECT COALESCE(MAX(
-        CASE 
-          WHEN order_number ~ '^ORD-(\d+)$' 
-          THEN (regexp_match(order_number, '^ORD-(\d+)$'))[1]::INTEGER
-          ELSE 0
-        END
-      ), 0) INTO max_order_num
-      FROM work_orders
-      WHERE order_number ~ '^ORD-(\d+)$';
-      
-      -- Establecer el siguiente valor de la secuencia
-      PERFORM setval('order_number_seq', GREATEST(max_order_num, 0) + 1, false);
-      
-      RAISE NOTICE 'Secuencia order_number_seq inicializada con valor: %', max_order_num + 1;
-    END $$;
+    -- Buscar el número más alto de orden existente
+    SELECT COALESCE(MAX(
+      CASE 
+        WHEN order_number ~ '^ORD-(\d+)$' 
+        THEN (regexp_match(order_number, '^ORD-(\d+)$'))[1]::INTEGER
+        ELSE 0
+      END
+    ), 0) INTO max_order_num
+    FROM work_orders
+    WHERE order_number ~ '^ORD-(\d+)$';
     
-    RAISE NOTICE 'Secuencia order_number_seq creada exitosamente';
+    -- Establecer el siguiente valor de la secuencia
+    PERFORM setval('order_number_seq', GREATEST(max_order_num, 0) + 1, false);
+    
+    RAISE NOTICE 'Secuencia order_number_seq creada e inicializada con valor: %', max_order_num + 1;
   ELSE
     RAISE NOTICE 'La secuencia order_number_seq ya existe';
   END IF;
