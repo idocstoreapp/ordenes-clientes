@@ -14,7 +14,7 @@ interface PDFPreviewProps {
   serviceValue: number;
   replacementCost: number;
   warrantyDays: number;
-  checklistData?: Record<string, 'ok' | 'damaged' | 'replaced'> | null;
+  checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
   notes?: string[];
   onClose: () => void;
   onDownload: (pdf: jsPDF) => void;
