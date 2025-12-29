@@ -1,0 +1,22 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Footer from "@/components/Footer.astro";
+---
+<BaseLayout title="Inicio - Registro de Servicios">
+  <div class="min-h-screen flex flex-col">
+    <div class="flex-1 flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+      <div class="text-center">
+        <h1 class="text-4xl font-bold text-slate-900 mb-4">Registro de Servicios</h1>
+        <p class="text-slate-600 mb-8">Gestión automatizada de órdenes de reparación</p>
+        <a
+          href="/login"
+          class="inline-block px-6 py-3 bg-brand text-white rounded-md font-medium hover:bg-brand-dark transition-colors"
+        >
+          Ingresar al Sistema
+        </a>
+      </div>
+    </div>
+    <Footer />
+  </div>
+</BaseLayout>
+
