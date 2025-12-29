@@ -32,6 +32,10 @@ export interface Branch {
   address?: string | null;
   phone?: string | null;
   email?: string | null;
+  // Campos de autenticación independiente de usuarios
+  login_email?: string | null;
+  password_hash?: string | null;
+  is_active?: boolean | null;
   created_at: string;
   updated_at: string;
 }

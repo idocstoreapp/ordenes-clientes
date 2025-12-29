@@ -50,6 +50,9 @@ function Header({
   }, []);
 
   async function handleLogout() {
+    // Limpiar sesión de sucursal si existe
+    localStorage.removeItem('branchSession');
+    // Cerrar sesión de usuario si existe
     await supabase.auth.signOut();
     window.location.href = "/login";
   }
@@ -167,6 +170,57 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function loadUser() {
+      // Verificar si hay sesión de sucursal
+      const branchSessionStr = localStorage.getItem('branchSession');
+      if (branchSessionStr) {
+        try {
+          const branchSession = JSON.parse(branchSessionStr);
+          if (branchSession.type === 'branch' && branchSession.branchId) {
+            // Cargar datos de la sucursal
+            const { data: branchData, error: branchError } = await supabase
+              .from("branches")
+              .select("*")
+              .eq("id", branchSession.branchId)
+              .eq("is_active", true)
+              .single();
+
+            if (branchError || !branchData) {
+              // Si la sucursal no existe o está inactiva, limpiar sesión y redirigir
+              localStorage.removeItem('branchSession');
+              window.location.href = "/login";
+              return;
+            }
+
+            // Crear un objeto User simulado para la sucursal
+            const branchUser: User = {
+              id: branchData.id,
+              email: branchData.login_email || branchData.email || '',
+              name: branchData.name,
+              role: 'branch' as any, // Tipo especial para sucursales
+              avatar_url: branchData.logo_url || null,
+              sucursal_id: branchData.id, // La sucursal es su propia sucursal
+              permissions: {
+                create_orders: true,
+                modify_orders: true,
+                view_all_business_orders: false,
+                use_branch_panel: true,
+                use_statistics_panel: false,
+                use_security_panel: false,
+              },
+              created_at: branchData.created_at,
+            };
+
+            setUser(branchUser);
+            setLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Error cargando sesión de sucursal:", error);
+          localStorage.removeItem('branchSession');
+        }
+      }
+
+      // Si no hay sesión de sucursal, intentar cargar usuario normal
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
       if (!authUser) {
@@ -230,6 +284,9 @@ export default function Dashboard() {
       case "dashboard":
         if (user.role === "admin") {
           return <AdminDashboard user={user} onNewOrder={() => setSection("new-order")} />;
+        } else if (user.role === "branch") {
+          // Dashboard para sucursales
+          return <TechnicianDashboard technicianId={user.id} isEncargado={false} user={user} onNewOrder={() => setSection("new-order")} />;
         } else {
           return <TechnicianDashboard technicianId={user.id} isEncargado={user.role === "encargado"} user={user} onNewOrder={() => setSection("new-order")} />;
         }
@@ -269,7 +326,11 @@ export default function Dashboard() {
       <Header 
         userName={user.name} 
         userRole={user.role}
-        branchName={(user as any).sucursal?.name || (user as any).sucursal?.razon_social || null}
+        branchName={
+          user.role === "branch" 
+            ? user.name // Si es sucursal, usar el nombre de la sucursal
+            : ((user as any).sucursal?.name || (user as any).sucursal?.razon_social || null)
+        }
         onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
       />
       

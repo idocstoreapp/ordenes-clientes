@@ -20,17 +20,71 @@ export default function Login() {
     setErr(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: pass,
-    });
+    try {
+      // Primero verificar si es una sucursal
+      const { data: branch, error: branchError } = await supabase
+        .from("branches")
+        .select("id, name, login_email, password_hash, is_active")
+        .eq("login_email", email)
+        .maybeSingle();
 
-    setLoading(false);
+      if (!branchError && branch && branch.is_active) {
+        // Es una sucursal - verificar contraseña
+        if (!branch.password_hash) {
+          setErr("Esta sucursal no tiene contraseña configurada. Contacta al administrador.");
+          setLoading(false);
+          return;
+        }
 
-    if (error) {
-      setErr(error.message);
-    } else {
-      window.location.href = "/dashboard";
+        // Hashear la contraseña ingresada para comparar
+        const hashResponse = await fetch('/api/hash-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pass }),
+        });
+
+        if (!hashResponse.ok) {
+          throw new Error('Error al verificar la contraseña');
+        }
+
+        const { hash } = await hashResponse.json();
+
+        if (hash === branch.password_hash) {
+          // Contraseña correcta - guardar sesión de sucursal en localStorage
+          const branchSession = {
+            type: 'branch',
+            branchId: branch.id,
+            branchName: branch.name,
+            email: branch.login_email,
+          };
+          localStorage.setItem('branchSession', JSON.stringify(branchSession));
+          window.location.href = "/dashboard";
+          return;
+        } else {
+          setErr("Contraseña incorrecta");
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Si no es sucursal, intentar login como usuario normal
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pass,
+      });
+
+      if (error) {
+        setErr(error.message);
+      } else {
+        // Limpiar sesión de sucursal si existe
+        localStorage.removeItem('branchSession');
+        window.location.href = "/dashboard";
+      }
+    } catch (error: any) {
+      console.error("Error en login:", error);
+      setErr(error.message || "Error al iniciar sesión");
+    } finally {
+      setLoading(false);
     }
   }
 

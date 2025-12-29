@@ -65,38 +65,64 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
     try {
       const { userEmail, userPassword, ...branchInfo } = branchData;
       
+      // Preparar datos de actualización/inserción
+      const branchUpdateData: any = {
+        ...branchInfo,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Si se proporcionó email y contraseña, guardarlos directamente en branches
+      if (userEmail) {
+        branchUpdateData.login_email = userEmail;
+        
+        // Si se proporcionó contraseña, hashearla
+        if (userPassword && userPassword.trim().length > 0) {
+          try {
+            const hashResponse = await fetch('/api/hash-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: userPassword }),
+            });
+            
+            if (!hashResponse.ok) {
+              throw new Error('Error al hashear la contraseña');
+            }
+            
+            const { hash } = await hashResponse.json();
+            branchUpdateData.password_hash = hash;
+          } catch (hashError: any) {
+            console.error("Error hasheando contraseña:", hashError);
+            throw new Error(`Error al procesar la contraseña: ${hashError.message}`);
+          }
+        }
+        // Si no se proporcionó contraseña pero hay email, mantener el hash existente (no actualizar)
+      }
+      
       if (editingBranch) {
         // Actualizar sucursal
         const { error } = await supabase
           .from("branches")
-          .update({
-            ...branchInfo,
-            updated_at: new Date().toISOString(),
-          })
+          .update(branchUpdateData)
           .eq("id", editingBranch.id);
 
         if (error) throw error;
 
-        // Si se proporcionó email de usuario, crear o actualizar usuario
-        if (userEmail) {
-          await handleBranchUser(editingBranch.id, userEmail, userPassword || undefined);
-        }
-
         alert("Sucursal actualizada exitosamente");
       } else {
         // Crear nueva sucursal
+        // Si no se proporcionó contraseña para nueva sucursal, requerirla
+        if (userEmail && (!userPassword || userPassword.trim().length === 0)) {
+          alert("Por favor ingresa una contraseña para la nueva sucursal");
+          return;
+        }
+        
         const { data: newBranch, error } = await supabase
           .from("branches")
-          .insert(branchInfo)
+          .insert(branchUpdateData)
           .select()
           .single();
 
         if (error) throw error;
-
-        // Si se proporcionó email de usuario, crear usuario
-        if (newBranch && userEmail) {
-          await handleBranchUser(newBranch.id, userEmail, userPassword || undefined);
-        }
 
         alert("Sucursal creada exitosamente");
       }
@@ -110,88 +136,12 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
     }
   }
 
+  // Esta función ya no se usa - las sucursales ahora tienen su propio sistema de autenticación
+  // Se mantiene por compatibilidad pero no se llama
   async function handleBranchUser(branchId: string, email: string, password?: string) {
-    if (!supabaseAdmin) {
-      console.error("SupabaseAdmin no disponible");
-      return;
-    }
-
-    try {
-      // Buscar si ya existe un usuario para esta sucursal
-      const { data: existingUsers } = await supabase
-        .from("users")
-        .select("id, email")
-        .eq("sucursal_id", branchId)
-        .limit(1);
-
-      if (existingUsers && existingUsers.length > 0) {
-        // Actualizar usuario existente
-        const existingUser = existingUsers[0];
-        
-        // Actualizar email en auth si cambió
-        if (existingUser.email !== email) {
-          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-            email: email,
-            email_confirm: true,
-          });
-        }
-
-        // Actualizar contraseña si se proporcionó
-        if (password && password.length >= 6) {
-          await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-            password: password,
-          });
-        }
-
-        // Actualizar en tabla users
-        await supabase
-          .from("users")
-          .update({
-            email: email,
-            sucursal_id: branchId,
-          })
-          .eq("id", existingUser.id);
-
-        console.log("Usuario actualizado exitosamente");
-      } else {
-        // Crear nuevo usuario
-        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-          email: email,
-          password: password || "TempPassword123!", // Contraseña temporal si no se proporciona
-          email_confirm: true,
-        });
-
-        if (authError) throw authError;
-        if (!authData.user) throw new Error("No se pudo crear el usuario en auth");
-
-        // Crear registro en tabla users con permisos por defecto
-        const { error: userError } = await supabase
-          .from("users")
-          .insert({
-            id: authData.user.id,
-            email: email,
-            name: `Usuario ${branchId.substring(0, 8)}`, // Nombre temporal
-            role: "encargado", // Rol por defecto para usuarios de sucursal
-            sucursal_id: branchId,
-            permissions: {
-              create_orders: true, // Por defecto pueden crear órdenes
-              modify_orders: true, // Por defecto pueden editar órdenes
-              // Todos los demás permisos son false por defecto
-            },
-          });
-
-        if (userError) {
-          // Si falla crear en users, eliminar el usuario de auth
-          await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
-          throw userError;
-        }
-
-        console.log("Usuario creado exitosamente");
-      }
-    } catch (error: any) {
-      console.error("Error gestionando usuario de sucursal:", error);
-      throw error;
-    }
+    // DEPRECATED: Las sucursales ahora usan login_email y password_hash directamente en branches
+    // Esta función ya no se usa
+    console.warn("handleBranchUser está deprecado - las sucursales ahora usan autenticación independiente");
   }
 
   if (loading) {
@@ -314,40 +264,22 @@ function BranchForm({ branch, onSave, onCancel, isAdmin }: BranchFormProps) {
     userPassword: "",
   });
 
-  const [loadingUser, setLoadingUser] = useState(false);
-  const [branchUser, setBranchUser] = useState<User | null>(null);
-
-  // Cargar usuario de la sucursal si existe
+  // Cargar datos de autenticación de la sucursal si existe
   useEffect(() => {
-    async function loadBranchUser() {
-      if (!branch?.id) {
-        setBranchUser(null);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("sucursal_id", branch.id)
-          .limit(1)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        if (data) {
-          setBranchUser(data);
-          setFormData(prev => ({ ...prev, userEmail: data.email }));
-        } else {
-          setBranchUser(null);
-        }
-      } catch (error) {
-        console.error("Error cargando usuario de sucursal:", error);
-      }
+    if (branch?.login_email) {
+      setFormData(prev => ({ 
+        ...prev, 
+        userEmail: branch.login_email || "",
+        // No cargar contraseña por seguridad
+      }));
+    } else {
+      setFormData(prev => ({ 
+        ...prev, 
+        userEmail: "",
+        userPassword: "",
+      }));
     }
-
-    loadBranchUser();
-  }, [branch?.id]);
+  }, [branch?.id, branch?.login_email]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -428,53 +360,55 @@ function BranchForm({ branch, onSave, onCancel, isAdmin }: BranchFormProps) {
           </div>
         </div>
 
-        {/* Sección de Usuario de la Sucursal */}
+        {/* Sección de Credenciales de Acceso de la Sucursal */}
         <div className="mt-6 pt-6 border-t border-slate-300">
           <h4 className="text-md font-semibold text-slate-900 mb-4">
-            Usuario para Acceso Web
+            Credenciales de Acceso Web (Independiente de Usuarios)
           </h4>
-          {branchUser && (
+          {branch?.login_email && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <p className="text-sm text-blue-800">
-                <strong>Usuario actual:</strong> {branchUser.email}
-                {branchUser.name && ` (${branchUser.name})`}
+                <strong>Email de acceso actual:</strong> {branch.login_email}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Las sucursales tienen su propio sistema de autenticación, separado de los usuarios del sistema.
               </p>
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Email del Usuario *
+                Email para Login *
               </label>
               <input
                 type="email"
                 className="w-full border border-slate-300 rounded-md px-3 py-2"
                 value={formData.userEmail}
                 onChange={(e) => setFormData({ ...formData, userEmail: e.target.value })}
-                placeholder="usuario@sucursal.com"
+                placeholder="sucursal@ejemplo.com"
                 required
               />
               <p className="text-xs text-slate-500 mt-1">
-                Este será el email para iniciar sesión en el sistema
+                Este será el email para que la sucursal inicie sesión (independiente de usuarios)
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                {branchUser ? "Nueva Contraseña" : "Contraseña *"}
+                {branch?.login_email ? "Nueva Contraseña" : "Contraseña *"}
               </label>
               <input
                 type="password"
                 className="w-full border border-slate-300 rounded-md px-3 py-2"
                 value={formData.userPassword}
                 onChange={(e) => setFormData({ ...formData, userPassword: e.target.value })}
-                placeholder={branchUser ? "Dejar vacío para no cambiar" : "Mínimo 6 caracteres"}
-                required={!branchUser}
-                minLength={branchUser ? undefined : 6}
+                placeholder={branch?.login_email ? "Dejar vacío para no cambiar" : "Mínimo 6 caracteres"}
+                required={!branch?.login_email}
+                minLength={branch?.login_email ? undefined : 6}
               />
               <p className="text-xs text-slate-500 mt-1">
-                {branchUser 
+                {branch?.login_email 
                   ? "Dejar vacío si no quieres cambiar la contraseña"
-                  : "Mínimo 6 caracteres. El usuario podrá cambiarla después."
+                  : "Mínimo 6 caracteres. La sucursal podrá cambiarla después."
                 }
               </p>
             </div>
