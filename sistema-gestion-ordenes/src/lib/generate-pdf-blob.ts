@@ -38,9 +38,9 @@ export async function generatePDFBlob(
   // Cargar configuración del sistema
   const settings = await getSystemSettings();
 
-  // Color de las franjas
-  const stripeColor: [number, number, number] = [59, 130, 246];
-  const darkStripeColor: [number, number, number] = [30, 58, 138];
+  // Color de las franjas (gris claro para ahorrar tinta)
+  const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
+  const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
 
   // Generar QR Code
   let qrDataUrl = "";
@@ -291,6 +291,31 @@ export async function generatePDFBlob(
     notes.forEach((note) => {
       deviceDescription += `${note}\n`;
     });
+  }
+  
+  // Agregar checklist de manera discreta
+  if (checklistItems.length > 0 && checklistData) {
+    const checklistParts: string[] = [];
+    checklistItems.forEach((item) => {
+      const status = checklistData[item.item_name];
+      if (status) {
+        let statusText = "";
+        if (status === "ok") {
+          statusText = ""; // Sin texto adicional para "ok"
+        } else if (status === "replaced") {
+          statusText = " (rep)";
+        } else if (status === "damaged") {
+          statusText = " (dañada)";
+        } else if (status === "no_probado") {
+          statusText = " (no probado)";
+        }
+        checklistParts.push(`${item.item_name}${statusText}`);
+      }
+    });
+    if (checklistParts.length > 0) {
+      if (deviceDescription) deviceDescription += "\n";
+      deviceDescription += checklistParts.join(", ");
+    }
   }
   
   const descriptionColWidth = colWidths[2] - 6;
