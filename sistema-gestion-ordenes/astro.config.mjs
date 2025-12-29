@@ -6,6 +6,7 @@ import vercel from '@astrojs/vercel';
 export default defineConfig({
   integrations: [react(), tailwind()],
   server: { port: 4321 },
+  output: 'server', // Necesario para que funcionen las API routes en Vercel
   adapter: vercel(),
   build: {
     assets: 'assets',
