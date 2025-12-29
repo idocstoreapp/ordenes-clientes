@@ -230,6 +230,7 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
           <PDFPreview
             order={pdfOrderData.order}
             services={pdfOrderData.services}
+            orderServices={pdfOrderData.orderServices}
             serviceValue={pdfOrderData.serviceValue}
             replacementCost={pdfOrderData.replacementCost}
             warrantyDays={pdfOrderData.warrantyDays}
