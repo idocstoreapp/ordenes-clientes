@@ -79,6 +79,12 @@ export default function ChecklistEditor() {
     // Normalizar el valor (minúsculas, sin espacios, usar guiones bajos)
     const normalizedValue = newDeviceTypeValue.trim().toLowerCase().replace(/\s+/g, '_');
 
+    // Validar que el valor normalizado no esté vacío
+    if (!normalizedValue) {
+      alert("El valor del tipo de dispositivo no puede estar vacío");
+      return;
+    }
+
     // Verificar que no exista ya
     if (availableDeviceTypes.some(dt => dt.value === normalizedValue)) {
       alert("Este tipo de dispositivo ya existe");
@@ -87,6 +93,10 @@ export default function ChecklistEditor() {
 
     setSaving(true);
     try {
+      // Verificar que la base de datos permita este tipo probando con un insert temporal
+      // (No insertamos nada, solo verificamos que no haya restricciones)
+      // En realidad, el tipo se crea cuando agregas el primer item, así que solo agregamos a la lista local
+      
       // Agregar el nuevo tipo a la lista
       const newType = {
         value: normalizedValue,
@@ -127,15 +137,30 @@ export default function ChecklistEditor() {
         ? Math.max(...currentItems.map(item => item.item_order))
         : 0;
 
-      const { error } = await supabase
+      const { error, data } = await supabase
         .from("device_checklist_items")
         .insert({
           device_type: selectedDeviceType,
           item_name: newItemName.trim(),
           item_order: maxOrder + 1,
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        // Si el error es por restricción CHECK, informar al usuario
+        if (error.message.includes('check constraint') || error.message.includes('CHECK')) {
+          alert(`Error: La base de datos aún tiene restricciones que impiden tipos personalizados.\n\nPor favor ejecuta el script SQL en Supabase:\n\nALTER TABLE device_checklist_items DROP CONSTRAINT IF EXISTS device_checklist_items_device_type_check;\n\nVer archivo: database/allow_custom_device_types.sql`);
+        } else if (error.message.includes('unique constraint') || error.message.includes('UNIQUE')) {
+          alert(`Este item ya existe para este tipo de dispositivo`);
+        } else {
+          throw error;
+        }
+        return;
+      }
+
+      if (data && data.length > 0) {
+        console.log("Item agregado exitosamente:", data[0]);
+      }
 
       setNewItemName("");
       await loadAllChecklists();
