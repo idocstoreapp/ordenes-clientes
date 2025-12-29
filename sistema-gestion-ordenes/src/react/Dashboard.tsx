@@ -159,7 +159,7 @@ export default function Dashboard() {
     switch (section) {
       case "dashboard":
         if (user.role === "admin") {
-          return <AdminDashboard onNewOrder={() => setSection("new-order")} />;
+          return <AdminDashboard user={user} onNewOrder={() => setSection("new-order")} />;
         } else {
           return <TechnicianDashboard technicianId={user.id} isEncargado={user.role === "encargado"} user={user} onNewOrder={() => setSection("new-order")} />;
         }
@@ -180,7 +180,7 @@ export default function Dashboard() {
       case "security":
         return <SecuritySettings />;
       default:
-        return <AdminDashboard onNewOrder={() => setSection("new-order")} />;
+        return <AdminDashboard user={user} onNewOrder={() => setSection("new-order")} />;
     }
   };
 

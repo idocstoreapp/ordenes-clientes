@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP } from "@/lib/currency";
+import type { User } from "@/types";
+import { canViewFullMetrics } from "@/lib/permissions";
 import KpiCard from "./KpiCard";
 
 interface AdminDashboardProps {
+  user?: User;
   onNewOrder?: () => void;
 }
 
-export default function AdminDashboard({ onNewOrder }: AdminDashboardProps) {
+export default function AdminDashboard({ user, onNewOrder }: AdminDashboardProps) {
   const [kpis, setKpis] = useState({
     daySales: 0,
     monthSales: 0,
@@ -81,7 +84,7 @@ export default function AdminDashboard({ onNewOrder }: AdminDashboardProps) {
       }
     }
     load();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (
