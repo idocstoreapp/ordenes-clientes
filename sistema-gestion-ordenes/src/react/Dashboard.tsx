@@ -78,6 +78,13 @@ function Header({
                 height: `${logoConfig.height}px`,
                 objectFit: 'contain'
               }}
+              onError={(e) => {
+                // Si falla cargar el logo, usar el por defecto
+                const target = e.target as HTMLImageElement;
+                if (target.src !== window.location.origin + "/logo.png") {
+                  target.src = "/logo.png";
+                }
+              }}
             />
             <div className="hidden sm:block">
               <h1 className="text-base sm:text-lg font-bold text-white">
