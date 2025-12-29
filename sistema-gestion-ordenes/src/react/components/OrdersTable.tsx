@@ -159,9 +159,21 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       const order = orders.find(o => o.id === orderId);
       
       // Si el estado cambió a "por_entregar" y hay cliente con email, enviar notificación
-      if (newStatus === 'por_entregar' && order?.customer?.email) {
-        console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
-        try {
+      if (newStatus === 'por_entregar') {
+        console.log("[ORDERS TABLE] Estado cambiado a 'por_entregar' para orden:", order?.order_number);
+        console.log("[ORDERS TABLE] Datos del cliente:", {
+          hasCustomer: !!order?.customer,
+          hasEmail: !!order?.customer?.email,
+          email: order?.customer?.email ? `${order.customer.email.substring(0, 3)}***` : 'no disponible'
+        });
+        
+        if (!order?.customer) {
+          console.warn("[ORDERS TABLE] No se puede enviar email: la orden no tiene cliente asociado");
+        } else if (!order.customer.email) {
+          console.warn("[ORDERS TABLE] No se puede enviar email: el cliente no tiene email configurado");
+        } else {
+          console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
+          try {
           const emailResponse = await fetch('/api/send-order-email', {
             method: 'POST',
             headers: {
@@ -184,10 +196,13 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           } else {
             const successData = await emailResponse.json();
             console.log("[ORDERS TABLE] Email de notificación enviado exitosamente:", successData);
+            alert(`✅ Orden actualizada y email de notificación enviado a ${order.customer.email}`);
           }
         } catch (emailError) {
           console.error("[ORDERS TABLE] Excepción al enviar email de notificación:", emailError);
+          alert(`⚠️ Orden actualizada, pero hubo un error al enviar el email. Revisa la consola para más detalles.`);
           // No fallar el cambio de estado si el email falla
+        }
         }
       }
 
