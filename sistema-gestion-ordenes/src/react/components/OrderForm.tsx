@@ -95,11 +95,54 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       const branchData = (tech as any)?.sucursal || null;
       const sucursalId = tech?.sucursal_id || null;
 
-      // Generar número de orden automáticamente
-      const { count } = await supabase
-        .from("work_orders")
-        .select("*", { count: "exact", head: true });
-      const finalOrderNumber = `ORD-${String((count || 0) + 1).padStart(6, "0")}`;
+      // Generar número de orden único automáticamente
+      // Usar un enfoque de reintento para evitar duplicados por concurrencia
+      let finalOrderNumber: string;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (attempts < maxAttempts) {
+        // Obtener el último número de orden usado
+        const { data: lastOrder } = await supabase
+          .from("work_orders")
+          .select("order_number")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        
+        let nextNumber = 1;
+        if (lastOrder?.order_number) {
+          // Extraer el número del formato ORD-000001
+          const match = lastOrder.order_number.match(/ORD-(\d+)/);
+          if (match) {
+            nextNumber = parseInt(match[1], 10) + 1;
+          }
+        }
+        
+        finalOrderNumber = `ORD-${String(nextNumber).padStart(6, "0")}`;
+        
+        // Verificar si este número ya existe (por si acaso)
+        const { data: existingOrder } = await supabase
+          .from("work_orders")
+          .select("id")
+          .eq("order_number", finalOrderNumber)
+          .maybeSingle();
+        
+        if (!existingOrder) {
+          // El número está disponible, salir del loop
+          break;
+        }
+        
+        // Si existe, incrementar y reintentar
+        nextNumber++;
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        // Si después de varios intentos no encontramos uno único, usar timestamp
+        const timestamp = Date.now();
+        finalOrderNumber = `ORD-${timestamp.toString().slice(-6)}`;
+      }
 
       // Preparar datos de inserción
       const orderData: any = {
