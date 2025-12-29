@@ -17,11 +17,13 @@ import SecuritySettings from "./components/SecuritySettings";
 
 function Header({ 
   userName, 
-  userRole, 
+  userRole,
+  branchName,
   onMenuToggle 
 }: { 
   userName: string; 
   userRole: string;
+  branchName?: string | null;
   onMenuToggle?: () => void;
 }) {
   const [logoConfig, setLogoConfig] = useState<LogoConfig>({ url: "/logo.png", width: 128, height: 128 });
@@ -91,12 +93,15 @@ function Header({
                 Sistema de Gestión de Órdenes
               </h1>
               <p className="text-xs text-white">
-                {userName} • {userRole === "admin" ? "Administrador" : userRole === "encargado" ? "Encargado" : userRole === "recepcionista" ? "Recepcionista" : "Técnico"}
+                {branchName 
+                  ? `Sucursal: ${branchName}`
+                  : `${userName} • ${userRole === "admin" ? "Administrador" : userRole === "encargado" ? "Encargado" : userRole === "recepcionista" ? "Recepcionista" : "Técnico"}`
+                }
               </p>
             </div>
             <div className="sm:hidden">
               <h1 className="text-sm font-bold text-white truncate max-w-[150px]">
-                {userName}
+                {branchName ? `Sucursal: ${branchName}` : userName}
               </h1>
             </div>
           </div>
@@ -219,6 +224,7 @@ export default function Dashboard() {
       <Header 
         userName={user.name} 
         userRole={user.role}
+        branchName={(user as any).sucursal?.name || (user as any).sucursal?.razon_social || null}
         onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
       />
       
