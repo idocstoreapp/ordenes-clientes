@@ -2,6 +2,12 @@
   "buildCommand": "cd sistema-gestion-ordenes && npm run build",
   "outputDirectory": "sistema-gestion-ordenes/.vercel/output",
   "installCommand": "cd sistema-gestion-ordenes && npm install",
-  "framework": "astro"
+  "framework": "astro",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
 }
 
