@@ -51,15 +51,15 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         .order("created_at", { ascending: false });
 
       // Filtrar órdenes según permisos y rol
-      // Solo admin puede ver todas las órdenes
+      // Solo admin puede ver todas las órdenes (isAdmin=true solo para admin)
       // Los demás usuarios solo ven órdenes de su sucursal o las que crearon
       if (!isAdmin) {
-        if (technicianId) {
-          // Si tiene technician_id, filtrar por técnico
-          query = query.eq("technician_id", technicianId);
-        } else if (user?.sucursal_id) {
-          // Si tiene sucursal_id pero no technician_id, filtrar por sucursal
+        if (user?.sucursal_id) {
+          // Si tiene sucursal_id, filtrar por sucursal (usuarios de sucursal)
           query = query.eq("sucursal_id", user.sucursal_id);
+        } else if (technicianId) {
+          // Si tiene technician_id pero no sucursal_id, filtrar por técnico
+          query = query.eq("technician_id", technicianId);
         }
       }
 
