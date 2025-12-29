@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import type { OrderNote, User } from "@/types";
 import { formatDateTime } from "@/lib/date";
-import { generateNotePDFBlob } from "@/lib/generate-note-pdf";
 import type { WorkOrder, Customer, Branch } from "@/types";
 
 interface OrderNotesProps {
@@ -116,79 +115,21 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     }
 
     try {
-      // Generar PDF de la nota
-      const pdfBlob = await generateNotePDFBlob(order, note.note);
-      
       // Preparar número de teléfono
       const phone = order.customer.phone_country_code
         ? order.customer.phone_country_code.replace("+", "") + order.customer.phone.replace(/\D/g, "")
         : "56" + order.customer.phone.replace(/\D/g, "");
 
-      // Mensaje para WhatsApp
+      // Mensaje para WhatsApp con la nota incluida
       const message = encodeURIComponent(
-        `Hola ${order.customer.name},\n\nTengo una actualización sobre tu orden ${order.order_number}.\n\nPor favor revisa el documento adjunto.\n\nSaludos,\niDocStore`
+        `Hola ${order.customer.name},\n\nTengo una actualización sobre tu orden ${order.order_number}:\n\n${note.note}\n\nSaludos,\niDocStore`
       );
 
-      // Intentar copiar el PDF al portapapeles como archivo (si el navegador lo soporta)
-      let clipboardSuccess = false;
-      try {
-        // Verificar si ClipboardItem está disponible (Chrome/Edge)
-        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard && (navigator.clipboard as any).write) {
-          try {
-            const clipboardItem = new ClipboardItem({
-              'application/pdf': pdfBlob,
-            });
-            await (navigator.clipboard as any).write([clipboardItem]);
-            clipboardSuccess = true;
-            console.log("PDF copiado al portapapeles");
-          } catch (clipboardError) {
-            // Si falla, continuar con el método de descarga
-            console.log("No se pudo copiar al portapapeles:", clipboardError);
-          }
-        }
-      } catch (clipboardError) {
-        console.log("Clipboard API no disponible, usando descarga");
-      }
-
-      // Crear un enlace temporal para descargar el PDF
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = pdfUrl;
-      link.download = `nota-orden-${order.order_number}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Limpiar el URL del objeto después de un momento
-      setTimeout(() => URL.revokeObjectURL(pdfUrl), 100);
-
-      // Abrir WhatsApp Web
-      const whatsappWindow = window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
-
-      // Mostrar instrucciones
-      setTimeout(() => {
-        let instructions = `📄 El PDF se ha descargado automáticamente.\n\n`;
-        
-        if (clipboardSuccess) {
-          instructions += `✅ El PDF también se copió al portapapeles.\n\n`;
-          instructions += `Para adjuntarlo en WhatsApp:\n`;
-          instructions += `1. En la ventana de WhatsApp que se abrió, haz clic en el área de texto\n`;
-          instructions += `2. Intenta pegar el PDF directamente (Ctrl+V o Cmd+V)\n`;
-          instructions += `3. Si no funciona, haz clic en el ícono de adjuntar (📎) y selecciona "Documento"\n`;
-          instructions += `4. Busca el archivo "nota-orden-${order.order_number}.pdf" en tu carpeta de Descargas\n`;
-        } else {
-          instructions += `Para adjuntarlo en WhatsApp:\n`;
-          instructions += `1. En la ventana de WhatsApp que se abrió, haz clic en el ícono de adjuntar (📎)\n`;
-          instructions += `2. Selecciona "Documento" o "Archivo"\n`;
-          instructions += `3. Busca y selecciona el archivo "nota-orden-${order.order_number}.pdf" en tu carpeta de Descargas\n`;
-          instructions += `4. Envía el mensaje\n`;
-        }
-        
-        alert(instructions);
-      }, 500);
+      // Abrir WhatsApp Web con el mensaje
+      window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
     } catch (error) {
-      console.error("Error generando PDF de nota:", error);
-      alert("Error al generar el PDF de la nota");
+      console.error("Error enviando nota por WhatsApp:", error);
+      alert("Error al enviar la nota por WhatsApp");
     }
   }
 
