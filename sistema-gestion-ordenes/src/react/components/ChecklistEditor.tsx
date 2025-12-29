@@ -223,7 +223,7 @@ export default function ChecklistEditor() {
           Selecciona un tipo de dispositivo para editar su checklist:
         </label>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {deviceTypes.map(({ value, label }) => (
+          {availableDeviceTypes.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setSelectedDeviceType(value)}

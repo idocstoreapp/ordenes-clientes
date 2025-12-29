@@ -120,8 +120,50 @@ function Header({
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [section, setSection] = useState<DashboardSection>("dashboard");
+  
+  // Cargar sección desde localStorage o URL hash, o usar "dashboard" por defecto
+  const getInitialSection = (): DashboardSection => {
+    // Primero intentar desde URL hash
+    if (window.location.hash) {
+      const hashSection = window.location.hash.substring(1) as DashboardSection;
+      const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
+      if (validSections.includes(hashSection)) {
+        return hashSection;
+      }
+    }
+    // Luego intentar desde localStorage
+    const savedSection = localStorage.getItem("dashboard_section") as DashboardSection | null;
+    if (savedSection) {
+      const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
+      if (validSections.includes(savedSection)) {
+        return savedSection;
+      }
+    }
+    return "dashboard";
+  };
+  
+  const [section, setSection] = useState<DashboardSection>(getInitialSection());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Guardar sección en localStorage y URL hash cuando cambia
+  useEffect(() => {
+    localStorage.setItem("dashboard_section", section);
+    window.location.hash = section;
+  }, [section]);
+
+  // Escuchar cambios en el hash de la URL (navegación del navegador)
+  useEffect(() => {
+    function handleHashChange() {
+      const hashSection = window.location.hash.substring(1) as DashboardSection;
+      const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
+      if (validSections.includes(hashSection)) {
+        setSection(hashSection);
+      }
+    }
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   useEffect(() => {
     async function loadUser() {
