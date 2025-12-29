@@ -230,7 +230,12 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
               console.error("[ORDERS TABLE] Error leyendo respuesta exitosa:", textError);
               successData = { message: 'Email enviado (sin respuesta del servidor)' };
             }
-            console.log("[ORDERS TABLE] Email de notificación enviado exitosamente:", successData);
+            console.log("[ORDERS TABLE] ========================================");
+            console.log("[ORDERS TABLE] ✅ EMAIL ENVIADO EXITOSAMENTE");
+            console.log("[ORDERS TABLE] Email ID:", successData.emailId || 'N/A');
+            console.log("[ORDERS TABLE] Mensaje:", successData.message || 'Email enviado');
+            console.log("[ORDERS TABLE] Timestamp:", successData.timestamp || new Date().toISOString());
+            console.log("[ORDERS TABLE] ========================================");
             alert(`✅ Orden actualizada y email de notificación enviado a ${order.customer.email}`);
           }
         } catch (emailError: any) {
