@@ -25,11 +25,24 @@ function Header({
   onMenuToggle?: () => void;
 }) {
   const [logoConfig, setLogoConfig] = useState<LogoConfig>({ url: "/logo.png", width: 128, height: 128 });
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     async function loadLogo() {
-      const settings = await getSystemSettings();
-      setLogoConfig(settings.header_logo);
+      try {
+        const settings = await getSystemSettings();
+        // Si la URL es relativa, asegurarse de que empiece con /
+        let logoUrl = settings.header_logo.url;
+        if (!logoUrl.startsWith("http") && !logoUrl.startsWith("data:") && !logoUrl.startsWith("/")) {
+          logoUrl = "/" + logoUrl;
+        }
+        setLogoConfig({ ...settings.header_logo, url: logoUrl });
+        setLogoError(false);
+      } catch (error) {
+        console.error("Error cargando logo:", error);
+        // Usar logo por defecto
+        setLogoConfig({ url: "/logo.png", width: 128, height: 128 });
+      }
     }
     loadLogo();
   }, []);

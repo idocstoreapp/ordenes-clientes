@@ -176,6 +176,7 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
             permissions: {
               create_orders: true, // Por defecto pueden crear órdenes
               modify_orders: true, // Por defecto pueden editar órdenes
+              // Todos los demás permisos son false por defecto
             },
           });
 

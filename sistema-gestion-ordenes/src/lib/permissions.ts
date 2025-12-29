@@ -29,12 +29,14 @@ export function canAccessSection(user: User | null, section: string): boolean {
       return true;
     
     case "new-order":
-      // Por defecto todos pueden crear órdenes (permiso básico)
-      return hasPermission(user, "create_orders") !== false;
+      // Solo si tiene permiso explícito para crear órdenes
+      return hasPermission(user, "create_orders") === true;
     
     case "orders":
-      // Por defecto todos pueden ver órdenes (pero filtradas)
-      return true;
+      // Solo si tiene permiso explícito para ver órdenes (o puede crear, lo que implica que puede ver)
+      return hasPermission(user, "create_orders") === true || 
+             hasPermission(user, "modify_orders") === true ||
+             hasPermission(user, "view_all_business_orders") === true;
     
     case "customers":
       // Solo si tiene permiso explícito
