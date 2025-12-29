@@ -11,10 +11,22 @@
 
 ### 2. Ver Logs de Functions (API Routes)
 
-1. En la página del deployment, busca la sección **"Functions"**
-2. Busca la función `/api/send-order-email`
-3. Haz clic en ella
-4. Verás los logs de esa función específica
+**Opción A: Desde la pestaña "Functions"**
+1. En la página del deployment, busca la pestaña **"Functions"** (junto a "Deployment", "Logs", "Resources")
+2. Si la ves, haz clic en ella
+3. Busca la función `/api/send-order-email`
+4. Haz clic en ella para ver los logs
+
+**Opción B: Desde "Resources"**
+1. En la página del deployment, haz clic en la pestaña **"Resources"**
+2. Busca una sección de **"Functions"** o **"Serverless Functions"**
+3. Busca `/api/send-order-email` y haz clic
+
+**Opción C: Si no encuentras Functions (usar Logs directamente)**
+1. Ve directamente a la pestaña **"Logs"** del deployment
+2. O ve a **Vercel Dashboard → Tu Proyecto → Logs** (menú lateral)
+3. Los logs de las Functions aparecerán aquí cuando se ejecuten
+4. Filtra por `[EMAIL API]` para ver solo los logs de emails
 
 ### 3. Ver Logs en Tiempo Real
 
