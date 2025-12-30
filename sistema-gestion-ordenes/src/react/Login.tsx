@@ -22,7 +22,6 @@ export default function Login() {
 
     try {
       // Primero verificar si es una sucursal (solo si login_email no es null)
-      let isBranch = false;
       if (email) {
         const { data: branch, error: branchError } = await supabase
           .from("branches")
@@ -30,45 +29,46 @@ export default function Login() {
           .eq("login_email", email)
           .maybeSingle();
 
-        // Solo procesar como sucursal si no hay error y se encontró una sucursal activa
+        // Solo procesar como sucursal si no hay error y se encontró una sucursal activa con login_email
         if (!branchError && branch && branch.login_email && branch.is_active) {
-          isBranch = true;
-        // Es una sucursal - verificar contraseña
-        if (!branch.password_hash) {
-          setErr("Esta sucursal no tiene contraseña configurada. Contacta al administrador.");
-          setLoading(false);
-          return;
+          // Es una sucursal - verificar contraseña
+          if (!branch.password_hash) {
+            setErr("Esta sucursal no tiene contraseña configurada. Contacta al administrador.");
+            setLoading(false);
+            return;
+          }
+
+          // Hashear la contraseña ingresada para comparar
+          const hashResponse = await fetch('/api/hash-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pass }),
+          });
+
+          if (!hashResponse.ok) {
+            throw new Error('Error al verificar la contraseña');
+          }
+
+          const { hash } = await hashResponse.json();
+
+          if (hash === branch.password_hash) {
+            // Contraseña correcta - guardar sesión de sucursal en localStorage
+            const branchSession = {
+              type: 'branch',
+              branchId: branch.id,
+              branchName: branch.name,
+              email: branch.login_email,
+            };
+            localStorage.setItem('branchSession', JSON.stringify(branchSession));
+            window.location.href = "/dashboard";
+            return;
+          } else {
+            setErr("Contraseña incorrecta");
+            setLoading(false);
+            return;
+          }
         }
-
-        // Hashear la contraseña ingresada para comparar
-        const hashResponse = await fetch('/api/hash-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: pass }),
-        });
-
-        if (!hashResponse.ok) {
-          throw new Error('Error al verificar la contraseña');
-        }
-
-        const { hash } = await hashResponse.json();
-
-        if (hash === branch.password_hash) {
-          // Contraseña correcta - guardar sesión de sucursal en localStorage
-          const branchSession = {
-            type: 'branch',
-            branchId: branch.id,
-            branchName: branch.name,
-            email: branch.login_email,
-          };
-          localStorage.setItem('branchSession', JSON.stringify(branchSession));
-          window.location.href = "/dashboard";
-          return;
-        } else {
-          setErr("Contraseña incorrecta");
-          setLoading(false);
-          return;
-        }
+        // Si no es sucursal o hay error, continuar con login normal de usuario
       }
 
       // Si no es sucursal, intentar login como usuario normal
