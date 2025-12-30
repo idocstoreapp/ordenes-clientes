@@ -86,7 +86,9 @@ function Header({
               onError={(e) => {
                 // Si falla cargar el logo, usar el por defecto
                 const target = e.target as HTMLImageElement;
-                if (target.src !== window.location.origin + "/logo.png") {
+                if (typeof window !== 'undefined' && target.src !== window.location.origin + "/logo.png") {
+                  target.src = "/logo.png";
+                } else if (typeof window === 'undefined') {
                   target.src = "/logo.png";
                 }
               }}
@@ -123,15 +125,20 @@ function Header({
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // Cargar sección desde localStorage o URL hash, o usar "dashboard" por defecto
-  const getInitialSection = (): DashboardSection => {
+  const [section, setSection] = useState<DashboardSection>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Cargar sección desde localStorage o URL hash solo en el cliente
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     // Primero intentar desde URL hash
     if (window.location.hash) {
       const hashSection = window.location.hash.substring(1) as DashboardSection;
       const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
       if (validSections.includes(hashSection)) {
-        return hashSection;
+        setSection(hashSection);
+        return;
       }
     }
     // Luego intentar desde localStorage
@@ -139,23 +146,22 @@ export default function Dashboard() {
     if (savedSection) {
       const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
       if (validSections.includes(savedSection)) {
-        return savedSection;
+        setSection(savedSection);
       }
     }
-    return "dashboard";
-  };
-  
-  const [section, setSection] = useState<DashboardSection>(getInitialSection());
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  }, []); // Solo ejecutar una vez al montar
 
-  // Guardar sección en localStorage y URL hash cuando cambia
+  // Guardar sección en localStorage y URL hash cuando cambia (solo en cliente)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     localStorage.setItem("dashboard_section", section);
     window.location.hash = section;
   }, [section]);
 
-  // Escuchar cambios en el hash de la URL (navegación del navegador)
+  // Escuchar cambios en el hash de la URL (navegación del navegador) - solo en cliente
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     function handleHashChange() {
       const hashSection = window.location.hash.substring(1) as DashboardSection;
       const validSections: DashboardSection[] = ["dashboard", "new-order", "orders", "customers", "branches", "users", "reports", "settings", "security"];
@@ -170,7 +176,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function loadUser() {
-      // Verificar si hay sesión de sucursal
+      // Verificar si hay sesión de sucursal (solo en cliente)
+      if (typeof window === 'undefined') {
+        setLoading(false);
+        return;
+      }
+
       const branchSessionStr = localStorage.getItem('branchSession');
       if (branchSessionStr) {
         try {
@@ -186,8 +197,10 @@ export default function Dashboard() {
 
             if (branchError || !branchData) {
               // Si la sucursal no existe o está inactiva, limpiar sesión y redirigir
-              localStorage.removeItem('branchSession');
-              window.location.href = "/login";
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('branchSession');
+                window.location.href = "/login";
+              }
               return;
             }
 
@@ -216,7 +229,9 @@ export default function Dashboard() {
           }
         } catch (error) {
           console.error("Error cargando sesión de sucursal:", error);
-          localStorage.removeItem('branchSession');
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('branchSession');
+          }
         }
       }
 
@@ -224,7 +239,9 @@ export default function Dashboard() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
       if (!authUser) {
-        window.location.href = "/login";
+        if (typeof window !== 'undefined') {
+          window.location.href = "/login";
+        }
         return;
       }
 
@@ -240,7 +257,9 @@ export default function Dashboard() {
       if (userData) {
         setUser(userData);
       } else {
-        window.location.href = "/login";
+        if (typeof window !== 'undefined') {
+          window.location.href = "/login";
+        }
       }
       
       setLoading(false);
