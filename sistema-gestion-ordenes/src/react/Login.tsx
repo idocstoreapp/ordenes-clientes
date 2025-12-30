@@ -21,14 +21,18 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Primero verificar si es una sucursal
-      const { data: branch, error: branchError } = await supabase
-        .from("branches")
-        .select("id, name, login_email, password_hash, is_active")
-        .eq("login_email", email)
-        .maybeSingle();
+      // Primero verificar si es una sucursal (solo si login_email no es null)
+      let isBranch = false;
+      if (email) {
+        const { data: branch, error: branchError } = await supabase
+          .from("branches")
+          .select("id, name, login_email, password_hash, is_active")
+          .eq("login_email", email)
+          .maybeSingle();
 
-      if (!branchError && branch && branch.is_active) {
+        // Solo procesar como sucursal si no hay error y se encontró una sucursal activa
+        if (!branchError && branch && branch.login_email && branch.is_active) {
+          isBranch = true;
         // Es una sucursal - verificar contraseña
         if (!branch.password_hash) {
           setErr("Esta sucursal no tiene contraseña configurada. Contacta al administrador.");
