@@ -458,9 +458,14 @@ export default function PDFPreview({
         const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
         doc.text(serviceNameLines, colX + 2, yPosition);
         colX += colWidths[1];
-        const serviceNote = serviceItem.description || order.problem_description.substring(0, 30);
-        const noteLines = doc.splitTextToSize((serviceNote || "Servicio de reparación"), colWidths[2] - 4);
-        doc.text(noteLines, colX + 2, yPosition);
+        // Usar la descripción completa del servicio o la descripción del problema completa
+        const serviceNote = serviceItem.description || order.problem_description || "Servicio de reparación";
+        const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
+        let noteY = yPosition;
+        noteLines.forEach((line: string) => {
+          doc.text(line, colX + 2, noteY);
+          noteY += 4;
+        });
         colX += colWidths[2];
         // Formatear total con cantidad y precio unitario de manera discreta
         // Usar total_price del item (quantity * unit_price)
@@ -524,22 +529,27 @@ export default function PDFPreview({
       // Checklist - Mostrar todos los items juntos, separados por comas, en letra pequeña
       if (checklistItems.length > 0 && checklistData && Object.keys(checklistData).length > 0) {
         yPosition += 5;
+        // Subtítulo del checklist
+        doc.setFontSize(6);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0, 0, 0);
+        doc.text("Checklist de Diagnóstico Inicial", margin + 3, yPosition);
+        yPosition += 4;
         doc.setFontSize(5); // Letra más pequeña
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(0, 0, 0);
         
         const checklistItemsList: string[] = [];
         checklistItems.forEach((item) => {
           const status = checklistData[item.item_name];
           if (status) {
-            // Mostrar el estado al final de cada item
+            // Mostrar el estado al final de cada item (texto completo, sin abreviaciones)
             let statusText = "";
             if (status === "ok") {
-              statusText = " ok";
+              statusText = " (ok)";
             } else if (status === "replaced") {
-              statusText = " (rep)";
+              statusText = " (reparado)";
             } else if (status === "damaged") {
-              statusText = " (dañada)";
+              statusText = " (dañado)";
             } else if (status === "no_probado") {
               statusText = " (no probado)";
             }
@@ -638,28 +648,83 @@ export default function PDFPreview({
         return policy.replace("{warrantyDays}", warrantyDays.toString());
       });
       
-      // Primero calcular la altura necesaria
-      doc.setFontSize(5);
+      // Calcular espacio disponible para garantías (asegurando que el cuadro de firma siempre quepa)
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const sigBoxHeight = 18; // Altura del cuadro de firma
+      const sigTextHeight = 6; // Altura del texto "FIRMA DEL CLIENTE"
+      const spaceAfterWarranty = 10;
+      const bottomMargin = margin;
+      const spaceNeededForSignature = sigBoxHeight + sigTextHeight + spaceAfterWarranty + bottomMargin;
+      const availableHeight = pageHeight - warrantyPanelStartY - spaceNeededForSignature - 15; // 15 para título y padding
+      
+      // Ajustar dinámicamente el tamaño de fuente para que quepa todo
+      let fontSize = 5; // Tamaño inicial
+      let maxY = 0;
+      let warrantyPanelHeight = 0;
       const columnWidth = (contentWidth - 12) / 2;
-      let tempLeftY = yPosition + 10;
-      let tempRightY = yPosition + 10;
-      const maxYPerColumn: number[] = [];
       
-      warrantyText.forEach((text, index) => {
-        const isLeftColumn = index % 2 === 0;
-        const lines = doc.splitTextToSize(text, columnWidth - 3);
-        const textHeight = lines.length * 3 + 1;
-        if (isLeftColumn) {
-          tempLeftY += textHeight;
-          maxYPerColumn.push(tempLeftY);
-        } else {
-          tempRightY += textHeight;
-          maxYPerColumn.push(tempRightY);
+      // Intentar con diferentes tamaños de fuente hasta que quepa
+      for (let testSize = 5; testSize >= 3; testSize -= 0.5) {
+        doc.setFontSize(testSize);
+        let tempLeftY = warrantyPanelStartY + 10;
+        let tempRightY = warrantyPanelStartY + 10;
+        const maxYPerColumn: number[] = [];
+        
+        warrantyText.forEach((text, index) => {
+          const isLeftColumn = index % 2 === 0;
+          const textWithBullet = `• ${text}`;
+          const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+          // Espaciado proporcional al tamaño de fuente
+          const lineSpacing = testSize * 0.5;
+          const textHeight = lines.length * lineSpacing;
+          if (isLeftColumn) {
+            tempLeftY += textHeight;
+            maxYPerColumn.push(tempLeftY);
+          } else {
+            tempRightY += textHeight;
+            maxYPerColumn.push(tempRightY);
+          }
+        });
+        
+        const testMaxY = Math.max(...maxYPerColumn, warrantyPanelStartY + 10);
+        const testPanelHeight = testMaxY - warrantyPanelStartY + 5;
+        
+        // Si cabe en el espacio disponible, usar este tamaño
+        if (testPanelHeight <= availableHeight) {
+          fontSize = testSize;
+          maxY = testMaxY;
+          warrantyPanelHeight = testPanelHeight;
+          break;
         }
-      });
+      }
       
-      const maxY = Math.max(...maxYPerColumn, yPosition + 10);
-      const warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
+      // Si aún no cabe, usar el tamaño mínimo (3) y ajustar el espaciado
+      if (warrantyPanelHeight === 0 || warrantyPanelHeight > availableHeight) {
+        fontSize = 3;
+        doc.setFontSize(fontSize);
+        let tempLeftY = warrantyPanelStartY + 10;
+        let tempRightY = warrantyPanelStartY + 10;
+        const maxYPerColumn: number[] = [];
+        
+        warrantyText.forEach((text, index) => {
+          const isLeftColumn = index % 2 === 0;
+          const textWithBullet = `• ${text}`;
+          const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+          // Espaciado mínimo para que quepa
+          const lineSpacing = fontSize * 0.4;
+          const textHeight = lines.length * lineSpacing;
+          if (isLeftColumn) {
+            tempLeftY += textHeight;
+            maxYPerColumn.push(tempLeftY);
+          } else {
+            tempRightY += textHeight;
+            maxYPerColumn.push(tempRightY);
+          }
+        });
+        
+        maxY = Math.max(...maxYPerColumn, warrantyPanelStartY + 10);
+        warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
+      }
       
       // Dibujar fondo y borde del panel PRIMERO
       doc.setFillColor(250, 250, 250);
@@ -675,9 +740,9 @@ export default function PDFPreview({
       doc.setFont("helvetica", "bold");
       doc.text("POLÍTICAS DE GARANTÍA", margin + 3, warrantyPanelStartY + 4.5);
       
-      // Ahora dibujar el texto
+      // Ahora dibujar el texto con el tamaño de fuente calculado
       doc.setTextColor(0, 0, 0);
-      doc.setFontSize(5); // Mismo tamaño que el checklist
+      doc.setFontSize(fontSize);
       doc.setFont("helvetica", "normal");
       yPosition = warrantyPanelStartY + 10;
       
@@ -687,16 +752,22 @@ export default function PDFPreview({
       let leftY = yPosition;
       let rightY = yPosition;
       
+      // Calcular espaciado proporcional al tamaño de fuente
+      const lineSpacing = fontSize <= 3 ? fontSize * 0.4 : fontSize * 0.5;
+      
       // Distribuir políticas entre las dos columnas
       warrantyText.forEach((text, index) => {
         const isLeftColumn = index % 2 === 0;
         const currentX = isLeftColumn ? leftColumnX : rightColumnX;
         let currentY = isLeftColumn ? leftY : rightY;
         
-        const lines = doc.splitTextToSize(text, columnWidth - 3);
+        // Agregar punto al inicio de cada política
+        const textWithBullet = `• ${text}`;
+        const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
         doc.text(lines, currentX, currentY);
         
-        const textHeight = lines.length * 3 + 1;
+        // Espaciado proporcional al tamaño de fuente
+        const textHeight = lines.length * lineSpacing;
         if (isLeftColumn) {
           leftY += textHeight;
         } else {
@@ -792,20 +863,26 @@ export default function PDFPreview({
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 10;
+      const margin = 15;
       const contentWidth = pageWidth - 2 * margin;
       let yPosition = margin;
 
-      // Logo
+      // Logo iDocStore en el medio arriba - el doble de grande
       if (logoDataUrl) {
-        const logoHeight = settings.pdf_logo.height;
-        const logoWidth = settings.pdf_logo.width;
-        doc.addImage(logoDataUrl, "PNG", margin, yPosition, logoWidth, logoHeight);
-        yPosition += logoHeight + 10;
+        const logoHeight = settings.pdf_logo.height * 2; // Doble de grande
+        const logoWidth = settings.pdf_logo.width * 2; // Doble de grande
+        const logoX = (pageWidth - logoWidth) / 2; // Centrado
+        doc.addImage(logoDataUrl, "PNG", logoX, yPosition, logoWidth, logoHeight);
+        yPosition += logoHeight + 15;
       }
 
-      // Datos del local
-      doc.setFontSize(10);
+      // Línea separadora
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+
+      // Datos del local - alineados a la izquierda con márgenes
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("DATOS DEL LOCAL", margin, yPosition);
       yPosition += 8;
@@ -813,6 +890,8 @@ export default function PDFPreview({
       doc.setFont("helvetica", "normal");
       const branchName = order.sucursal?.razon_social || order.sucursal?.name || "iDocStore";
       doc.text(`Nombre: ${branchName}`, margin, yPosition);
+      yPosition += 6;
+      doc.text(`Fecha de Emisión: ${formatDateTime(order.created_at)}`, margin, yPosition);
       yPosition += 6;
       if (order.sucursal?.phone) {
         doc.text(`Teléfono: ${order.sucursal.phone}`, margin, yPosition);
@@ -827,16 +906,10 @@ export default function PDFPreview({
         doc.text(`Email: ${order.sucursal.email}`, margin, yPosition);
         yPosition += 6;
       }
-      yPosition += 5;
-
-      // Fecha de emisión
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Fecha de Emisión: ${formatDateTime(order.created_at)}`, margin, yPosition);
       yPosition += 10;
 
-      // Datos del cliente
-      doc.setFontSize(10);
+      // Datos del cliente - alineados a la izquierda con márgenes
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("DATOS DEL CLIENTE", margin, yPosition);
       yPosition += 8;
@@ -852,29 +925,43 @@ export default function PDFPreview({
           yPosition += 6;
         }
       }
-      yPosition += 5;
+      yPosition += 8;
 
-      // Fecha de compromiso y local asignado
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
+      // Fecha de compromiso
       if (order.commitment_date) {
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
         doc.text(`Fecha de Compromiso: ${formatDate(order.commitment_date)}`, margin, yPosition);
         yPosition += 8;
       }
-      if (order.sucursal?.name) {
-        doc.text(`Local Asignado: ${order.sucursal.name}`, margin, yPosition);
-        yPosition += 8;
-      }
-      yPosition += 5;
 
-      // Número de orden
-      doc.setFontSize(12);
+      // Número de orden con recuadro
+      yPosition += 5;
+      doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      doc.text(`N° Orden: ${order.order_number}`, margin, yPosition);
-      yPosition += 12;
+      const orderBoxWidth = 50;
+      const orderBoxHeight = 7;
+      const orderBoxX = (pageWidth - orderBoxWidth) / 2; // Centrado
+      doc.setFillColor(80, 80, 80); // Gris oscuro
+      doc.rect(orderBoxX, yPosition, orderBoxWidth, orderBoxHeight, "F");
+      doc.setTextColor(255, 255, 255);
+      const orderLabelText = "N° Orden:";
+      const orderLabelWidth = doc.getTextWidth(orderLabelText);
+      doc.text(orderLabelText, orderBoxX + (orderBoxWidth - orderLabelWidth) / 2, yPosition + 5);
+      yPosition += orderBoxHeight + 10; // Separar más el recuadro del número
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      const orderNumberText = order.order_number;
+      const orderNumberWidth = doc.getTextWidth(orderNumberText);
+      doc.text(orderNumberText, (pageWidth - orderNumberWidth) / 2, yPosition);
+      yPosition += 8;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      yPosition += 10;
 
       // Datos del equipo
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("DATOS DEL EQUIPO", margin, yPosition);
       yPosition += 8;
@@ -890,11 +977,11 @@ export default function PDFPreview({
         doc.text(`Passcode: ${order.device_unlock_code}`, margin, yPosition);
         yPosition += 6;
       }
-      yPosition += 5;
+      yPosition += 8;
 
       // Servicios
       if (services.length > 0) {
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.text("SERVICIOS", margin, yPosition);
         yPosition += 8;
@@ -904,39 +991,54 @@ export default function PDFPreview({
           doc.text(`• ${service.name}`, margin, yPosition);
           yPosition += 6;
         });
-        yPosition += 5;
+        yPosition += 8;
       }
 
-      // Valor presupuestado con desglose de IVA
-      doc.setFontSize(10);
+      // Valor presupuestado - alineado al medio
+      yPosition += 5;
+      doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
-      doc.text("VALOR PRESUPUESTADO", margin, yPosition);
-      yPosition += 8;
+      const valorPresupuestadoText = "VALOR PRESUPUESTADO";
+      const valorPresupuestadoWidth = doc.getTextWidth(valorPresupuestadoText);
+      doc.text(valorPresupuestadoText, (pageWidth - valorPresupuestadoWidth) / 2, yPosition);
+      yPosition += 10;
       
       // Calcular total con IVA
       const totalConIva = serviceValue + replacementCost;
       const totalSinIva = totalConIva / 1.19;
       const iva = totalConIva - totalSinIva;
       
-      doc.setFontSize(9);
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      doc.text("Subtotal:", margin, yPosition);
-      doc.text(formatCLP(totalSinIva, { withLabel: false }), margin + 50, yPosition);
-      yPosition += 6;
+      const subtotalText = `Subtotal: ${formatCLP(totalSinIva, { withLabel: false })}`;
+      const subtotalWidth = doc.getTextWidth(subtotalText);
+      doc.text(subtotalText, (pageWidth - subtotalWidth) / 2, yPosition);
+      yPosition += 7;
       
-      doc.text("IVA (19%):", margin, yPosition);
-      doc.text(formatCLP(iva, { withLabel: false }), margin + 50, yPosition);
-      yPosition += 6;
+      const ivaText = `IVA (19%): ${formatCLP(iva, { withLabel: false })}`;
+      const ivaWidth = doc.getTextWidth(ivaText);
+      doc.text(ivaText, (pageWidth - ivaWidth) / 2, yPosition);
+      yPosition += 7;
       
       doc.setDrawColor(150, 150, 150);
-      doc.line(margin, yPosition, margin + 80, yPosition);
-      yPosition += 6;
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 12; // Separar más la línea del total
       
+      // Total - alineado al medio y destacado
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text("TOTAL:", margin, yPosition);
-      doc.text(formatCLP(totalConIva, { withLabel: true }), margin + 50, yPosition);
+      const totalText = `TOTAL: ${formatCLP(totalConIva, { withLabel: true })}`;
+      const totalWidth = doc.getTextWidth(totalText);
+      doc.text(totalText, (pageWidth - totalWidth) / 2, yPosition);
       yPosition += 15;
+
+      // QR Code en el medio
+      if (qrDataUrl) {
+        const qrSize = 60;
+        const qrX = (pageWidth - qrSize) / 2; // Centrado
+        doc.addImage(qrDataUrl, "PNG", qrX, yPosition, qrSize, qrSize);
+        yPosition += qrSize + 15;
+      }
 
       // Recuadro de firma
       const signatureBoxWidth = contentWidth;
@@ -945,24 +1047,19 @@ export default function PDFPreview({
       doc.setDrawColor(150, 150, 150);
       doc.setLineWidth(0.5);
       doc.rect(margin, yPosition, signatureBoxWidth, signatureBoxHeight, "FD");
-      yPosition += signatureBoxHeight + 8;
+      yPosition += signatureBoxHeight + 6;
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
-      doc.text("FIRMA DEL CLIENTE", margin, yPosition);
+      const signatureText = "FIRMA DEL CLIENTE";
+      const signatureTextWidth = doc.getTextWidth(signatureText);
+      doc.text(signatureText, (pageWidth - signatureTextWidth) / 2, yPosition);
       yPosition += 12;
 
-      // QR Code
-      if (qrDataUrl) {
-        const qrSize = 60;
-        doc.addImage(qrDataUrl, "PNG", margin, yPosition, qrSize, qrSize);
-        yPosition += qrSize + 10;
-      }
-
-      // Garantías
+      // Garantías - que ocupen el largo que necesiten
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
       doc.text("GARANTÍAS", margin, yPosition);
-      yPosition += 8;
+      yPosition += 10;
       doc.setFontSize(7);
       doc.setFont("helvetica", "normal");
       // Usar políticas de garantía desde configuración
@@ -971,9 +1068,19 @@ export default function PDFPreview({
         return policy.replace("{warrantyDays}", warrantyDays.toString());
       });
       warrantyTextBoleta.forEach((text) => {
-        const lines = doc.splitTextToSize(text, contentWidth);
-        doc.text(lines, margin, yPosition);
-        yPosition += lines.length * 5 + 2;
+        // Agregar punto al inicio de cada política
+        const textWithBullet = `• ${text}`;
+        const lines = doc.splitTextToSize(textWithBullet, contentWidth);
+        
+        // Dibujar cada línea manualmente con menos espacio entre líneas (interlineado reducido)
+        lines.forEach((line: string, lineIndex: number) => {
+          doc.text(line, margin, yPosition);
+          // Espaciado reducido entre líneas: 3.5 puntos en lugar de 5
+          yPosition += 5.5;
+        });
+        
+        // Espacio moderado después de cada garantía completa
+        yPosition += 2;
       });
 
       const pdfOutput = doc.output("blob");
@@ -986,70 +1093,75 @@ export default function PDFPreview({
 
   async function generatePDFEtiqueta() {
     try {
-      // Formato etiqueta horizontal (100mm x 50mm)
-      const widthMM = 100;
-      const heightMM = 50;
+      // Formato etiqueta 80mm x 2000mm (mismo formato que boleta)
+      const widthMM = 80;
+      const heightMM = 2000;
       const width = widthMM * 2.83465;
       const height = heightMM * 2.83465;
       
       const doc = new jsPDF({
-        orientation: 'landscape',
+        orientation: 'portrait',
         unit: 'pt',
         format: [width, height]
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 8;
+      const margin = 15;
       const contentWidth = pageWidth - 2 * margin;
       let yPosition = margin;
 
-      doc.setFontSize(9);
+      // Título centrado
+      doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text("ETIQUETA DE ORDEN", margin, yPosition);
-      yPosition += 10;
+      const titleText = "ETIQUETA DE ORDEN";
+      const titleWidth = doc.getTextWidth(titleText);
+      doc.text(titleText, (pageWidth - titleWidth) / 2, yPosition);
+      yPosition += 15;
 
-      doc.setFontSize(7);
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       
+      // Número de orden destacado
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Orden: ${order.order_number}`, margin, yPosition);
+      yPosition += 12;
+
       // Nombre de cliente
+      doc.setFontSize(8);
       if (order.customer) {
         doc.setFont("helvetica", "bold");
         doc.text("Cliente:", margin, yPosition);
         doc.setFont("helvetica", "normal");
-        doc.text(order.customer.name, margin + 35, yPosition);
-        yPosition += 7;
+        const customerLines = doc.splitTextToSize(order.customer.name, contentWidth - 50);
+        doc.text(customerLines, margin + 50, yPosition);
+        yPosition += customerLines.length * 6 + 5;
       }
-
-      // Número de orden
-      doc.setFont("helvetica", "bold");
-      doc.text("Orden:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      doc.text(order.order_number, margin + 35, yPosition);
-      yPosition += 7;
 
       // Dispositivo
       doc.setFont("helvetica", "bold");
       doc.text("Dispositivo:", margin, yPosition);
       doc.setFont("helvetica", "normal");
-      doc.text(order.device_model, margin + 50, yPosition);
-      yPosition += 7;
+      const deviceLines = doc.splitTextToSize(order.device_model, contentWidth - 60);
+      doc.text(deviceLines, margin + 60, yPosition);
+      yPosition += deviceLines.length * 6 + 5;
 
       // Problema o descripción
       doc.setFont("helvetica", "bold");
       doc.text("Problema:", margin, yPosition);
       doc.setFont("helvetica", "normal");
       const problemLines = doc.splitTextToSize(order.problem_description, contentWidth - 60);
-      doc.text(problemLines, margin + 45, yPosition);
-      yPosition += problemLines.length * 7;
+      doc.text(problemLines, margin + 60, yPosition);
+      yPosition += problemLines.length * 6 + 5;
 
       // Passcode
       if (order.device_unlock_code) {
         doc.setFont("helvetica", "bold");
         doc.text("Passcode:", margin, yPosition);
         doc.setFont("helvetica", "normal");
-        doc.text(order.device_unlock_code, margin + 50, yPosition);
-        yPosition += 7;
+        doc.text(order.device_unlock_code, margin + 60, yPosition);
+        yPosition += 8;
       }
 
       // Local asignado
@@ -1057,8 +1169,8 @@ export default function PDFPreview({
         doc.setFont("helvetica", "bold");
         doc.text("Local:", margin, yPosition);
         doc.setFont("helvetica", "normal");
-        doc.text(order.sucursal.name, margin + 35, yPosition);
-        yPosition += 7;
+        doc.text(order.sucursal.name, margin + 50, yPosition);
+        yPosition += 8;
       }
 
       // Fecha de compromiso
@@ -1066,7 +1178,7 @@ export default function PDFPreview({
         doc.setFont("helvetica", "bold");
         doc.text("Fecha Compromiso:", margin, yPosition);
         doc.setFont("helvetica", "normal");
-        doc.text(formatDate(order.commitment_date), margin + 75, yPosition);
+        doc.text(formatDate(order.commitment_date), margin + 90, yPosition);
       }
 
       const pdfOutput = doc.output("blob");

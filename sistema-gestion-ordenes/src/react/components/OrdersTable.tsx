@@ -7,6 +7,7 @@ import { hasPermission } from "@/lib/permissions";
 import OrderDetail from "./OrderDetail";
 import PDFPreview from "./PDFPreview";
 import CustomerEditModal from "./CustomerEditModal";
+import OrderEditModal from "./OrderEditModal";
 import { generatePDFBlob } from "@/lib/generate-pdf-blob";
 
 interface OrdersTableProps {
@@ -23,6 +24,9 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [editingStatus, setEditingStatus] = useState<string | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editingOrder, setEditingOrder] = useState<WorkOrder | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const [openActionsMenu, setOpenActionsMenu] = useState<string | null>(null);
   const [pdfOrderData, setPdfOrderData] = useState<{
     order: WorkOrder;
     services: Service[];
@@ -36,6 +40,20 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   useEffect(() => {
     loadOrders();
   }, [technicianId, statusFilter]);
+
+  // Cerrar menú de acciones al hacer click fuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (openActionsMenu) {
+        setOpenActionsMenu(null);
+      }
+    }
+
+    if (openActionsMenu) {
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }
+  }, [openActionsMenu]);
 
   async function loadOrders() {
     setLoading(true);
@@ -313,6 +331,52 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     }
   }
 
+  async function handleDeleteOrder(orderId: string) {
+    if (!isAdmin) {
+      alert("Solo los administradores pueden eliminar órdenes");
+      return;
+    }
+
+    if (!confirm("¿Estás seguro de que deseas eliminar esta orden definitivamente? Esta acción no se puede deshacer y la orden será borrada permanentemente de la base de datos.")) {
+      return;
+    }
+
+    setDeletingOrderId(orderId);
+
+    try {
+      // Primero eliminar las notas relacionadas (aunque deberían eliminarse automáticamente por CASCADE)
+      await supabase
+        .from("order_notes")
+        .delete()
+        .eq("order_id", orderId);
+
+      // Eliminar los servicios relacionados (aunque deberían eliminarse automáticamente por CASCADE)
+      await supabase
+        .from("order_services")
+        .delete()
+        .eq("order_id", orderId);
+
+      // Luego eliminar la orden definitivamente
+      const { error } = await supabase
+        .from("work_orders")
+        .delete()
+        .eq("id", orderId);
+
+      if (error) {
+        alert(`Error al eliminar la orden: ${error.message}`);
+      } else {
+        // Recargar órdenes
+        loadOrders();
+        alert("Orden eliminada exitosamente");
+      }
+    } catch (error: any) {
+      console.error("Error eliminando orden:", error);
+      alert("Error al eliminar la orden. Intenta nuevamente.");
+    } finally {
+      setDeletingOrderId(null);
+    }
+  }
+
   async function handleSendWhatsApp(order: WorkOrder) {
     if (!order.customer) {
       alert("No hay información del cliente");
@@ -528,7 +592,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
                     {formatDate(order.created_at)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 relative">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -539,18 +603,62 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
                       >
                         📄 PDF
                       </button>
-                      {order.customer && (
+                      <div className="relative">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleSendWhatsApp(order);
+                            setOpenActionsMenu(openActionsMenu === order.id ? null : order.id);
                           }}
-                          className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
-                          title="Enviar por WhatsApp"
+                          className="px-3 py-1 text-sm bg-slate-600 text-white rounded-md hover:bg-slate-700 transition-colors flex items-center gap-1"
+                          title="Más acciones"
                         >
-                          📱 WhatsApp
+                          ⚙️ Acciones
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
                         </button>
-                      )}
+                        {openActionsMenu === order.id && (
+                          <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-md shadow-lg z-10">
+                            {order.customer && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSendWhatsApp(order);
+                                  setOpenActionsMenu(null);
+                                }}
+                                className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+                              >
+                                <span>📱</span> WhatsApp
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingOrder(order);
+                                    setOpenActionsMenu(null);
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2"
+                                >
+                                  <span>✏️</span> Editar
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteOrder(order.id);
+                                    setOpenActionsMenu(null);
+                                  }}
+                                  disabled={deletingOrderId === order.id}
+                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  <span>🗑️</span> {deletingOrderId === order.id ? "Eliminando..." : "Eliminar"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -595,6 +703,17 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
             }));
             setEditingCustomer(null);
             loadOrders(); // Recargar para asegurar consistencia
+          }}
+        />
+      )}
+
+      {editingOrder && (
+        <OrderEditModal
+          order={editingOrder}
+          onClose={() => setEditingOrder(null)}
+          onSaved={() => {
+            setEditingOrder(null);
+            loadOrders(); // Recargar órdenes después de editar
           }}
         />
       )}

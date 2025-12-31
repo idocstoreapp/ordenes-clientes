@@ -71,6 +71,7 @@ export const POST: APIRoute = async ({ request }) => {
       customerName, 
       orderNumber, 
       pdfBase64, 
+      pdfUrl, // URL del PDF si se subió a storage
       branchName,
       branchEmail,
       emailType = 'order_created' // 'order_created' o 'ready_for_pickup'
@@ -91,10 +92,10 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // PDF solo es requerido para order_created
-    if (emailType === 'order_created' && !pdfBase64) {
+    // PDF (base64 o URL) es requerido para order_created
+    if (emailType === 'order_created' && !pdfBase64 && !pdfUrl) {
       return new Response(
-        JSON.stringify({ error: "pdfBase64 es requerido para order_created" }),
+        JSON.stringify({ error: "pdfBase64 o pdfUrl es requerido para order_created" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -322,7 +323,14 @@ export const POST: APIRoute = async ({ request }) => {
                   </div>
                 </div>
                 
-                <p>En el archivo PDF adjunto encontrará todos los detalles de su orden, incluyendo:</p>
+                ${pdfUrl ? `
+                  <p>Puede descargar el PDF con todos los detalles de su orden haciendo clic en el siguiente enlace:</p>
+                  <div style="text-align: center; margin: 20px 0;">
+                    <a href="${pdfUrl}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">📄 Descargar PDF de la Orden</a>
+                  </div>
+                ` : `
+                  <p>En el archivo PDF adjunto encontrará todos los detalles de su orden, incluyendo:</p>
+                `}
                 <ul>
                   <li>Información del equipo ingresado</li>
                   <li>Servicios solicitados</li>
@@ -370,14 +378,24 @@ export const POST: APIRoute = async ({ request }) => {
       ],
     };
 
-    // Solo adjuntar PDF si está disponible y es para orden creada
-    if (pdfBase64 && emailType === 'order_created') {
-      emailData.attachments = [
-        {
-          filename: `orden-${orderNumber}.pdf`,
-          content: pdfBase64,
-        },
-      ];
+    // Solo adjuntar PDF si está disponible en base64 (no si tenemos URL)
+    // Si tenemos URL, el PDF ya está disponible para descarga y no necesitamos adjuntarlo
+    if (pdfBase64 && !pdfUrl && emailType === 'order_created') {
+      // Verificar tamaño del base64 (aproximadamente 1.33x el tamaño del archivo)
+      const base64Size = pdfBase64.length;
+      const maxSize = 4 * 1024 * 1024; // 4MB límite típico para attachments
+      
+      if (base64Size > maxSize) {
+        console.warn("[EMAIL API] PDF demasiado grande para adjuntar, solo se enviará el link si está disponible");
+        // No adjuntar si es muy grande
+      } else {
+        emailData.attachments = [
+          {
+            filename: `orden-${orderNumber}.pdf`,
+            content: pdfBase64,
+          },
+        ];
+      }
     }
 
     console.log("[EMAIL API] Enviando email a Resend...");

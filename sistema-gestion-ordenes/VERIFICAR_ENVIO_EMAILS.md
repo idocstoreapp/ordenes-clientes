@@ -141,3 +141,4 @@ Puedes probar enviar un email manualmente desde Resend:
 - Verifica en el código que `fromEmail` use el dominio correcto
 
 
+

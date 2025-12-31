@@ -9,6 +9,7 @@ import PatternDrawer from "./PatternDrawer";
 import ServiceSelector from "./ServiceSelector";
 import PDFPreview from "./PDFPreview";
 import { generatePDFBlob } from "@/lib/generate-pdf-blob";
+import { uploadPDFToStorage } from "@/lib/upload-pdf";
 
 interface OrderFormProps {
   technicianId: string;
@@ -170,7 +171,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         sucursal: branchData,
       };
       
-      // Enviar email al cliente con el PDF adjunto
+      // Enviar email al cliente con el PDF (subir a storage y enviar link, o adjuntar si falla)
       try {
         // Generar PDF
         const pdfBlob = await generatePDFBlob(
@@ -183,17 +184,29 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           []
         );
 
-        // Convertir PDF a base64
-        const pdfBase64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            // Remover el prefijo data:application/pdf;base64,
-            const base64 = (reader.result as string).split(',')[1];
-            resolve(base64);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(pdfBlob);
-        });
+        // Intentar subir PDF a Supabase Storage primero
+        let pdfUrl: string | null = null;
+        let pdfBase64: string | null = null;
+        
+        try {
+          console.log("[ORDER FORM] Intentando subir PDF a Supabase Storage...");
+          pdfUrl = await uploadPDFToStorage(pdfBlob, order.order_number);
+          if (pdfUrl) {
+            console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
+          }
+        } catch (uploadError) {
+          console.warn("[ORDER FORM] Error subiendo PDF a Storage, intentando adjuntar:", uploadError);
+          // Si falla la subida, convertir a base64 como fallback
+          pdfBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = (reader.result as string).split(',')[1];
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(pdfBlob);
+          });
+        }
 
         // Enviar email
         console.log("[ORDER FORM] Enviando email de creación de orden:", order.order_number);
@@ -206,7 +219,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             to: selectedCustomer.email,
             customerName: selectedCustomer.name,
             orderNumber: order.order_number,
-            pdfBase64: pdfBase64,
+            pdfBase64: pdfBase64, // Puede ser null si se subió a storage
+            pdfUrl: pdfUrl, // URL del PDF si se subió exitosamente
             branchName: branchData?.name,
             branchEmail: branchData?.email,
           }),

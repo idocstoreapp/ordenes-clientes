@@ -80,3 +80,4 @@ SELECT setval('order_number_seq', 123456, false);
 **Después de ejecutar el script, los números de orden se generarán automáticamente y no debería haber más errores de duplicados.**
 
 
+

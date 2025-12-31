@@ -156,3 +156,4 @@ Si tienes sucursales que ya tenían usuarios asociados:
 4. Los usuarios técnicos/encargados seguirán funcionando normalmente
 
 
+

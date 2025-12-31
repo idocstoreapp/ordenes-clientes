@@ -25,3 +25,4 @@ WHERE conrelid = 'work_orders'::regclass
 -- Ejecuta entonces: database/allow_custom_device_types.sql
 
 
+

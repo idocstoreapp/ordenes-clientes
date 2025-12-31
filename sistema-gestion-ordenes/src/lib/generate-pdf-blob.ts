@@ -389,9 +389,14 @@ export async function generatePDFBlob(
     const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
     doc.text(serviceNameLines, colX + 2, yPosition);
     colX += colWidths[1];
-    const serviceNote = serviceItem.description || order.problem_description.substring(0, 30);
-    const noteLines = doc.splitTextToSize((serviceNote || "Servicio de reparación"), colWidths[2] - 4);
-    doc.text(noteLines, colX + 2, yPosition);
+    // Usar la descripción completa del servicio o la descripción del problema completa
+    const serviceNote = serviceItem.description || order.problem_description || "Servicio de reparación";
+    const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
+    let noteY = yPosition;
+    noteLines.forEach((line: string) => {
+      doc.text(line, colX + 2, noteY);
+      noteY += 4;
+    });
     colX += colWidths[2];
     // Usar total_price del item (quantity * unit_price)
     const totalAmount = serviceItem.total_price;
@@ -409,10 +414,11 @@ export async function generatePDFBlob(
     doc.setFontSize(8);
     doc.setTextColor(0, 0, 0);
     
+    // Calcular altura máxima considerando todas las líneas de la descripción
     const maxHeight = Math.max(
       serviceNameLines.length * 4,
-      noteLines.length * 4,
-      7 + 3
+      noteLines.length * 4, // Ya considera múltiples líneas
+      7 + 3 // Altura mínima para el detalle (cantidad x precio)
     );
     yPosition += maxHeight;
   });
@@ -447,22 +453,27 @@ export async function generatePDFBlob(
   // Checklist - Mostrar todos los items juntos, separados por comas, en letra pequeña
   if (checklistItems.length > 0 && checklistData && Object.keys(checklistData).length > 0) {
     yPosition += 5;
+    // Subtítulo del checklist
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Checklist de Diagnóstico Inicial", margin + 3, yPosition);
+    yPosition += 4;
     doc.setFontSize(5); // Letra más pequeña
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
     
     const checklistItemsList: string[] = [];
     checklistItems.forEach((item) => {
       const status = checklistData[item.item_name];
       if (status) {
-        // Mostrar el estado al final de cada item
+        // Mostrar el estado al final de cada item (texto completo, sin abreviaciones)
         let statusText = "";
         if (status === "ok") {
-          statusText = " ok";
+          statusText = " (ok)";
         } else if (status === "replaced") {
-          statusText = " (rep)";
+          statusText = " (reparado)";
         } else if (status === "damaged") {
-          statusText = " (dañada)";
+          statusText = " (dañado)";
         } else if (status === "no_probado") {
           statusText = " (no probado)";
         }
@@ -545,28 +556,83 @@ export async function generatePDFBlob(
     return policy.replace("{warrantyDays}", warrantyDays.toString());
   });
   
-  // Primero calcular la altura necesaria
-  doc.setFontSize(5);
+  // Calcular espacio disponible para garantías (asegurando que el cuadro de firma siempre quepa)
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const sigBoxHeight = 18; // Altura del cuadro de firma
+  const sigTextHeight = 6; // Altura del texto "FIRMA DEL CLIENTE"
+  const spaceAfterWarranty = 10;
+  const bottomMargin = margin;
+  const spaceNeededForSignature = sigBoxHeight + sigTextHeight + spaceAfterWarranty + bottomMargin;
+  const availableHeight = pageHeight - warrantyPanelStartY - spaceNeededForSignature - 15; // 15 para título y padding
+  
+  // Ajustar dinámicamente el tamaño de fuente para que quepa todo
+  let fontSize = 5; // Tamaño inicial
+  let maxY = 0;
+  let warrantyPanelHeight = 0;
   const columnWidth = (contentWidth - 12) / 2;
-  let tempLeftY = yPosition + 10;
-  let tempRightY = yPosition + 10;
-  const maxYPerColumn: number[] = [];
   
-  warrantyText.forEach((text, index) => {
-    const isLeftColumn = index % 2 === 0;
-    const lines = doc.splitTextToSize(text, columnWidth - 3);
-    const textHeight = lines.length * 3 + 1;
-    if (isLeftColumn) {
-      tempLeftY += textHeight;
-      maxYPerColumn.push(tempLeftY);
-    } else {
-      tempRightY += textHeight;
-      maxYPerColumn.push(tempRightY);
+  // Intentar con diferentes tamaños de fuente hasta que quepa
+  for (let testSize = 5; testSize >= 3; testSize -= 0.5) {
+    doc.setFontSize(testSize);
+    let tempLeftY = warrantyPanelStartY + 10;
+    let tempRightY = warrantyPanelStartY + 10;
+    const maxYPerColumn: number[] = [];
+    
+    warrantyText.forEach((text, index) => {
+      const isLeftColumn = index % 2 === 0;
+      const textWithBullet = `• ${text}`;
+      const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+      // Espaciado proporcional al tamaño de fuente
+      const lineSpacing = testSize * 0.5;
+      const textHeight = lines.length * lineSpacing;
+      if (isLeftColumn) {
+        tempLeftY += textHeight;
+        maxYPerColumn.push(tempLeftY);
+      } else {
+        tempRightY += textHeight;
+        maxYPerColumn.push(tempRightY);
+      }
+    });
+    
+    const testMaxY = Math.max(...maxYPerColumn, warrantyPanelStartY + 10);
+    const testPanelHeight = testMaxY - warrantyPanelStartY + 5;
+    
+    // Si cabe en el espacio disponible, usar este tamaño
+    if (testPanelHeight <= availableHeight) {
+      fontSize = testSize;
+      maxY = testMaxY;
+      warrantyPanelHeight = testPanelHeight;
+      break;
     }
-  });
+  }
   
-  const maxY = Math.max(...maxYPerColumn, yPosition + 10);
-  const warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
+  // Si aún no cabe, usar el tamaño mínimo (3) y ajustar el espaciado
+  if (warrantyPanelHeight === 0 || warrantyPanelHeight > availableHeight) {
+    fontSize = 3;
+    doc.setFontSize(fontSize);
+    let tempLeftY = warrantyPanelStartY + 10;
+    let tempRightY = warrantyPanelStartY + 10;
+    const maxYPerColumn: number[] = [];
+    
+    warrantyText.forEach((text, index) => {
+      const isLeftColumn = index % 2 === 0;
+      const textWithBullet = `• ${text}`;
+      const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+      // Espaciado mínimo para que quepa
+      const lineSpacing = fontSize * 0.4;
+      const textHeight = lines.length * lineSpacing;
+      if (isLeftColumn) {
+        tempLeftY += textHeight;
+        maxYPerColumn.push(tempLeftY);
+      } else {
+        tempRightY += textHeight;
+        maxYPerColumn.push(tempRightY);
+      }
+    });
+    
+    maxY = Math.max(...maxYPerColumn, warrantyPanelStartY + 10);
+    warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
+  }
   
   // Dibujar fondo y borde del panel PRIMERO
   doc.setFillColor(250, 250, 250);
@@ -582,9 +648,9 @@ export async function generatePDFBlob(
   doc.setFont("helvetica", "bold");
   doc.text("POLÍTICAS DE GARANTÍA", margin + 3, warrantyPanelStartY + 4.5);
   
-  // Ahora dibujar el texto
+  // Ahora dibujar el texto con el tamaño de fuente calculado
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(5); // Mismo tamaño que el checklist
+  doc.setFontSize(fontSize);
   doc.setFont("helvetica", "normal");
   yPosition = warrantyPanelStartY + 10;
   
@@ -594,16 +660,22 @@ export async function generatePDFBlob(
   let leftY = yPosition;
   let rightY = yPosition;
   
+  // Calcular espaciado proporcional al tamaño de fuente
+  const lineSpacing = fontSize <= 3 ? fontSize * 0.4 : fontSize * 0.5;
+  
   // Distribuir políticas entre las dos columnas
   warrantyText.forEach((text, index) => {
     const isLeftColumn = index % 2 === 0;
     const currentX = isLeftColumn ? leftColumnX : rightColumnX;
     let currentY = isLeftColumn ? leftY : rightY;
     
-    const lines = doc.splitTextToSize(text, columnWidth - 3);
+    // Agregar punto al inicio de cada política
+    const textWithBullet = `• ${text}`;
+    const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
     doc.text(lines, currentX, currentY);
     
-    const textHeight = lines.length * 3 + 1;
+    // Espaciado proporcional al tamaño de fuente
+    const textHeight = lines.length * lineSpacing;
     if (isLeftColumn) {
       leftY += textHeight;
     } else {
