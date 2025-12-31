@@ -149,17 +149,33 @@ export default function PDFPreview({
       yPosition = 45;
 
       // === PANEL NEGOCIO (Izquierda) ===
-      // Calcular altura dinámica según cantidad de datos
-      const hasAddress = !!order.sucursal?.address;
-      const hasPhone = !!order.sucursal?.phone;
-      const hasEmail = !!order.sucursal?.email;
-      const panelHeight = 35 + (hasAddress ? 12 : 0) + (hasPhone ? 6 : 0) + (hasEmail ? 6 : 0);
+      const panelStartY = yPosition;
       
+      // Primero calcular la altura necesaria
+      let tempPanelY = yPosition + 10;
+      const branchName = order.sucursal?.name || "Sucursal";
+      const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
+      tempPanelY += nameLines.length * 5;
+      
+      if (order.sucursal?.address) {
+        const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
+        tempPanelY += addressLines.length * 5;
+      }
+      if (order.sucursal?.phone) {
+        tempPanelY += 5;
+      }
+      if (order.sucursal?.email) {
+        tempPanelY += 5;
+      }
+      
+      const businessPanelHeight = tempPanelY - panelStartY + 2;
+      
+      // Dibujar fondo y borde del panel PRIMERO
       doc.setFillColor(250, 250, 250);
-      doc.rect(margin, yPosition, (contentWidth - 10) / 2, panelHeight, "F");
+      doc.rect(margin, panelStartY, (contentWidth - 10) / 2, businessPanelHeight, "F");
       doc.setDrawColor(200, 200, 200);
-      doc.rect(margin, yPosition, (contentWidth - 10) / 2, panelHeight, "S");
-
+      doc.rect(margin, panelStartY, (contentWidth - 10) / 2, businessPanelHeight, "S");
+      
       // Título del panel con franja azul
       doc.setFillColor(...stripeColor);
       doc.rect(margin, yPosition, (contentWidth - 10) / 2, 8, "F");
@@ -171,16 +187,14 @@ export default function PDFPreview({
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      let panelY = yPosition + 15;
+      let panelY = yPosition + 10;
 
       // Nombre de la sucursal
-      const branchName = order.sucursal?.name || "Sucursal";
       doc.setFont("helvetica", "bold");
       doc.text("Sucursal:", margin + 3, panelY);
       doc.setFont("helvetica", "normal");
-      const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
       doc.text(nameLines, margin + 25, panelY);
-      panelY += nameLines.length * 6;
+      panelY += nameLines.length * 5;
 
       if (order.sucursal?.address) {
         doc.setFont("helvetica", "bold");
@@ -188,7 +202,7 @@ export default function PDFPreview({
         doc.setFont("helvetica", "normal");
         const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
         doc.text(addressLines, margin + 25, panelY);
-        panelY += addressLines.length * 6;
+        panelY += addressLines.length * 5;
       }
 
       if (order.sucursal?.phone) {
@@ -196,7 +210,7 @@ export default function PDFPreview({
         doc.text("Teléfono:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
         doc.text(order.sucursal.phone, margin + 25, panelY);
-        panelY += 6;
+        panelY += 5;
       }
 
       if (order.sucursal?.email) {
@@ -204,16 +218,32 @@ export default function PDFPreview({
         doc.text("Correo:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
         doc.text(order.sucursal.email, margin + 25, panelY);
+        panelY += 5;
       }
 
       // === PANEL CLIENTE (Derecha) ===
       const clientPanelX = margin + (contentWidth - 10) / 2 + 10;
-      // Usar la misma altura que el panel de negocio
+      const clientPanelStartY = yPosition;
+      
+      // Calcular altura necesaria primero
+      let tempClientPanelY = yPosition + 10;
+      if (order.customer) {
+        tempClientPanelY += 5; // Nombre
+        tempClientPanelY += 5; // Teléfono
+        tempClientPanelY += 5; // Correo
+        if (order.customer.address) {
+          const addressLines = doc.splitTextToSize(order.customer.address, (contentWidth - 10) / 2 - 30);
+          tempClientPanelY += addressLines.length * 5;
+        }
+      }
+      const clientPanelHeight = tempClientPanelY - clientPanelStartY + 2;
+      
+      // Dibujar fondo y borde del panel PRIMERO
       doc.setFillColor(250, 250, 250);
-      doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, panelHeight, "F");
+      doc.rect(clientPanelX, clientPanelStartY, (contentWidth - 10) / 2, clientPanelHeight, "F");
       doc.setDrawColor(200, 200, 200);
-      doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, panelHeight, "S");
-
+      doc.rect(clientPanelX, clientPanelStartY, (contentWidth - 10) / 2, clientPanelHeight, "S");
+      
       doc.setFillColor(...stripeColor);
       doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, 8, "F");
       doc.setTextColor(255, 255, 255);
@@ -224,13 +254,13 @@ export default function PDFPreview({
       if (order.customer) {
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(9);
-        panelY = yPosition + 15;
+        panelY = yPosition + 10;
 
         doc.setFont("helvetica", "bold");
         doc.text("Nombre:", clientPanelX + 3, panelY);
         doc.setFont("helvetica", "normal");
         doc.text(order.customer.name, clientPanelX + 25, panelY);
-        panelY += 6;
+        panelY += 5;
 
         const phoneText = order.customer.phone_country_code
           ? `${order.customer.phone_country_code} ${order.customer.phone}`
@@ -239,13 +269,13 @@ export default function PDFPreview({
         doc.text("Teléfono:", clientPanelX + 3, panelY);
         doc.setFont("helvetica", "normal");
         doc.text(phoneText, clientPanelX + 25, panelY);
-        panelY += 6;
+        panelY += 5;
 
         doc.setFont("helvetica", "bold");
         doc.text("Correo:", clientPanelX + 3, panelY);
         doc.setFont("helvetica", "normal");
         doc.text(order.customer.email, clientPanelX + 25, panelY);
-        panelY += 6;
+        panelY += 5;
 
         if (order.customer.address) {
           doc.setFont("helvetica", "bold");
@@ -253,13 +283,15 @@ export default function PDFPreview({
           doc.setFont("helvetica", "normal");
           const addressLines = doc.splitTextToSize(order.customer.address, (contentWidth - 10) / 2 - 30);
           doc.text(addressLines, clientPanelX + 25, panelY);
+          panelY += addressLines.length * 5;
         }
       }
 
-      yPosition = yPosition + panelHeight + 5;
+      // Usar la altura máxima de ambos paneles para continuar
+      yPosition = Math.max(panelStartY + businessPanelHeight, clientPanelStartY + clientPanelHeight) + 5;
 
       // === PANEL DATOS DEL EQUIPO ===
-      const panelStartY = yPosition;
+      const equipmentPanelStartY = yPosition;
       
       // Dibujar el fondo del panel PRIMERO con altura estimada grande
       // El contenido se dibujará encima
@@ -356,30 +388,7 @@ export default function PDFPreview({
         });
       }
       
-      // Agregar checklist de manera discreta
-      if (checklistItems.length > 0 && checklistData) {
-        const checklistParts: string[] = [];
-        checklistItems.forEach((item) => {
-          const status = checklistData[item.item_name];
-          if (status) {
-            let statusText = "";
-            if (status === "ok") {
-              statusText = ""; // Sin texto adicional para "ok"
-            } else if (status === "replaced") {
-              statusText = " (rep)";
-            } else if (status === "damaged") {
-              statusText = " (dañada)";
-            } else if (status === "no_probado") {
-              statusText = " (no probado)";
-            }
-            checklistParts.push(`${item.item_name}${statusText}`);
-          }
-        });
-        if (checklistParts.length > 0) {
-          if (deviceDescription) deviceDescription += "\n";
-          deviceDescription += checklistParts.join(", ");
-        }
-      }
+      // La columna de descripción es solo para descripciones, NO para checklist
       
       // Dividir el texto en líneas que quepan en el ancho de la columna
       const descriptionColWidth = colWidths[2] - 6; // Ancho de la columna menos margen
@@ -497,33 +506,44 @@ export default function PDFPreview({
       }
 
       // === CHECKLIST al final del panel, en formato horizontal ===
-      if (checklistItems.length > 0 && checklistData) {
-        yPosition += 5; // Espacio antes del checklist
-        
-        doc.setFontSize(7);
+      // Checklist - Mostrar todos los items juntos, separados por comas, en letra pequeña
+      if (checklistItems.length > 0 && checklistData && Object.keys(checklistData).length > 0) {
+        yPosition += 5;
+        doc.setFontSize(5); // Letra más pequeña
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
         
-        // Construir lista de items del checklist en formato horizontal
         const checklistItemsList: string[] = [];
         checklistItems.forEach((item) => {
           const status = checklistData[item.item_name];
           if (status) {
-            checklistItemsList.push(`${item.item_name} *`);
+            // Mostrar el estado al final de cada item
+            let statusText = "";
+            if (status === "ok") {
+              statusText = " ok";
+            } else if (status === "replaced") {
+              statusText = " (rep)";
+            } else if (status === "damaged") {
+              statusText = " (dañada)";
+            } else if (status === "no_probado") {
+              statusText = " (no probado)";
+            }
+            checklistItemsList.push(`${item.item_name}${statusText}`);
           }
+          // Solo mostrar items que tienen estado en checklistData (no mostrar items viejos sin estado)
         });
         
-        // Unir todos los items con separadores (comas)
-        const checklistText = checklistItemsList.join(", ");
-        
-        // Dividir en líneas si es muy largo para que quepa en el ancho del panel
-        const checklistLines = doc.splitTextToSize(checklistText, contentWidth - 6);
-        
-        // Mostrar las líneas del checklist
-        checklistLines.forEach((line: string) => {
-          doc.text(line, margin + 3, yPosition);
-          yPosition += 4;
-        });
+        // Unir todos los items con comas y dividir en líneas solo cuando sea necesario
+        if (checklistItemsList.length > 0) {
+          const checklistText = checklistItemsList.join(", ");
+          const checklistLines = doc.splitTextToSize(checklistText, contentWidth - 6);
+          
+          // Mostrar todas las líneas (ocupando la menor cantidad posible)
+          checklistLines.forEach((line: string) => {
+            doc.text(line, margin + 3, yPosition);
+            yPosition += 3; // Espaciado más pequeño para letra pequeña
+          });
+        }
       }
 
       // === TOTAL (Caja destacada derecha) - DENTRO del panel ===
@@ -536,7 +556,7 @@ export default function PDFPreview({
       // Calcular la posición final del panel basándose en dónde terminó el contenido (incluyendo el total)
       const totalBoxHeight = 20; // Mitad de la altura anterior (era 30)
       const panelEndY = Math.max(yPosition + 10, totalYPosition + totalBoxHeight + 5);
-      const finalPanelHeight = panelEndY - panelStartY;
+      const finalPanelHeight = panelEndY - equipmentPanelStartY;
       
       // Dibujar el cuadro del total DENTRO del panel
       doc.setFillColor(240, 240, 240);
@@ -589,46 +609,93 @@ export default function PDFPreview({
       // Dibujar el borde del panel (después de dibujar el total)
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
-      doc.rect(margin, panelStartY, contentWidth, finalPanelHeight, "S");
+      doc.rect(margin, equipmentPanelStartY, contentWidth, finalPanelHeight, "S");
 
       // Actualizar yPosition para las políticas de garantía (después del panel)
       yPosition = panelEndY + 10;
 
-      // === POLÍTICAS DE GARANTÍA (Texto compacto) ===
-      doc.setFillColor(250, 250, 250);
-      doc.rect(margin, yPosition, contentWidth, 38, "F");
-      doc.setDrawColor(200, 200, 200);
-      doc.rect(margin, yPosition, contentWidth, 38, "S");
-
-      doc.setFillColor(...stripeColor);
-      doc.rect(margin, yPosition, contentWidth, 6, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.text("POLÍTICAS DE GARANTÍA", margin + 3, yPosition + 4.5);
-
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(6);
-      doc.setFont("helvetica", "normal");
-      yPosition += 10;
-
+      // === POLÍTICAS DE GARANTÍA - en dos columnas con texto pequeño ===
+      const warrantyPanelStartY = yPosition;
+      
       // Usar políticas de garantía desde configuración
       const warrantyText = settings.warranty_policies.policies.map(policy => {
         // Reemplazar {warrantyDays} si existe en la política
         return policy.replace("{warrantyDays}", warrantyDays.toString());
       });
-
-      warrantyText.forEach((text) => {
-        const lines = doc.splitTextToSize(text, contentWidth - 6);
-        doc.text(lines, margin + 3, yPosition);
-        yPosition += lines.length * 3 + 1;
+      
+      // Primero calcular la altura necesaria
+      doc.setFontSize(5);
+      const columnWidth = (contentWidth - 12) / 2;
+      let tempLeftY = yPosition + 10;
+      let tempRightY = yPosition + 10;
+      const maxYPerColumn: number[] = [];
+      
+      warrantyText.forEach((text, index) => {
+        const isLeftColumn = index % 2 === 0;
+        const lines = doc.splitTextToSize(text, columnWidth - 3);
+        const textHeight = lines.length * 3 + 1;
+        if (isLeftColumn) {
+          tempLeftY += textHeight;
+          maxYPerColumn.push(tempLeftY);
+        } else {
+          tempRightY += textHeight;
+          maxYPerColumn.push(tempRightY);
+        }
       });
+      
+      const maxY = Math.max(...maxYPerColumn, yPosition + 10);
+      const warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
+      
+      // Dibujar fondo y borde del panel PRIMERO
+      doc.setFillColor(250, 250, 250);
+      doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "F");
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "S");
+      
+      // Dibujar título
+      doc.setFillColor(...stripeColor);
+      doc.rect(margin, warrantyPanelStartY, contentWidth, 6, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      doc.text("POLÍTICAS DE GARANTÍA", margin + 3, warrantyPanelStartY + 4.5);
+      
+      // Ahora dibujar el texto
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(5); // Mismo tamaño que el checklist
+      doc.setFont("helvetica", "normal");
+      yPosition = warrantyPanelStartY + 10;
+      
+      const leftColumnX = margin + 3;
+      const rightColumnX = margin + columnWidth + 9;
+      
+      let leftY = yPosition;
+      let rightY = yPosition;
+      
+      // Distribuir políticas entre las dos columnas
+      warrantyText.forEach((text, index) => {
+        const isLeftColumn = index % 2 === 0;
+        const currentX = isLeftColumn ? leftColumnX : rightColumnX;
+        let currentY = isLeftColumn ? leftY : rightY;
+        
+        const lines = doc.splitTextToSize(text, columnWidth - 3);
+        doc.text(lines, currentX, currentY);
+        
+        const textHeight = lines.length * 3 + 1;
+        if (isLeftColumn) {
+          leftY += textHeight;
+        } else {
+          rightY += textHeight;
+        }
+      });
+      
+      yPosition = maxY + 5;
 
-      // === CUADRO PARA FIRMA (al final, en el pie de página, centrado y gris) ===
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const signatureBoxHeight = 18; // Más pequeño
-      const signatureBoxWidth = 50; // Más pequeño (era 80)
-      const signatureBoxY = pageHeight - margin - signatureBoxHeight - 10; // Dejar espacio para el texto abajo
+      // === CUADRO PARA FIRMA - más abajo, fuera del cuadro de garantías ===
+      yPosition += 6; // Espacio adicional después de las garantías
+      const signatureBoxHeight = 18;
+      const signatureBoxWidth = 50;
+      const signatureBoxY = yPosition;
       const signatureBoxX = (pageWidth - signatureBoxWidth) / 2; // Centrado horizontalmente
       
       // Fondo gris

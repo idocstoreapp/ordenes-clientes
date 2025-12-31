@@ -125,3 +125,4 @@ Esto nos dirá si el problema es:
 - El email se está enviando pero no llega (hay intentos pero fallan o no llegan)
 - El email se está enviando y llegando (hay intentos exitosos)
 
+

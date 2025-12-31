@@ -132,3 +132,4 @@ Después del próximo deploy, busca en los logs:
 4. Revisa la consola del navegador (F12)
 5. Comparte lo que encuentres
 
+

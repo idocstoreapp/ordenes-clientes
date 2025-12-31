@@ -88,3 +88,4 @@ Después de ejecutar el script, deberías poder:
 - Los checklists creados en Configuración están disponibles para todas las órdenes de ese tipo
 - Los checklists personalizados creados en una orden solo se guardan en esa orden específica
 
+

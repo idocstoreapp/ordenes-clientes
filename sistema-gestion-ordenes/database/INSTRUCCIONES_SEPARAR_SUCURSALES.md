@@ -155,3 +155,4 @@ Si tienes sucursales que ya tenían usuarios asociados:
 3. Las sucursales ahora usarán el nuevo sistema de autenticación
 4. Los usuarios técnicos/encargados seguirán funcionando normalmente
 
+

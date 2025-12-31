@@ -24,3 +24,4 @@ WHERE conrelid = 'work_orders'::regclass
 -- Si las consultas anteriores devuelven filas, significa que las restricciones aún existen
 -- Ejecuta entonces: database/allow_custom_device_types.sql
 
+

@@ -1,4 +1,4 @@
-# Cómo Ver Functions (API Routes) en Vercel
+image.png# Cómo Ver Functions (API Routes) en Vercel
 
 ## Método 1: Desde el Deployment (Recomendado)
 
@@ -84,4 +84,5 @@ La forma más fácil de ver qué está pasando:
 ## Consejo
 
 Si no encuentras la sección "Functions", **usa los Logs** (Método 2). Los logs siempre están disponibles y muestran toda la información que necesitas, incluyendo los errores de las Functions.
+
 

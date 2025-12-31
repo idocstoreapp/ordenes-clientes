@@ -140,3 +140,4 @@ Puedes probar enviar un email manualmente desde Resend:
 - Si el dominio verificado es `app.idocstore.cl`, el email debe ser `algo@app.idocstore.cl`
 - Verifica en el código que `fromEmail` use el dominio correcto
 
+

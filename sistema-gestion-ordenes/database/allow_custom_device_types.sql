@@ -11,3 +11,4 @@ DROP CONSTRAINT IF EXISTS work_orders_device_type_check;
 
 -- Nota: Ahora device_type puede ser cualquier texto, permitiendo tipos personalizados como 'parlante', 'auriculares', etc.
 
+

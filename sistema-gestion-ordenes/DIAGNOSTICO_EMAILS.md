@@ -134,3 +134,4 @@ Si después de revisar todo esto el problema persiste:
 2. Revisa los logs en Resend Dashboard
 3. Comparte los mensajes de error específicos para diagnosticar mejor
 
+
