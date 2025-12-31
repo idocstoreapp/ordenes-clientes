@@ -86,17 +86,32 @@ export async function generatePDFBlob(
     doc.addImage(logoDataUrl, "PNG", margin, logoY, logoWidth, logoHeight);
   }
 
-  // N° Orden y fecha en caja gris oscuro (CENTRO del header) - para ahorrar tinta
-  doc.setFillColor(80, 80, 80); // Gris oscuro en lugar de negro
-  const orderBoxWidth = 75;
-  const orderBoxX = (pageWidth - orderBoxWidth) / 2;
-  doc.rect(orderBoxX, 10, orderBoxWidth, 12, "F");
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(9);
+  // N° Orden en caja pequeña (CENTRO del header) - solo el texto "N° Orden:" dentro
+  doc.setFillColor(80, 80, 80); // Gris oscuro
+  doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
-  doc.text(`N° Orden: ${order.order_number}`, orderBoxX + 3, 16);
-  doc.text(formatDateTime(order.created_at), orderBoxX + 3, 21);
+  const orderLabelText = "N° Orden:";
+  const orderLabelWidth = doc.getTextWidth(orderLabelText);
+  const orderBoxWidth = orderLabelWidth + 6; // Solo el ancho necesario + padding
+  const orderBoxHeight = 7; // Altura más pequeña
+  const orderBoxX = (pageWidth - orderBoxWidth) / 2;
+  const orderBoxY = 8;
+  doc.rect(orderBoxX, orderBoxY, orderBoxWidth, orderBoxHeight, "F");
+  
+  // Texto "N° Orden:" dentro del cuadro (blanco)
+  doc.setTextColor(255, 255, 255);
+  doc.text(orderLabelText, orderBoxX + 3, orderBoxY + 5);
+  
+  // Número de orden y fecha fuera del cuadro, abajo (negro)
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const orderNumberY = orderBoxY + orderBoxHeight + 4;
+  doc.text(order.order_number, orderBoxX + (orderBoxWidth - doc.getTextWidth(order.order_number)) / 2, orderNumberY);
+  doc.setFontSize(7);
+  const dateTimeText = formatDateTime(order.created_at);
+  const dateTimeY = orderNumberY + 4;
+  doc.text(dateTimeText, orderBoxX + (orderBoxWidth - doc.getTextWidth(dateTimeText)) / 2, dateTimeY);
 
   // QR Code (esquina superior derecha del header)
   if (qrDataUrl) {
