@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { WorkOrder, Service, Customer, User } from "@/types";
+import type { WorkOrder, Service, Customer, User, Branch } from "@/types";
 import { formatCLP } from "@/lib/currency";
 import { formatDate } from "@/lib/date";
 import { hasPermission } from "@/lib/permissions";
@@ -21,6 +21,11 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [orderNumberFilter, setOrderNumberFilter] = useState<string>("");
+  const [dateFilter, setDateFilter] = useState<string>("");
+  const [dateToFilter, setDateToFilter] = useState<string>("");
+  const [branchFilter, setBranchFilter] = useState<string>("all");
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [editingStatus, setEditingStatus] = useState<string | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -38,8 +43,25 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   } | null>(null);
 
   useEffect(() => {
+    if (isAdmin) {
+      loadBranches();
+    }
     loadOrders();
-  }, [technicianId, statusFilter]);
+  }, [technicianId, statusFilter, orderNumberFilter, dateFilter, dateToFilter, branchFilter]);
+
+  async function loadBranches() {
+    try {
+      const { data, error } = await supabase
+        .from("branches")
+        .select("*")
+        .order("name");
+      
+      if (error) throw error;
+      setBranches(data || []);
+    } catch (error) {
+      console.error("Error cargando sucursales:", error);
+    }
+  }
 
   // Cerrar menú de acciones al hacer click fuera
   useEffect(() => {
@@ -83,6 +105,30 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
+      }
+
+      // Filtro por número de orden
+      if (orderNumberFilter.trim() !== "") {
+        query = query.eq("order_number", orderNumberFilter.trim());
+      }
+
+      // Filtro por sucursal (solo para admin)
+      if (isAdmin && branchFilter !== "all") {
+        query = query.eq("sucursal_id", branchFilter);
+      }
+
+      // Filtro por fecha (desde fecha seleccionada)
+      if (dateFilter) {
+        const fromDate = new Date(dateFilter);
+        fromDate.setHours(0, 0, 0, 0);
+        query = query.gte("created_at", fromDate.toISOString());
+      }
+
+      // Filtro por fecha hasta (opcional)
+      if (dateToFilter) {
+        const toDate = new Date(dateToFilter);
+        toDate.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", toDate.toISOString());
       }
 
       const { data, error } = await query;
@@ -487,6 +533,88 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
             <option value="sin_solucion">Sin Solución</option>
             <option value="garantia">Garantía</option>
           </select>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+        <div className="flex flex-wrap items-end gap-4">
+          {/* Filtro por número de orden */}
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Número de Orden
+            </label>
+            <input
+              type="text"
+              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              placeholder="Ej: 24900"
+              value={orderNumberFilter}
+              onChange={(e) => setOrderNumberFilter(e.target.value)}
+            />
+          </div>
+
+          {/* Filtro por fecha (inicio obligatorio, fin opcional) */}
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Fecha Desde
+            </label>
+            <input
+              type="date"
+              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            />
+          </div>
+
+          {/* Filtro por fecha hasta (opcional) */}
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Fecha Hasta (Opcional)
+            </label>
+            <input
+              type="date"
+              className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+              value={dateToFilter}
+              onChange={(e) => setDateToFilter(e.target.value)}
+            />
+          </div>
+
+          {/* Filtro por sucursal (solo admin) */}
+          {isAdmin && (
+            <div className="flex-1 min-w-[150px]">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Sucursal
+              </label>
+              <select
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+              >
+                <option value="all">Todas las sucursales</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name || branch.razon_social}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Botón para limpiar filtros */}
+          <div className="flex-shrink-0">
+            <button
+              onClick={() => {
+                setOrderNumberFilter("");
+                setDateFilter("");
+                setDateToFilter("");
+                setBranchFilter("all");
+                setStatusFilter("all");
+              }}
+              className="px-4 py-2 text-sm border border-slate-300 rounded-md text-slate-700 hover:bg-slate-100 transition-colors whitespace-nowrap"
+            >
+              Limpiar Filtros
+            </button>
+          </div>
         </div>
       </div>
 

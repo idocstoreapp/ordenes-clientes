@@ -202,7 +202,8 @@ export default function PDFPreview({
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      let panelY = yPosition + 10;
+      // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
+      let panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
 
       // Nombre de la sucursal
       doc.setFont("helvetica", "bold");
@@ -269,7 +270,8 @@ export default function PDFPreview({
       if (order.customer) {
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(9);
-        panelY = yPosition + 10;
+        // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
+        panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
 
         doc.setFont("helvetica", "bold");
         doc.text("Nombre:", clientPanelX + 3, panelY);
@@ -658,13 +660,14 @@ export default function PDFPreview({
       const availableHeight = pageHeight - warrantyPanelStartY - spaceNeededForSignature - 15; // 15 para título y padding
       
       // Ajustar dinámicamente el tamaño de fuente para que quepa todo
-      let fontSize = 5; // Tamaño inicial
+      // Asegurar que el cuadro de firma siempre quepa
+      let fontSize = 6; // Tamaño inicial
       let maxY = 0;
       let warrantyPanelHeight = 0;
       const columnWidth = (contentWidth - 12) / 2;
       
-      // Intentar con diferentes tamaños de fuente hasta que quepa
-      for (let testSize = 5; testSize >= 3; testSize -= 0.5) {
+      // Intentar con diferentes tamaños de fuente hasta que quepa (empezar desde 7, mínimo 4)
+      for (let testSize = 7; testSize >= 4; testSize -= 0.5) {
         doc.setFontSize(testSize);
         let tempLeftY = warrantyPanelStartY + 10;
         let tempRightY = warrantyPanelStartY + 10;
@@ -674,14 +677,17 @@ export default function PDFPreview({
           const isLeftColumn = index % 2 === 0;
           const textWithBullet = `• ${text}`;
           const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
-          // Espaciado proporcional al tamaño de fuente
-          const lineSpacing = testSize * 0.5;
+          // Espaciado mínimo entre líneas
+          const lineSpacing = testSize * 0.3;
           const textHeight = lines.length * lineSpacing;
+          // Espacio mínimo entre garantías (mismo cálculo que al dibujar)
+          const minSpaceBetween = Math.max(2, testSize * 0.3);
+          const spaceBetweenWarranties = textHeight + minSpaceBetween;
           if (isLeftColumn) {
-            tempLeftY += textHeight;
+            tempLeftY += spaceBetweenWarranties;
             maxYPerColumn.push(tempLeftY);
           } else {
-            tempRightY += textHeight;
+            tempRightY += spaceBetweenWarranties;
             maxYPerColumn.push(tempRightY);
           }
         });
@@ -698,9 +704,9 @@ export default function PDFPreview({
         }
       }
       
-      // Si aún no cabe, usar el tamaño mínimo (3) y ajustar el espaciado
+      // Si aún no cabe, usar el tamaño mínimo (4) y ajustar el espaciado
       if (warrantyPanelHeight === 0 || warrantyPanelHeight > availableHeight) {
-        fontSize = 3;
+        fontSize = 4;
         doc.setFontSize(fontSize);
         let tempLeftY = warrantyPanelStartY + 10;
         let tempRightY = warrantyPanelStartY + 10;
@@ -711,13 +717,16 @@ export default function PDFPreview({
           const textWithBullet = `• ${text}`;
           const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
           // Espaciado mínimo para que quepa
-          const lineSpacing = fontSize * 0.4;
+          const lineSpacing = fontSize * 0.3;
           const textHeight = lines.length * lineSpacing;
+          // Espacio mínimo entre garantías (mismo cálculo que al dibujar)
+          const minSpaceBetween = Math.max(2, fontSize * 0.3);
+          const spaceBetweenWarranties = textHeight + minSpaceBetween;
           if (isLeftColumn) {
-            tempLeftY += textHeight;
+            tempLeftY += spaceBetweenWarranties;
             maxYPerColumn.push(tempLeftY);
           } else {
-            tempRightY += textHeight;
+            tempRightY += spaceBetweenWarranties;
             maxYPerColumn.push(tempRightY);
           }
         });
@@ -726,11 +735,9 @@ export default function PDFPreview({
         warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
       }
       
-      // Dibujar fondo y borde del panel PRIMERO
+      // Dibujar fondo del panel PRIMERO (el borde se redibuja después con la altura correcta)
       doc.setFillColor(250, 250, 250);
       doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "F");
-      doc.setDrawColor(200, 200, 200);
-      doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "S");
       
       // Dibujar título
       doc.setFillColor(...stripeColor);
@@ -752,8 +759,8 @@ export default function PDFPreview({
       let leftY = yPosition;
       let rightY = yPosition;
       
-      // Calcular espaciado proporcional al tamaño de fuente
-      const lineSpacing = fontSize <= 3 ? fontSize * 0.4 : fontSize * 0.5;
+      // Calcular espaciado entre líneas (mantener consistente)
+      const lineSpacing = fontSize * 0.3;
       
       // Distribuir políticas entre las dos columnas
       warrantyText.forEach((text, index) => {
@@ -763,24 +770,46 @@ export default function PDFPreview({
         
         // Agregar punto al inicio de cada política
         const textWithBullet = `• ${text}`;
-        const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+        const lines = doc.splitTextToSize(textWithBullet, columnWidth + 1);
         doc.text(lines, currentX, currentY);
         
-        // Espaciado proporcional al tamaño de fuente
+        // Calcular altura del texto (número de líneas * espaciado)
         const textHeight = lines.length * lineSpacing;
+        // Espacio mínimo entre garantías (pequeño pero suficiente para que no se monten)
+        // Asegurar al menos un espacio mínimo basado en el tamaño de fuente
+        const minSpaceBetween = Math.max(2, fontSize * 0.3);
+        const spaceBetweenWarranties = textHeight + minSpaceBetween;
+        
         if (isLeftColumn) {
-          leftY += textHeight;
+          leftY += spaceBetweenWarranties;
         } else {
-          rightY += textHeight;
+          rightY += spaceBetweenWarranties;
         }
       });
       
-      yPosition = maxY + 5;
+      // Calcular maxY real después de dibujar (usar el mayor entre leftY y rightY)
+      const actualMaxY = Math.max(leftY, rightY);
+      warrantyPanelHeight = actualMaxY - warrantyPanelStartY + 5;
+      
+      // Redibujar el borde del panel con la altura correcta
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "S");
+      
+      yPosition = actualMaxY + 5;
 
       // === CUADRO PARA FIRMA - más abajo, fuera del cuadro de garantías ===
-      yPosition += 6; // Espacio adicional después de las garantías
+      // Verificar que quepa en la página (usar las variables ya definidas arriba)
       const signatureBoxHeight = 18;
       const signatureBoxWidth = 50;
+      const minSpaceForSignature = spaceAfterWarranty + signatureBoxHeight + sigTextHeight + margin;
+      
+      // Si no cabe, ajustar posición (el tamaño de fuente ya se ajustó arriba)
+      if (yPosition + minSpaceForSignature > pageHeight) {
+        // Como medida de seguridad, mover la firma un poco más arriba si es necesario
+        yPosition = Math.min(yPosition, pageHeight - minSpaceForSignature);
+      }
+      
+      yPosition += spaceAfterWarranty;
       const signatureBoxY = yPosition;
       const signatureBoxX = (pageWidth - signatureBoxWidth) / 2; // Centrado horizontalmente
       
@@ -917,12 +946,12 @@ export default function PDFPreview({
       doc.setFont("helvetica", "normal");
       if (order.customer) {
         doc.text(`Nombre: ${order.customer.name}`, margin, yPosition);
-        yPosition += 6;
+        yPosition += 8;
         doc.text(`Teléfono: ${order.customer.phone_country_code || "+56"} ${order.customer.phone}`, margin, yPosition);
-        yPosition += 6;
+        yPosition += 8;
         if (order.customer.email) {
           doc.text(`Email: ${order.customer.email}`, margin, yPosition);
-          yPosition += 6;
+          yPosition += 8;
         }
       }
       yPosition += 8;
@@ -968,14 +997,14 @@ export default function PDFPreview({
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.text(`Modelo: ${order.device_model}`, margin, yPosition);
-      yPosition += 6;
+      yPosition += 8; // Aumentar espaciado entre líneas
       if (order.device_serial_number) {
         doc.text(`IMEI: ${order.device_serial_number}`, margin, yPosition);
-        yPosition += 6;
+        yPosition += 8; // Aumentar espaciado entre líneas
       }
       if (order.device_unlock_code) {
         doc.text(`Passcode: ${order.device_unlock_code}`, margin, yPosition);
-        yPosition += 6;
+        yPosition += 8; // Aumentar espaciado entre líneas
       }
       yPosition += 8;
 
@@ -1047,40 +1076,33 @@ export default function PDFPreview({
       doc.setDrawColor(150, 150, 150);
       doc.setLineWidth(0.5);
       doc.rect(margin, yPosition, signatureBoxWidth, signatureBoxHeight, "FD");
-      yPosition += signatureBoxHeight + 6;
+      yPosition += signatureBoxHeight + 10; // Aumentado de 6 a 10
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
       const signatureText = "FIRMA DEL CLIENTE";
       const signatureTextWidth = doc.getTextWidth(signatureText);
       doc.text(signatureText, (pageWidth - signatureTextWidth) / 2, yPosition);
-      yPosition += 12;
+      yPosition += 18; // Aumentado de 12 a 18
 
-      // Garantías - que ocupen el largo que necesiten
+      // Garantía y condiciones del servicio
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
-      doc.text("GARANTÍAS", margin, yPosition);
-      yPosition += 10;
-      doc.setFontSize(7);
+      const warrantyTitle = "GARANTÍA Y CONDICIONES DEL SERVICIO";
+      const warrantyTitleWidth = doc.getTextWidth(warrantyTitle);
+      // Centrar con márgenes (asegurar que no esté más allá de los márgenes)
+      const warrantyTitleX = Math.max(margin, Math.min((pageWidth - warrantyTitleWidth) / 2, pageWidth - margin - warrantyTitleWidth));
+      doc.text(warrantyTitle, warrantyTitleX, yPosition);
+      yPosition += 12; // Aumentado de 10 a 12
+      doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      // Usar políticas de garantía desde configuración
-      const warrantyTextBoleta = settings.warranty_policies.policies.map(policy => {
-        // Reemplazar {warrantyDays} si existe en la política
-        return policy.replace("{warrantyDays}", warrantyDays.toString());
-      });
-      warrantyTextBoleta.forEach((text) => {
-        // Agregar punto al inicio de cada política
-        const textWithBullet = `• ${text}`;
-        const lines = doc.splitTextToSize(textWithBullet, contentWidth);
-        
-        // Dibujar cada línea manualmente con menos espacio entre líneas (interlineado reducido)
-        lines.forEach((line: string, lineIndex: number) => {
-          doc.text(line, margin, yPosition);
-          // Espaciado reducido entre líneas: 3.5 puntos en lugar de 5
-          yPosition += 5.5;
-        });
-        
-        // Espacio moderado después de cada garantía completa
-        yPosition += 2;
+      const warrantyText = "Las condiciones generales del servicio, garantías y exclusiones fueron informadas de forma previa y enviadas al correo electrónico del cliente. La firma de este documento constituye aceptación expresa de dichas condiciones.";
+      const warrantyLines = doc.splitTextToSize(warrantyText, contentWidth);
+      warrantyLines.forEach((line: string) => {
+        const lineWidth = doc.getTextWidth(line);
+        // Centrar cada línea con márgenes
+        const lineX = Math.max(margin, Math.min((pageWidth - lineWidth) / 2, pageWidth - margin - lineWidth));
+        doc.text(line, lineX, yPosition);
+        yPosition += 6;
       });
 
       const pdfOutput = doc.output("blob");
@@ -1147,22 +1169,22 @@ export default function PDFPreview({
       doc.text(deviceLines, margin + 60, yPosition);
       yPosition += deviceLines.length * 6 + 5;
 
-      // Problema o descripción
-      doc.setFont("helvetica", "bold");
-      doc.text("Problema:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      const problemLines = doc.splitTextToSize(order.problem_description, contentWidth - 60);
-      doc.text(problemLines, margin + 60, yPosition);
-      yPosition += problemLines.length * 6 + 5;
-
-      // Passcode
+      // Passcode (movido encima de la descripción del problema)
       if (order.device_unlock_code) {
         doc.setFont("helvetica", "bold");
         doc.text("Passcode:", margin, yPosition);
         doc.setFont("helvetica", "normal");
         doc.text(order.device_unlock_code, margin + 60, yPosition);
-        yPosition += 8;
+        yPosition += 10; // Más espacio abajo
       }
+
+      // Problema o descripción (movido después del passcode)
+      doc.setFont("helvetica", "bold");
+      doc.text("Problema:", margin, yPosition);
+      doc.setFont("helvetica", "normal");
+      const problemLines = doc.splitTextToSize(order.problem_description, contentWidth - 60);
+      doc.text(problemLines, margin + 60, yPosition);
+      yPosition += problemLines.length * 6 + 12; // Aumentado de 5 a 12
 
       // Local asignado
       if (order.sucursal?.name) {
@@ -1170,7 +1192,7 @@ export default function PDFPreview({
         doc.text("Local:", margin, yPosition);
         doc.setFont("helvetica", "normal");
         doc.text(order.sucursal.name, margin + 50, yPosition);
-        yPosition += 8;
+        yPosition += 12; // Aumentado de 8 a 12
       }
 
       // Fecha de compromiso

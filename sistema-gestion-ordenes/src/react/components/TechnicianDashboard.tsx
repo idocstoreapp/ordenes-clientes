@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP } from "@/lib/currency";
 import type { User } from "@/types";
-import { canViewFullMetrics } from "@/lib/permissions";
 import KpiCard from "./KpiCard";
 
 interface TechnicianDashboardProps {
@@ -14,10 +13,11 @@ interface TechnicianDashboardProps {
 
 export default function TechnicianDashboard({ technicianId, isEncargado, user, onNewOrder }: TechnicianDashboardProps) {
   const [kpis, setKpis] = useState({
-    weekOrders: 0,
-    monthOrders: 0,
-    pendingOrders: 0,
-    completedOrders: 0,
+    daySales: 0,
+    monthSales: 0,
+    inRepair: 0,
+    readyToDeliver: 0,
+    inWarranty: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -25,55 +25,79 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
     async function load() {
       setLoading(true);
       try {
-        // Si no tiene permisos para ver métricas completas, mostrar vacías
-        if (!canViewFullMetrics(user)) {
+        // Obtener sucursal_id del usuario
+        const sucursalId = user?.sucursal_id;
+
+        // Si no tiene sucursal_id, no mostrar datos
+        if (!sucursalId) {
           setKpis({
-            weekOrders: 0,
-            monthOrders: 0,
-            pendingOrders: 0,
-            completedOrders: 0,
+            daySales: 0,
+            monthSales: 0,
+            inRepair: 0,
+            readyToDeliver: 0,
+            inWarranty: 0,
           });
           setLoading(false);
           return;
         }
 
-        const now = new Date();
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
 
-        // Órdenes de la semana
-        const { count: weekCount } = await supabase
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+        // Ventas del día (órdenes entregadas hoy de esta sucursal)
+        const { data: dayOrders } = await supabase
+          .from("work_orders")
+          .select("total_repair_cost")
+          .eq("status", "entregada")
+          .eq("sucursal_id", sucursalId)
+          .gte("created_at", today.toISOString())
+          .lte("created_at", todayEnd.toISOString());
+
+        const daySales = (dayOrders || []).reduce((sum, o) => sum + (o.total_repair_cost || 0), 0);
+
+        // Ventas del mes (órdenes entregadas este mes de esta sucursal)
+        const { data: monthOrders } = await supabase
+          .from("work_orders")
+          .select("total_repair_cost")
+          .eq("status", "entregada")
+          .eq("sucursal_id", sucursalId)
+          .gte("created_at", monthStart.toISOString())
+          .lte("created_at", monthEnd.toISOString());
+
+        const monthSales = (monthOrders || []).reduce((sum, o) => sum + (o.total_repair_cost || 0), 0);
+
+        // Equipos en reparación de esta sucursal
+        const { count: inRepairCount } = await supabase
           .from("work_orders")
           .select("*", { count: "exact", head: true })
-          .eq("technician_id", technicianId)
-          .gte("created_at", weekAgo.toISOString());
+          .eq("status", "en_proceso")
+          .eq("sucursal_id", sucursalId);
 
-        // Órdenes del mes
-        const { count: monthCount } = await supabase
+        // Equipos listos para entregar de esta sucursal
+        const { count: readyCount } = await supabase
           .from("work_orders")
           .select("*", { count: "exact", head: true })
-          .eq("technician_id", technicianId)
-          .gte("created_at", monthAgo.toISOString());
+          .eq("status", "por_entregar")
+          .eq("sucursal_id", sucursalId);
 
-        // Órdenes pendientes
-        const { count: pendingCount } = await supabase
+        // Equipos en garantía de esta sucursal
+        const { count: warrantyCount } = await supabase
           .from("work_orders")
           .select("*", { count: "exact", head: true })
-          .eq("technician_id", technicianId)
-          .in("status", ["en_proceso", "por_entregar"]);
-
-        // Órdenes completadas
-        const { count: completedCount } = await supabase
-          .from("work_orders")
-          .select("*", { count: "exact", head: true })
-          .eq("technician_id", technicianId)
-          .eq("status", "entregada");
+          .eq("status", "garantia")
+          .eq("sucursal_id", sucursalId);
 
         setKpis({
-          weekOrders: weekCount || 0,
-          monthOrders: monthCount || 0,
-          pendingOrders: pendingCount || 0,
-          completedOrders: completedCount || 0,
+          daySales,
+          monthSales,
+          inRepair: inRepairCount || 0,
+          readyToDeliver: readyCount || 0,
+          inWarranty: warrantyCount || 0,
         });
       } catch (error) {
         console.error("Error cargando KPIs:", error);
@@ -111,26 +135,31 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
-          title="Órdenes Esta Semana"
-          value={kpis.weekOrders.toString()}
-          icon="📅"
+          title="Ventas del Día"
+          value={formatCLP(kpis.daySales)}
+          icon="💰"
         />
         <KpiCard
-          title="Órdenes Este Mes"
-          value={kpis.monthOrders.toString()}
-          icon="📆"
+          title="Ventas del Mes"
+          value={formatCLP(kpis.monthSales)}
+          icon="📊"
         />
         <KpiCard
-          title="Pendientes"
-          value={kpis.pendingOrders.toString()}
-          icon="⏳"
+          title="En Reparación"
+          value={kpis.inRepair.toString()}
+          icon="🔧"
         />
         <KpiCard
-          title="Completadas"
-          value={kpis.completedOrders.toString()}
+          title="Listos para Entregar"
+          value={kpis.readyToDeliver.toString()}
           icon="✅"
+        />
+        <KpiCard
+          title="En Garantía"
+          value={kpis.inWarranty.toString()}
+          icon="🛡️"
         />
       </div>
     </div>

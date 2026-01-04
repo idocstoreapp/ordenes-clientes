@@ -40,6 +40,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [loading, setLoading] = useState(false);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
+  const [createdOrderServices, setCreatedOrderServices] = useState<Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>>([]);
 
   useEffect(() => {
     if (deviceModel) {
@@ -171,9 +172,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         sucursal: branchData,
       };
       
+      // Construir orderServices para el PDF (misma estructura que se usa en otros lugares)
+      const orderServicesForPDF = selectedServices.map(service => ({
+        quantity: 1,
+        unit_price: serviceValue,
+        total_price: serviceValue,
+        service_name: service.name,
+      }));
+      
       // Enviar email al cliente con el PDF (subir a storage y enviar link, o adjuntar si falla)
       try {
-        // Generar PDF
+        // Generar PDF con el mismo diseño que se usa en la vista previa
         const pdfBlob = await generatePDFBlob(
           orderWithRelations,
           selectedServices,
@@ -181,7 +190,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           replacementCost,
           warrantyDays,
           checklistData,
-          []
+          [], // notes vacío para nueva orden
+          orderServicesForPDF // Pasar orderServices para que el PDF tenga la misma información detallada
         );
 
         // Intentar subir PDF a Supabase Storage primero
@@ -193,19 +203,57 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           pdfUrl = await uploadPDFToStorage(pdfBlob, order.order_number);
           if (pdfUrl) {
             console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
+          } else {
+            console.warn("[ORDER FORM] No se pudo subir PDF a Storage, usando base64 como fallback");
+            // Si no se pudo subir, generar base64 como fallback
+            pdfBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(pdfBlob);
+            });
           }
         } catch (uploadError) {
           console.warn("[ORDER FORM] Error subiendo PDF a Storage, intentando adjuntar:", uploadError);
           // Si falla la subida, convertir a base64 como fallback
-          pdfBase64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const base64 = (reader.result as string).split(',')[1];
-              resolve(base64);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(pdfBlob);
-          });
+          try {
+            pdfBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(pdfBlob);
+            });
+          } catch (base64Error) {
+            console.error("[ORDER FORM] Error generando base64:", base64Error);
+            // Si también falla el base64, al menos intentar enviar el email sin PDF
+            // pero esto no debería pasar normalmente
+          }
+        }
+        
+        // Asegurarse de que tenemos al menos uno de los dos
+        if (!pdfUrl && !pdfBase64) {
+          console.error("[ORDER FORM] No se pudo generar ni URL ni base64 del PDF");
+          // Intentar generar base64 una vez más como último recurso
+          try {
+            pdfBase64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64 = (reader.result as string).split(',')[1];
+                resolve(base64);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(pdfBlob);
+            });
+          } catch (finalError) {
+            console.error("[ORDER FORM] Error final generando base64:", finalError);
+            throw new Error("No se pudo generar el PDF para enviar por email");
+          }
         }
 
         // Enviar email
@@ -269,6 +317,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       }
       
       setCreatedOrder(orderWithRelations);
+      setCreatedOrderServices(orderServicesForPDF);
       setShowPDFPreview(true);
       alert("Orden creada exitosamente. Se abrirá la vista previa del PDF y se enviará un email al cliente.");
     } catch (error: any) {
@@ -608,6 +657,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         <PDFPreview
           order={createdOrder}
           services={selectedServices}
+          orderServices={createdOrderServices}
           serviceValue={serviceValue}
           replacementCost={replacementCost}
           warrantyDays={warrantyDays}

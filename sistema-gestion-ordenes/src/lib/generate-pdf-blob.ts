@@ -160,7 +160,8 @@ export async function generatePDFBlob(
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  let panelY = yPosition + 10;
+  // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
+  let panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
 
   // Nombre de la sucursal
   doc.setFont("helvetica", "bold");
@@ -227,7 +228,8 @@ export async function generatePDFBlob(
   if (order.customer) {
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
-    panelY = yPosition + 10;
+    // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
+    panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
 
     doc.setFont("helvetica", "bold");
     doc.text("Nombre:", clientPanelX + 3, panelY);
@@ -560,19 +562,20 @@ export async function generatePDFBlob(
   const pageHeight = doc.internal.pageSize.getHeight();
   const sigBoxHeight = 18; // Altura del cuadro de firma
   const sigTextHeight = 6; // Altura del texto "FIRMA DEL CLIENTE"
-  const spaceAfterWarranty = 10;
+  const spaceAfterWarranty = 8; // Espacio mínimo después de las garantías
   const bottomMargin = margin;
   const spaceNeededForSignature = sigBoxHeight + sigTextHeight + spaceAfterWarranty + bottomMargin;
-  const availableHeight = pageHeight - warrantyPanelStartY - spaceNeededForSignature - 15; // 15 para título y padding
+  // Título ocupa 6, padding arriba 10, padding abajo 5
+  const availableHeight = pageHeight - warrantyPanelStartY - spaceNeededForSignature - 21;
   
   // Ajustar dinámicamente el tamaño de fuente para que quepa todo
-  let fontSize = 5; // Tamaño inicial
+  let fontSize = 6; // Tamaño inicial aumentado para mejor legibilidad
   let maxY = 0;
   let warrantyPanelHeight = 0;
   const columnWidth = (contentWidth - 12) / 2;
   
-  // Intentar con diferentes tamaños de fuente hasta que quepa
-  for (let testSize = 5; testSize >= 3; testSize -= 0.5) {
+  // Intentar con diferentes tamaños de fuente hasta que quepa (empezar desde 7, mínimo 4)
+  for (let testSize = 7; testSize >= 4; testSize -= 0.5) {
     doc.setFontSize(testSize);
     let tempLeftY = warrantyPanelStartY + 10;
     let tempRightY = warrantyPanelStartY + 10;
@@ -582,14 +585,17 @@ export async function generatePDFBlob(
       const isLeftColumn = index % 2 === 0;
       const textWithBullet = `• ${text}`;
       const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
-      // Espaciado proporcional al tamaño de fuente
-      const lineSpacing = testSize * 0.5;
+      // Espaciado mínimo entre líneas (reducido 0.2)
+      const lineSpacing = testSize * 0.3;
       const textHeight = lines.length * lineSpacing;
+      // Espacio mínimo entre garantías (mismo cálculo que al dibujar)
+      const minSpaceBetween = Math.max(2, testSize * 0.3);
+      const spaceBetweenWarranties = textHeight + minSpaceBetween;
       if (isLeftColumn) {
-        tempLeftY += textHeight;
+        tempLeftY += spaceBetweenWarranties;
         maxYPerColumn.push(tempLeftY);
       } else {
-        tempRightY += textHeight;
+        tempRightY += spaceBetweenWarranties;
         maxYPerColumn.push(tempRightY);
       }
     });
@@ -606,9 +612,9 @@ export async function generatePDFBlob(
     }
   }
   
-  // Si aún no cabe, usar el tamaño mínimo (3) y ajustar el espaciado
+  // Si aún no cabe, usar el tamaño mínimo (4) y ajustar el espaciado
   if (warrantyPanelHeight === 0 || warrantyPanelHeight > availableHeight) {
-    fontSize = 3;
+    fontSize = 4;
     doc.setFontSize(fontSize);
     let tempLeftY = warrantyPanelStartY + 10;
     let tempRightY = warrantyPanelStartY + 10;
@@ -619,13 +625,16 @@ export async function generatePDFBlob(
       const textWithBullet = `• ${text}`;
       const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
       // Espaciado mínimo para que quepa
-      const lineSpacing = fontSize * 0.4;
+      const lineSpacing = fontSize * 0.3;
       const textHeight = lines.length * lineSpacing;
+      // Espacio mínimo entre garantías (mismo cálculo que al dibujar)
+      const minSpaceBetween = Math.max(2, fontSize * 0.3);
+      const spaceBetweenWarranties = textHeight + minSpaceBetween;
       if (isLeftColumn) {
-        tempLeftY += textHeight;
+        tempLeftY += spaceBetweenWarranties;
         maxYPerColumn.push(tempLeftY);
       } else {
-        tempRightY += textHeight;
+        tempRightY += spaceBetweenWarranties;
         maxYPerColumn.push(tempRightY);
       }
     });
@@ -634,11 +643,9 @@ export async function generatePDFBlob(
     warrantyPanelHeight = maxY - warrantyPanelStartY + 5;
   }
   
-  // Dibujar fondo y borde del panel PRIMERO
+  // Dibujar fondo del panel PRIMERO (el borde se redibuja después con la altura correcta)
   doc.setFillColor(250, 250, 250);
   doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "F");
-  doc.setDrawColor(200, 200, 200);
-  doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "S");
   
   // Dibujar título
   doc.setFillColor(...stripeColor);
@@ -660,8 +667,8 @@ export async function generatePDFBlob(
   let leftY = yPosition;
   let rightY = yPosition;
   
-  // Calcular espaciado proporcional al tamaño de fuente
-  const lineSpacing = fontSize <= 3 ? fontSize * 0.4 : fontSize * 0.5;
+  // Calcular espaciado entre líneas (mantener consistente)
+  const lineSpacing = fontSize * 0.3;
   
   // Distribuir políticas entre las dos columnas
   warrantyText.forEach((text, index) => {
@@ -674,21 +681,43 @@ export async function generatePDFBlob(
     const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
     doc.text(lines, currentX, currentY);
     
-    // Espaciado proporcional al tamaño de fuente
+    // Calcular altura del texto (número de líneas * espaciado)
     const textHeight = lines.length * lineSpacing;
+    // Espacio mínimo entre garantías (pequeño pero suficiente para que no se monten)
+    // Asegurar al menos un espacio mínimo basado en el tamaño de fuente
+    const minSpaceBetween = Math.max(2, fontSize * 0.3);
+    const spaceBetweenWarranties = textHeight + minSpaceBetween;
+    
     if (isLeftColumn) {
-      leftY += textHeight;
+      leftY += spaceBetweenWarranties;
     } else {
-      rightY += textHeight;
+      rightY += spaceBetweenWarranties;
     }
   });
   
-  yPosition = maxY + 5;
+  // Calcular maxY real después de dibujar (usar el mayor entre leftY y rightY)
+  const actualMaxY = Math.max(leftY, rightY);
+  warrantyPanelHeight = actualMaxY - warrantyPanelStartY + 5;
+  
+  // Redibujar el borde del panel con la altura correcta
+  doc.setDrawColor(200, 200, 200);
+  doc.rect(margin, warrantyPanelStartY, contentWidth, warrantyPanelHeight, "S");
+  
+  yPosition = actualMaxY + 5;
 
   // Firma - más abajo, fuera del cuadro de garantías
-  yPosition += 10; // Espacio adicional después de las garantías
+  // Verificar que quepa en la página (usar las variables ya definidas arriba)
   const signatureBoxHeight = 18;
   const signatureBoxWidth = 50;
+  const minSpaceForSignature = spaceAfterWarranty + signatureBoxHeight + sigTextHeight + margin;
+  
+  // Si no cabe, ajustar posición (el tamaño de fuente ya se ajustó arriba)
+  if (yPosition + minSpaceForSignature > pageHeight) {
+    // Como medida de seguridad, mover la firma un poco más arriba si es necesario
+    yPosition = Math.min(yPosition, pageHeight - minSpaceForSignature);
+  }
+  
+  yPosition += spaceAfterWarranty;
   const signatureBoxY = yPosition;
   const signatureBoxX = (pageWidth - signatureBoxWidth) / 2;
   doc.setFillColor(230, 230, 230);

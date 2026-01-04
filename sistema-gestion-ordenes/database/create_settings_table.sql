@@ -14,13 +14,15 @@ CREATE TABLE IF NOT EXISTS system_settings (
 -- Habilitar RLS
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 
--- Políticas: Solo admin puede leer y escribir
+-- Políticas: Todos los usuarios autenticados pueden leer (para ver garantías en PDFs)
+-- Solo admin puede escribir
 DROP POLICY IF EXISTS "settings_select_admin" ON system_settings;
+DROP POLICY IF EXISTS "settings_select_authenticated" ON system_settings;
 DROP POLICY IF EXISTS "settings_insert_admin" ON system_settings;
 DROP POLICY IF EXISTS "settings_update_admin" ON system_settings;
 
-CREATE POLICY "settings_select_admin" ON system_settings FOR SELECT 
-  USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "settings_select_authenticated" ON system_settings FOR SELECT 
+  USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "settings_insert_admin" ON system_settings FOR INSERT 
   WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));

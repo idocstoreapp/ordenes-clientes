@@ -81,7 +81,8 @@ export const POST: APIRoute = async ({ request }) => {
       to: to ? `${to.substring(0, 3)}***` : 'no especificado',
       orderNumber,
       emailType,
-      hasPdf: !!pdfBase64,
+      hasPdfBase64: !!pdfBase64,
+      hasPdfUrl: !!pdfUrl,
       branchName: branchName || 'no especificado'
     });
 
@@ -121,7 +122,8 @@ export const POST: APIRoute = async ({ request }) => {
       from: fromEmail,
       subject: emailType === 'ready_for_pickup' ? `Orden ${orderNumber} - Listo` : `Orden ${orderNumber} - Creada`,
       emailType: emailType,
-      hasPdf: !!pdfBase64
+      hasPdfBase64: !!pdfBase64,
+      hasPdfUrl: !!pdfUrl
     });
 
     // Determinar contenido del email según el tipo

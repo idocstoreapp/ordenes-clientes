@@ -95,3 +95,5 @@ Después de configurar:
 - Si el PDF es muy grande y falla la subida, el sistema intentará adjuntarlo (puede fallar con "Request Entity Too Large")
 - El sistema siempre intentará subir primero a Storage, y solo adjuntará si falla
 
+
+
