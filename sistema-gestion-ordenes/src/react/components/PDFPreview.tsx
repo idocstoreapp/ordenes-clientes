@@ -56,6 +56,27 @@ export default function PDFPreview({
   async function generatePDF() {
     setLoading(true);
     try {
+      // Cargar datos actualizados de la sucursal desde la base de datos
+      // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
+      let branchData = order.sucursal;
+      if (order.sucursal_id) {
+        const { data: updatedBranch } = await supabase
+          .from("branches")
+          .select("*")
+          .eq("id", order.sucursal_id)
+          .single();
+        
+        if (updatedBranch) {
+          branchData = updatedBranch;
+        }
+      }
+
+      // Crear orden con datos actualizados de sucursal
+      const orderWithUpdatedBranch = {
+        ...order,
+        sucursal: branchData,
+      };
+
       // Cargar items del checklist si existen
       let checklistItems: DeviceChecklistItem[] = [];
       if (checklistData && Object.keys(checklistData).length > 0) {
@@ -68,6 +89,9 @@ export default function PDFPreview({
           checklistItems = data;
         }
       }
+
+      // Usar orderWithUpdatedBranch en lugar de order para asegurar datos actualizados
+      const orderForPDF = orderWithUpdatedBranch;
 
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -168,18 +192,18 @@ export default function PDFPreview({
       
       // Primero calcular la altura necesaria
       let tempPanelY = yPosition + 10;
-      const branchName = order.sucursal?.name || "Sucursal";
+      const branchName = orderForPDF.sucursal?.name || "Sucursal";
       const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
       tempPanelY += nameLines.length * 5;
       
-      if (order.sucursal?.address) {
-        const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
+      if (orderForPDF.sucursal?.address) {
+        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
         tempPanelY += addressLines.length * 5;
       }
-      if (order.sucursal?.phone) {
+      if (orderForPDF.sucursal?.phone) {
         tempPanelY += 5;
       }
-      if (order.sucursal?.email) {
+      if (orderForPDF.sucursal?.email) {
         tempPanelY += 5;
       }
       
@@ -212,28 +236,28 @@ export default function PDFPreview({
       doc.text(nameLines, margin + 25, panelY);
       panelY += nameLines.length * 5;
 
-      if (order.sucursal?.address) {
+      if (orderForPDF.sucursal?.address) {
         doc.setFont("helvetica", "bold");
         doc.text("Dirección:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
+        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
         doc.text(addressLines, margin + 25, panelY);
         panelY += addressLines.length * 5;
       }
 
-      if (order.sucursal?.phone) {
+      if (orderForPDF.sucursal?.phone) {
         doc.setFont("helvetica", "bold");
         doc.text("Teléfono:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        doc.text(order.sucursal.phone, margin + 25, panelY);
+        doc.text(orderForPDF.sucursal.phone, margin + 25, panelY);
         panelY += 5;
       }
 
-      if (order.sucursal?.email) {
+      if (orderForPDF.sucursal?.email) {
         doc.setFont("helvetica", "bold");
         doc.text("Correo:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        doc.text(order.sucursal.email, margin + 25, panelY);
+        doc.text(orderForPDF.sucursal.email, margin + 25, panelY);
         panelY += 5;
       }
 
@@ -917,7 +941,7 @@ export default function PDFPreview({
       yPosition += 8;
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      const branchName = order.sucursal?.razon_social || order.sucursal?.name || "iDocStore";
+      const branchName = orderForPDF.sucursal?.razon_social || orderForPDF.sucursal?.name || "iDocStore";
       doc.text(`Nombre: ${branchName}`, margin, yPosition);
       yPosition += 6;
       doc.text(`Fecha de Emisión: ${formatDateTime(order.created_at)}`, margin, yPosition);
@@ -1187,7 +1211,7 @@ export default function PDFPreview({
       yPosition += problemLines.length * 6 + 12; // Aumentado de 5 a 12
 
       // Local asignado
-      if (order.sucursal?.name) {
+      if (orderForPDF.sucursal?.name) {
         doc.setFont("helvetica", "bold");
         doc.text("Local:", margin, yPosition);
         doc.setFont("helvetica", "normal");

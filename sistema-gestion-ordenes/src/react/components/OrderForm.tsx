@@ -100,21 +100,30 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }
       }
 
-      // Obtener datos completos del usuario (incluyendo sucursal)
+      // Obtener datos del usuario (sucursal_id)
       const { data: tech, error: techError } = await supabase
         .from("users")
-        .select(`
-          sucursal_id,
-          sucursal:branches(*)
-        `)
+        .select("sucursal_id")
         .eq("id", technicianId)
         .single();
 
       if (techError) throw techError;
 
-      // La sucursal ya viene cargada desde la relación
-      const branchData = (tech as any)?.sucursal || null;
       const sucursalId = tech?.sucursal_id || null;
+
+      // Cargar datos completos de la sucursal por separado
+      let branchData = null;
+      if (sucursalId) {
+        const { data: branch, error: branchError } = await supabase
+          .from("branches")
+          .select("*")
+          .eq("id", sucursalId)
+          .single();
+        
+        if (!branchError && branch) {
+          branchData = branch;
+        }
+      }
 
       // Preparar datos de inserción
       // NOTA: Dejamos order_number como NULL para que el trigger de la BD lo genere automáticamente
@@ -180,146 +189,169 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         service_name: service.name,
       }));
       
-      // Enviar email al cliente con el PDF (subir a storage y enviar link, o adjuntar si falla)
-      try {
-        // Generar PDF con el mismo diseño que se usa en la vista previa
-        const pdfBlob = await generatePDFBlob(
-          orderWithRelations,
-          selectedServices,
-          serviceValue,
-          replacementCost,
-          warrantyDays,
-          checklistData,
-          [], // notes vacío para nueva orden
-          orderServicesForPDF // Pasar orderServices para que el PDF tenga la misma información detallada
-        );
-
-        // Intentar subir PDF a Supabase Storage primero
-        let pdfUrl: string | null = null;
-        let pdfBase64: string | null = null;
-        
-        try {
-          console.log("[ORDER FORM] Intentando subir PDF a Supabase Storage...");
-          pdfUrl = await uploadPDFToStorage(pdfBlob, order.order_number);
-          if (pdfUrl) {
-            console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
-          } else {
-            console.warn("[ORDER FORM] No se pudo subir PDF a Storage, usando base64 como fallback");
-            // Si no se pudo subir, generar base64 como fallback
-            pdfBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(pdfBlob);
-            });
-          }
-        } catch (uploadError) {
-          console.warn("[ORDER FORM] Error subiendo PDF a Storage, intentando adjuntar:", uploadError);
-          // Si falla la subida, convertir a base64 como fallback
-          try {
-            pdfBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(pdfBlob);
-            });
-          } catch (base64Error) {
-            console.error("[ORDER FORM] Error generando base64:", base64Error);
-            // Si también falla el base64, al menos intentar enviar el email sin PDF
-            // pero esto no debería pasar normalmente
-          }
-        }
-        
-        // Asegurarse de que tenemos al menos uno de los dos
-        if (!pdfUrl && !pdfBase64) {
-          console.error("[ORDER FORM] No se pudo generar ni URL ni base64 del PDF");
-          // Intentar generar base64 una vez más como último recurso
-          try {
-            pdfBase64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-              };
-              reader.onerror = reject;
-              reader.readAsDataURL(pdfBlob);
-            });
-          } catch (finalError) {
-            console.error("[ORDER FORM] Error final generando base64:", finalError);
-            throw new Error("No se pudo generar el PDF para enviar por email");
-          }
-        }
-
-        // Enviar email
-        console.log("[ORDER FORM] Enviando email de creación de orden:", order.order_number);
-        const emailResponse = await fetch('/api/send-order-email', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            to: selectedCustomer.email,
-            customerName: selectedCustomer.name,
-            orderNumber: order.order_number,
-            pdfBase64: pdfBase64, // Puede ser null si se subió a storage
-            pdfUrl: pdfUrl, // URL del PDF si se subió exitosamente
-            branchName: branchData?.name,
-            branchEmail: branchData?.email,
-          }),
-        });
-
-        if (!emailResponse.ok) {
-          let errorData: any = {};
-          try {
-            const text = await emailResponse.text();
-            console.error("[ORDER FORM] Respuesta de error (texto):", text);
-            if (text) {
-              try {
-                errorData = JSON.parse(text);
-              } catch (parseError) {
-                errorData = { error: text || 'Error desconocido', status: emailResponse.status };
-              }
-            } else {
-              errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
-            }
-          } catch (textError) {
-            console.error("[ORDER FORM] Error leyendo respuesta:", textError);
-            errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
-          }
-          console.error("[ORDER FORM] Error enviando email:", errorData);
-          alert(`Orden creada exitosamente, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}`);
-        } else {
-          let successData: any = {};
-          try {
-            const text = await emailResponse.text();
-            if (text) {
-              try {
-                successData = JSON.parse(text);
-              } catch (parseError) {
-                successData = { message: text || 'Email enviado' };
-              }
-            }
-          } catch (textError) {
-            console.error("[ORDER FORM] Error leyendo respuesta exitosa:", textError);
-            successData = { message: 'Email enviado (sin respuesta del servidor)' };
-          }
-          console.log("[ORDER FORM] Email enviado exitosamente:", successData);
-        }
-      } catch (emailError: any) {
-        console.error("[ORDER FORM] Excepción al enviar email:", emailError);
-        // No fallar la creación de la orden si el email falla
-      }
-      
+      // Mostrar éxito inmediatamente
       setCreatedOrder(orderWithRelations);
       setCreatedOrderServices(orderServicesForPDF);
       setShowPDFPreview(true);
-      alert("Orden creada exitosamente. Se abrirá la vista previa del PDF y se enviará un email al cliente.");
+      alert("Orden creada exitosamente. Se abrirá la vista previa del PDF.");
+      
+      // Enviar email al cliente en segundo plano (no bloquear)
+      // Usar setTimeout para que no bloquee la UI
+      setTimeout(async () => {
+        try {
+          // Cargar datos actualizados de la sucursal por si fueron modificados
+          let updatedBranchData = branchData;
+          if (sucursalId) {
+            const { data: updatedBranch } = await supabase
+              .from("branches")
+              .select("*")
+              .eq("id", sucursalId)
+              .single();
+            
+            if (updatedBranch) {
+              updatedBranchData = updatedBranch;
+            }
+          }
+
+          // Generar PDF con el mismo diseño que se usa en la vista previa
+          const pdfBlob = await generatePDFBlob(
+            {
+              ...orderWithRelations,
+              sucursal: updatedBranchData,
+            },
+            selectedServices,
+            serviceValue,
+            replacementCost,
+            warrantyDays,
+            checklistData,
+            [], // notes vacío para nueva orden
+            orderServicesForPDF // Pasar orderServices para que el PDF tenga la misma información detallada
+          );
+
+          // Intentar subir PDF a Supabase Storage primero
+          let pdfUrl: string | null = null;
+          let pdfBase64: string | null = null;
+          
+          try {
+            console.log("[ORDER FORM] Intentando subir PDF a Supabase Storage...");
+            pdfUrl = await uploadPDFToStorage(pdfBlob, order.order_number);
+            if (pdfUrl) {
+              console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
+            } else {
+              console.warn("[ORDER FORM] No se pudo subir PDF a Storage, usando base64 como fallback");
+              // Si no se pudo subir, generar base64 como fallback
+              pdfBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64 = (reader.result as string).split(',')[1];
+                  resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(pdfBlob);
+              });
+            }
+          } catch (uploadError) {
+            console.warn("[ORDER FORM] Error subiendo PDF a Storage, intentando adjuntar:", uploadError);
+            // Si falla la subida, convertir a base64 como fallback
+            try {
+              pdfBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64 = (reader.result as string).split(',')[1];
+                  resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(pdfBlob);
+              });
+            } catch (base64Error) {
+              console.error("[ORDER FORM] Error generando base64:", base64Error);
+            }
+          }
+          
+          // Asegurarse de que tenemos al menos uno de los dos
+          if (!pdfUrl && !pdfBase64) {
+            console.error("[ORDER FORM] No se pudo generar ni URL ni base64 del PDF");
+            // Intentar generar base64 una vez más como último recurso
+            try {
+              pdfBase64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  const base64 = (reader.result as string).split(',')[1];
+                  resolve(base64);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(pdfBlob);
+              });
+            } catch (finalError) {
+              console.error("[ORDER FORM] Error final generando base64:", finalError);
+            }
+          }
+
+          // Solo enviar email si tenemos PDF
+          if (pdfUrl || pdfBase64) {
+            // Enviar email
+            console.log("[ORDER FORM] Enviando email de creación de orden:", order.order_number);
+            const emailResponse = await fetch('/api/send-order-email', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: selectedCustomer.email,
+                customerName: selectedCustomer.name,
+                orderNumber: order.order_number,
+                pdfBase64: pdfBase64, // Puede ser null si se subió a storage
+                pdfUrl: pdfUrl, // URL del PDF si se subió exitosamente
+                branchName: updatedBranchData?.name || branchData?.name,
+                branchEmail: updatedBranchData?.email || branchData?.email,
+              }),
+            });
+
+            if (!emailResponse.ok) {
+              let errorData: any = {};
+              try {
+                const text = await emailResponse.text();
+                console.error("[ORDER FORM] Respuesta de error (texto):", text);
+                if (text) {
+                  try {
+                    errorData = JSON.parse(text);
+                  } catch (parseError) {
+                    errorData = { error: text || 'Error desconocido', status: emailResponse.status };
+                  }
+                } else {
+                  errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+                }
+              } catch (textError) {
+                console.error("[ORDER FORM] Error leyendo respuesta:", textError);
+                errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+              }
+              console.error("[ORDER FORM] Error enviando email:", errorData);
+              // No mostrar alerta aquí, solo loguear el error
+            } else {
+              let successData: any = {};
+              try {
+                const text = await emailResponse.text();
+                if (text) {
+                  try {
+                    successData = JSON.parse(text);
+                  } catch (parseError) {
+                    successData = { message: text || 'Email enviado' };
+                  }
+                }
+              } catch (textError) {
+                console.error("[ORDER FORM] Error leyendo respuesta exitosa:", textError);
+                successData = { message: 'Email enviado (sin respuesta del servidor)' };
+              }
+              console.log("[ORDER FORM] Email enviado exitosamente:", successData);
+            }
+          } else {
+            console.warn("[ORDER FORM] No se pudo generar PDF para enviar por email");
+          }
+        } catch (emailError: any) {
+          console.error("[ORDER FORM] Excepción al enviar email:", emailError);
+          // No mostrar error al usuario, solo loguear
+        }
+      }, 100); // Pequeño delay para no bloquear la UI
     } catch (error: any) {
       console.error("Error creando orden:", error);
       alert(`Error: ${error.message}`);

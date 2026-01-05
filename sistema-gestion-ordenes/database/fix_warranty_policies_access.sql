@@ -15,3 +15,4 @@ CREATE POLICY "settings_select_authenticated" ON system_settings FOR SELECT
 -- (ya están definidas en create_settings_table.sql)
 
 
+

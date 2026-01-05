@@ -16,6 +16,27 @@ export async function generatePDFBlob(
   notes?: string[],
   orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>
 ): Promise<Blob> {
+  // Cargar datos actualizados de la sucursal desde la base de datos
+  // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
+  let branchData = order.sucursal;
+  if (order.sucursal_id) {
+    const { data: updatedBranch } = await supabase
+      .from("branches")
+      .select("*")
+      .eq("id", order.sucursal_id)
+      .single();
+    
+    if (updatedBranch) {
+      branchData = updatedBranch;
+    }
+  }
+
+  // Crear orden con datos actualizados de sucursal
+  const orderForPDF = {
+    ...order,
+    sucursal: branchData,
+  };
+
   // Cargar items del checklist si existen
   let checklistItems: DeviceChecklistItem[] = [];
   if (checklistData && Object.keys(checklistData).length > 0) {
@@ -126,18 +147,18 @@ export async function generatePDFBlob(
   
   // Primero calcular la altura necesaria dibujando el contenido temporalmente
   let tempPanelY = yPosition + 10;
-  const branchName = order.sucursal?.name || "Sucursal";
+  const branchName = orderForPDF.sucursal?.name || "Sucursal";
   const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
   tempPanelY += nameLines.length * 5;
   
-  if (order.sucursal?.address) {
-    const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
+  if (orderForPDF.sucursal?.address) {
+    const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
     tempPanelY += addressLines.length * 5;
   }
-  if (order.sucursal?.phone) {
+  if (orderForPDF.sucursal?.phone) {
     tempPanelY += 5;
   }
-  if (order.sucursal?.email) {
+  if (orderForPDF.sucursal?.email) {
     tempPanelY += 5;
   }
   
@@ -170,30 +191,30 @@ export async function generatePDFBlob(
   doc.text(nameLines, margin + 25, panelY);
   panelY += nameLines.length * 5;
 
-  if (order.sucursal?.address) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Dirección:", margin + 3, panelY);
-    doc.setFont("helvetica", "normal");
-    const addressLines = doc.splitTextToSize(order.sucursal.address, (contentWidth - 10) / 2 - 30);
-    doc.text(addressLines, margin + 25, panelY);
-    panelY += addressLines.length * 5;
-  }
+      if (orderForPDF.sucursal?.address) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Dirección:", margin + 3, panelY);
+        doc.setFont("helvetica", "normal");
+        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
+        doc.text(addressLines, margin + 25, panelY);
+        panelY += addressLines.length * 5;
+      }
 
-  if (order.sucursal?.phone) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Teléfono:", margin + 3, panelY);
-    doc.setFont("helvetica", "normal");
-    doc.text(order.sucursal.phone, margin + 25, panelY);
-    panelY += 5;
-  }
+      if (orderForPDF.sucursal?.phone) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Teléfono:", margin + 3, panelY);
+        doc.setFont("helvetica", "normal");
+        doc.text(orderForPDF.sucursal.phone, margin + 25, panelY);
+        panelY += 5;
+      }
 
-  if (order.sucursal?.email) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Correo:", margin + 3, panelY);
-    doc.setFont("helvetica", "normal");
-    doc.text(order.sucursal.email, margin + 25, panelY);
-    panelY += 5;
-  }
+      if (orderForPDF.sucursal?.email) {
+        doc.setFont("helvetica", "bold");
+        doc.text("Correo:", margin + 3, panelY);
+        doc.setFont("helvetica", "normal");
+        doc.text(orderForPDF.sucursal.email, margin + 25, panelY);
+        panelY += 5;
+      }
 
   // === PANEL CLIENTE (Derecha) ===
   const clientPanelX = margin + (contentWidth - 10) / 2 + 10;
