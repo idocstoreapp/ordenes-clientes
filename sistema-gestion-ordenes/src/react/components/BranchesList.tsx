@@ -71,7 +71,7 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
         updated_at: new Date().toISOString(),
       };
 
-      // Si se proporcionó email y contraseña, guardarlos directamente en branches
+      // Si se proporcionó email, guardarlo directamente en branches
       if (userEmail) {
         branchUpdateData.login_email = userEmail;
         
@@ -85,17 +85,19 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
             });
             
             if (!hashResponse.ok) {
-              throw new Error('Error al hashear la contraseña');
+              const errorData = await hashResponse.json().catch(() => ({}));
+              throw new Error(errorData.message || 'Error al hashear la contraseña');
             }
             
             const { hash } = await hashResponse.json();
             branchUpdateData.password_hash = hash;
           } catch (hashError: any) {
             console.error("Error hasheando contraseña:", hashError);
-            throw new Error(`Error al procesar la contraseña: ${hashError.message}`);
+            alert(`Error al procesar la contraseña: ${hashError.message}`);
+            return;
           }
         }
-        // Si no se proporcionó contraseña pero hay email, mantener el hash existente (no actualizar)
+        // Si no se proporcionó contraseña pero hay email y es edición, mantener el hash existente (no actualizar)
       }
       
       if (editingBranch) {
@@ -105,7 +107,10 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
           .update(branchUpdateData)
           .eq("id", editingBranch.id);
 
-        if (error) throw error;
+        if (error) {
+          console.error("Error de Supabase:", error);
+          throw error;
+        }
 
         alert("Sucursal actualizada exitosamente");
       } else {
@@ -122,7 +127,10 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          console.error("Error de Supabase:", error);
+          throw error;
+        }
 
         alert("Sucursal creada exitosamente");
       }
@@ -132,7 +140,40 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
       setShowForm(false);
     } catch (error: any) {
       console.error("Error guardando sucursal:", error);
-      alert(`Error: ${error.message}`);
+      alert(`Error: ${error.message || 'Error desconocido al guardar la sucursal'}`);
+    }
+  }
+
+  async function handleDelete(branchId: string, branchName: string) {
+    if (!confirm(`¿Estás seguro de que deseas eliminar la sucursal "${branchName}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    try {
+      // Verificar si hay órdenes asociadas a esta sucursal
+      const { count } = await supabase
+        .from("work_orders")
+        .select("*", { count: "exact", head: true })
+        .eq("sucursal_id", branchId);
+
+      if (count && count > 0) {
+        if (!confirm(`Esta sucursal tiene ${count} orden(es) asociada(s). ¿Deseas eliminarla de todas formas?`)) {
+          return;
+        }
+      }
+
+      const { error } = await supabase
+        .from("branches")
+        .delete()
+        .eq("id", branchId);
+
+      if (error) throw error;
+
+      alert("Sucursal eliminada exitosamente");
+      await loadData();
+    } catch (error: any) {
+      console.error("Error eliminando sucursal:", error);
+      alert(`Error: ${error.message || 'Error desconocido al eliminar la sucursal'}`);
     }
   }
 
@@ -216,14 +257,22 @@ export default function BranchesList({ currentUser }: BranchesListProps) {
                         Editar
                       </button>
                       {isAdmin && (
-                        <button
-                          onClick={() => {
-                            setPermissionsBranch(branch);
-                          }}
-                          className="px-3 py-1 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700"
-                        >
-                          Permisos
-                        </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setPermissionsBranch(branch);
+                            }}
+                            className="px-3 py-1 text-sm bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                          >
+                            Permisos
+                          </button>
+                          <button
+                            onClick={() => handleDelete(branch.id, branch.name || branch.razon_social || 'Sucursal')}
+                            className="px-3 py-1 text-sm bg-red-600 text-white rounded-md hover:bg-red-700"
+                          >
+                            Eliminar
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -264,22 +313,30 @@ function BranchForm({ branch, onSave, onCancel, isAdmin }: BranchFormProps) {
     userPassword: "",
   });
 
-  // Cargar datos de autenticación de la sucursal si existe
+  // Cargar todos los datos de la sucursal cuando se edita
   useEffect(() => {
-    if (branch?.login_email) {
-      setFormData(prev => ({ 
-        ...prev, 
+    if (branch) {
+      setFormData({
+        name: branch.name || "",
+        razon_social: branch.razon_social || "",
+        address: branch.address || "",
+        phone: branch.phone || "",
+        email: branch.email || "",
         userEmail: branch.login_email || "",
-        // No cargar contraseña por seguridad
-      }));
+        userPassword: "", // No cargar contraseña por seguridad
+      });
     } else {
-      setFormData(prev => ({ 
-        ...prev, 
+      setFormData({
+        name: "",
+        razon_social: "",
+        address: "",
+        phone: "",
+        email: "",
         userEmail: "",
         userPassword: "",
-      }));
+      });
     }
-  }, [branch?.id, branch?.login_email]);
+  }, [branch?.id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -294,8 +351,8 @@ function BranchForm({ branch, onSave, onCancel, isAdmin }: BranchFormProps) {
       return;
     }
     
-    // Validar contraseña si es usuario nuevo
-    if (!branchUser && formData.userEmail && (!formData.userPassword || formData.userPassword.length < 6)) {
+    // Validar contraseña si es sucursal nueva (sin login_email existente)
+    if (!branch?.login_email && formData.userEmail && (!formData.userPassword || formData.userPassword.length < 6)) {
       alert("La contraseña debe tener al menos 6 caracteres");
       return;
     }

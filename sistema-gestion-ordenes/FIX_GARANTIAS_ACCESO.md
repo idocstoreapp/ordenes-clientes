@@ -34,3 +34,4 @@ Se actualizó la política RLS para permitir que todos los usuarios autenticados
 ## Nota
 Las políticas de INSERT y UPDATE se mantienen solo para admins, por lo que solo los administradores pueden modificar las garantías, pero todos los usuarios autenticados pueden leerlas para mostrarlas en los PDFs.
 
+

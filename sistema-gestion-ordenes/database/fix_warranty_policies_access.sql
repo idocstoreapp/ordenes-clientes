@@ -14,3 +14,4 @@ CREATE POLICY "settings_select_authenticated" ON system_settings FOR SELECT
 -- Las políticas de INSERT y UPDATE se mantienen solo para admin
 -- (ya están definidas en create_settings_table.sql)
 
+
