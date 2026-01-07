@@ -188,6 +188,27 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                   created_at: os.created_at || new Date().toISOString(),
                 }));
 
+                // Cargar datos actualizados de la sucursal desde la base de datos
+                // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
+                let branchData = null;
+                if (order.sucursal_id) {
+                  const { data: updatedBranch, error: branchError } = await supabase
+                    .from("branches")
+                    .select("*")
+                    .eq("id", order.sucursal_id)
+                    .single();
+                  
+                  if (!branchError && updatedBranch) {
+                    branchData = updatedBranch;
+                  } else if (order.sucursal) {
+                    // Si falla la carga pero existe en la relación, usar la relación
+                    branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+                  }
+                } else if (order.sucursal) {
+                  // Si no hay sucursal_id pero existe la relación, usar la relación
+                  branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+                }
+
                 // Calcular serviceValue: suma de todos los total_price de los servicios
                 // Si no hay servicios guardados, usar labor_cost
                 let serviceValue = order.labor_cost || 0;
@@ -199,8 +220,14 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                 const warrantyDays = order.warranty_days || 30;
                 const notes = (orderNotes || []).map((n: any) => n.note);
 
+                // Crear orden con datos actualizados de sucursal
+                const orderWithUpdatedBranch = {
+                  ...order,
+                  sucursal: branchData,
+                };
+
                 setPdfOrderData({
-                  order,
+                  order: orderWithUpdatedBranch,
                   services,
                   orderServices: orderServices || undefined,
                   serviceValue,

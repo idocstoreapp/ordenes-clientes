@@ -100,28 +100,93 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }
       }
 
-      // Obtener datos del usuario (sucursal_id)
-      const { data: tech, error: techError } = await supabase
-        .from("users")
-        .select("sucursal_id")
-        .eq("id", technicianId)
-        .single();
-
-      if (techError) throw techError;
-
-      const sucursalId = tech?.sucursal_id || null;
-
-      // Cargar datos completos de la sucursal por separado
+      // Verificar si es una sucursal (no tiene usuario en auth.users)
+      // Las sucursales tienen su sesión guardada en localStorage
+      let isBranch = false;
+      let sucursalId: string | null = null;
       let branchData = null;
-      if (sucursalId) {
-        const { data: branch, error: branchError } = await supabase
-          .from("branches")
-          .select("*")
-          .eq("id", sucursalId)
-          .single();
-        
-        if (!branchError && branch) {
-          branchData = branch;
+      let actualTechnicianId: string | null = technicianId;
+
+      // Verificar si hay sesión de sucursal en localStorage
+      if (typeof window !== 'undefined') {
+        const branchSessionStr = localStorage.getItem('branchSession');
+        if (branchSessionStr) {
+          try {
+            const branchSession = JSON.parse(branchSessionStr);
+            if (branchSession.type === 'branch' && branchSession.branchId === technicianId) {
+              // Es una sucursal - usar el branchId como sucursal_id
+              isBranch = true;
+              sucursalId = branchSession.branchId;
+              actualTechnicianId = null; // Las sucursales no tienen technician_id
+              
+              // Cargar datos completos de la sucursal
+              const { data: branch, error: branchError } = await supabase
+                .from("branches")
+                .select("*")
+                .eq("id", sucursalId)
+                .single();
+              
+              if (!branchError && branch) {
+                branchData = branch;
+              }
+            }
+          } catch (e) {
+            console.error("Error parseando branchSession:", e);
+          }
+        }
+      }
+
+      // Si no es sucursal, obtener datos del usuario normal
+      if (!isBranch) {
+        const { data: tech, error: techError } = await supabase
+          .from("users")
+          .select("sucursal_id")
+          .eq("id", technicianId)
+          .maybeSingle(); // Usar maybeSingle en lugar de single para evitar error si no existe
+
+        if (techError) {
+          // Si el error es porque no existe el usuario, podría ser una sucursal
+          // Intentar verificar si es una sucursal por el ID
+          const { data: branchCheck, error: branchCheckError } = await supabase
+            .from("branches")
+            .select("id")
+            .eq("id", technicianId)
+            .maybeSingle();
+          
+          if (!branchCheckError && branchCheck) {
+            // Es una sucursal
+            isBranch = true;
+            sucursalId = technicianId;
+            actualTechnicianId = null;
+            
+            // Cargar datos completos de la sucursal
+            const { data: branch, error: branchError } = await supabase
+              .from("branches")
+              .select("*")
+              .eq("id", sucursalId)
+              .single();
+            
+            if (!branchError && branch) {
+              branchData = branch;
+            }
+          } else {
+            throw techError;
+          }
+        } else {
+          sucursalId = tech?.sucursal_id || null;
+          
+          // Cargar datos completos de la sucursal por separado
+          if (sucursalId) {
+            const { data: branch, error: branchError } = await supabase
+              .from("branches")
+              .select("*")
+              .eq("id", sucursalId)
+              .single();
+            
+            if (!branchError && branch) {
+              branchData = branch;
+            }
+          }
         }
       }
 
@@ -131,7 +196,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       const orderData: any = {
           order_number: null, // El trigger de BD lo generará automáticamente
           customer_id: selectedCustomer.id,
-          technician_id: technicianId,
+          technician_id: actualTechnicianId, // NULL para sucursales, technicianId para usuarios normales
           sucursal_id: sucursalId,
         device_type: deviceType || "iphone",
         device_model: deviceModel,

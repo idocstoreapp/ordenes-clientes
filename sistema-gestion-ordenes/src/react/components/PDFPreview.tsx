@@ -58,15 +58,22 @@ export default function PDFPreview({
     try {
       // Cargar datos actualizados de la sucursal desde la base de datos
       // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
-      let branchData = order.sucursal;
+      let branchData = null;
+      
+      // Si order.sucursal es un array (relación de Supabase), tomar el primer elemento
+      if (order.sucursal) {
+        branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+      }
+      
+      // Siempre intentar cargar datos actualizados desde la BD
       if (order.sucursal_id) {
-        const { data: updatedBranch } = await supabase
+        const { data: updatedBranch, error: branchError } = await supabase
           .from("branches")
           .select("*")
           .eq("id", order.sucursal_id)
           .single();
         
-        if (updatedBranch) {
+        if (!branchError && updatedBranch) {
           branchData = updatedBranch;
         }
       }
@@ -865,6 +872,33 @@ export default function PDFPreview({
 
   async function generatePDFBoleta() {
     try {
+      // Cargar datos actualizados de la sucursal desde la base de datos
+      let branchData = null;
+      
+      // Si order.sucursal es un array (relación de Supabase), tomar el primer elemento
+      if (order.sucursal) {
+        branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+      }
+      
+      // Siempre intentar cargar datos actualizados desde la BD
+      if (order.sucursal_id) {
+        const { data: updatedBranch, error: branchError } = await supabase
+          .from("branches")
+          .select("*")
+          .eq("id", order.sucursal_id)
+          .single();
+        
+        if (!branchError && updatedBranch) {
+          branchData = updatedBranch;
+        }
+      }
+
+      // Crear orden con datos actualizados de sucursal
+      const orderForPDF = {
+        ...order,
+        sucursal: branchData,
+      };
+
       // Cargar configuración del sistema
       const settings = await getSystemSettings();
 
@@ -946,17 +980,17 @@ export default function PDFPreview({
       yPosition += 6;
       doc.text(`Fecha de Emisión: ${formatDateTime(order.created_at)}`, margin, yPosition);
       yPosition += 6;
-      if (order.sucursal?.phone) {
-        doc.text(`Teléfono: ${order.sucursal.phone}`, margin, yPosition);
+      if (orderForPDF.sucursal?.phone) {
+        doc.text(`Teléfono: ${orderForPDF.sucursal.phone}`, margin, yPosition);
         yPosition += 6;
       }
-      if (order.sucursal?.address) {
-        const addressLines = doc.splitTextToSize(`Dirección: ${order.sucursal.address}`, contentWidth);
+      if (orderForPDF.sucursal?.address) {
+        const addressLines = doc.splitTextToSize(`Dirección: ${orderForPDF.sucursal.address}`, contentWidth);
         doc.text(addressLines, margin, yPosition);
         yPosition += addressLines.length * 6;
       }
-      if (order.sucursal?.email) {
-        doc.text(`Email: ${order.sucursal.email}`, margin, yPosition);
+      if (orderForPDF.sucursal?.email) {
+        doc.text(`Email: ${orderForPDF.sucursal.email}`, margin, yPosition);
         yPosition += 6;
       }
       yPosition += 10;
@@ -1139,6 +1173,33 @@ export default function PDFPreview({
 
   async function generatePDFEtiqueta() {
     try {
+      // Cargar datos actualizados de la sucursal desde la base de datos
+      let branchData = null;
+      
+      // Si order.sucursal es un array (relación de Supabase), tomar el primer elemento
+      if (order.sucursal) {
+        branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+      }
+      
+      // Siempre intentar cargar datos actualizados desde la BD
+      if (order.sucursal_id) {
+        const { data: updatedBranch, error: branchError } = await supabase
+          .from("branches")
+          .select("*")
+          .eq("id", order.sucursal_id)
+          .single();
+        
+        if (!branchError && updatedBranch) {
+          branchData = updatedBranch;
+        }
+      }
+
+      // Crear orden con datos actualizados de sucursal
+      const orderForPDF = {
+        ...order,
+        sucursal: branchData,
+      };
+
       // Formato etiqueta 80mm x 2000mm (mismo formato que boleta)
       const widthMM = 80;
       const heightMM = 2000;
@@ -1215,7 +1276,7 @@ export default function PDFPreview({
         doc.setFont("helvetica", "bold");
         doc.text("Local:", margin, yPosition);
         doc.setFont("helvetica", "normal");
-        doc.text(order.sucursal.name, margin + 50, yPosition);
+        doc.text(orderForPDF.sucursal.name, margin + 50, yPosition);
         yPosition += 12; // Aumentado de 8 a 12
       }
 

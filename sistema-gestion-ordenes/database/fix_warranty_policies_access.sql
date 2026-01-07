@@ -16,3 +16,4 @@ CREATE POLICY "settings_select_authenticated" ON system_settings FOR SELECT
 
 
 
+

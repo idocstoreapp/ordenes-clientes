@@ -341,6 +341,27 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
       if (notesError) throw notesError;
 
+      // Cargar datos actualizados de la sucursal desde la base de datos
+      // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
+      let branchData = null;
+      if (order.sucursal_id) {
+        const { data: updatedBranch, error: branchError } = await supabase
+          .from("branches")
+          .select("*")
+          .eq("id", order.sucursal_id)
+          .single();
+        
+        if (!branchError && updatedBranch) {
+          branchData = updatedBranch;
+        } else if (order.sucursal) {
+          // Si falla la carga pero existe en la relación, usar la relación
+          branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+        }
+      } else if (order.sucursal) {
+        // Si no hay sucursal_id pero existe la relación, usar la relación
+        branchData = Array.isArray(order.sucursal) ? order.sucursal[0] : order.sucursal;
+      }
+
       // Convertir order_services a servicios
       const services: Service[] = (orderServices || []).map((os: any) => ({
         id: os.service_id || os.id,
@@ -361,8 +382,14 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       const warrantyDays = order.warranty_days || 30;
       const notes = (orderNotes || []).map((n: any) => n.note);
 
+      // Crear orden con datos actualizados de sucursal
+      const orderWithUpdatedBranch = {
+        ...order,
+        sucursal: branchData,
+      };
+
       setPdfOrderData({
-        order,
+        order: orderWithUpdatedBranch,
         services,
         orderServices: orderServices || undefined,
         serviceValue,
