@@ -120,30 +120,105 @@ export default function CustomerSearch({ selectedCustomer, onCustomerSelect }: C
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("customers")
-        .insert({
-          name: newCustomer.name.trim(),
-          email: newCustomer.email.trim().toLowerCase(),
-          phone: newCustomer.phone.trim(),
-          phone_country_code: newCustomer.phoneCountryCode,
-          rut_document: newCustomer.rutDocument?.trim() || null,
-          address: newCustomer.address?.trim() || null,
-        })
-        .select()
-        .single();
+      const email = newCustomer.email.trim().toLowerCase();
+      const phone = newCustomer.phone.trim();
 
-      if (error) {
-        console.error("Error creando cliente:", error);
-        alert(`Error al crear cliente: ${error.message}`);
-        setLoading(false);
-        return;
+      // Primero verificar si ya existe un cliente con ese email y teléfono
+      const { data: existingCustomer, error: searchError } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("email", email)
+        .eq("phone", phone)
+        .maybeSingle();
+
+      if (searchError && searchError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error("Error buscando cliente:", searchError);
+        throw searchError;
       }
 
-      if (data) {
-        onCustomerSelect(data);
+      let customerData;
+
+      if (existingCustomer) {
+        // Si el cliente ya existe, usar el existente
+        // Pero actualizar los campos que puedan haber cambiado (nombre, dirección, RUT)
+        const updates: any = {};
+        if (newCustomer.name.trim() !== existingCustomer.name) {
+          updates.name = newCustomer.name.trim();
+        }
+        if (newCustomer.address?.trim() && newCustomer.address.trim() !== existingCustomer.address) {
+          updates.address = newCustomer.address.trim();
+        }
+        if (newCustomer.rutDocument?.trim() && newCustomer.rutDocument.trim() !== existingCustomer.rut_document) {
+          updates.rut_document = newCustomer.rutDocument.trim();
+        }
+
+        if (Object.keys(updates).length > 0) {
+          // Actualizar solo si hay cambios
+          const { data: updatedCustomer, error: updateError } = await supabase
+            .from("customers")
+            .update(updates)
+            .eq("id", existingCustomer.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.error("Error actualizando cliente:", updateError);
+            // Si falla la actualización, usar el cliente existente tal cual
+            customerData = existingCustomer;
+          } else {
+            customerData = updatedCustomer;
+          }
+        } else {
+          customerData = existingCustomer;
+        }
+      } else {
+        // Si no existe, crear el nuevo cliente
+        const { data, error } = await supabase
+          .from("customers")
+          .insert({
+            name: newCustomer.name.trim(),
+            email: email,
+            phone: phone,
+            phone_country_code: newCustomer.phoneCountryCode,
+            rut_document: newCustomer.rutDocument?.trim() || null,
+            address: newCustomer.address?.trim() || null,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          // Si el error es por duplicado, intentar buscar el cliente nuevamente
+          if (error.code === '23505' || error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+            const { data: foundCustomer, error: findError } = await supabase
+              .from("customers")
+              .select("*")
+              .eq("email", email)
+              .eq("phone", phone)
+              .maybeSingle();
+
+            if (findError || !foundCustomer) {
+              console.error("Error creando cliente:", error);
+              alert(`Error al crear cliente: ${error.message}`);
+              setLoading(false);
+              return;
+            }
+
+            customerData = foundCustomer;
+          } else {
+            console.error("Error creando cliente:", error);
+            alert(`Error al crear cliente: ${error.message}`);
+            setLoading(false);
+            return;
+          }
+        } else {
+          customerData = data;
+        }
+      }
+
+      if (customerData) {
+        onCustomerSelect(customerData);
         setShowForm(false);
-        setSearchTerm(data.name);
+        setSearchTerm(customerData.name);
         setCustomers([]);
         setShowResults(false);
         setNewCustomer({
