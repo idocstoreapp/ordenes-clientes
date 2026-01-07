@@ -41,17 +41,27 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [createdOrderServices, setCreatedOrderServices] = useState<Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>>([]);
+  const [showDeviceCategoryModal, setShowDeviceCategoryModal] = useState(false);
+  const [pendingDeviceModel, setPendingDeviceModel] = useState("");
 
   useEffect(() => {
     if (deviceModel) {
       const detected = detectDeviceType(deviceModel);
-      setDeviceType(detected);
+      if (detected) {
+        setDeviceType(detected);
+        setShowDeviceCategoryModal(false);
+      } else {
+        // Si no se detecta el tipo pero hay texto, permitir continuar sin tipo
+        // El usuario puede seleccionar la categoría manualmente
+        setDeviceType(null);
+      }
       const suggestions = getSmartSuggestions(deviceModel);
       setDeviceSuggestions(suggestions.slice(0, 5));
       setShowDeviceSuggestions(true);
     } else {
       setDeviceSuggestions([]);
       setShowDeviceSuggestions(false);
+      setDeviceType(null);
     }
   }, [deviceModel]);
 
@@ -587,6 +597,102 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           />
         )}
       </div>
+
+      {/* Modal para seleccionar categoría de dispositivo */}
+      {showDeviceCategoryModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
+              Agregar Nuevo Dispositivo
+            </h3>
+            <p className="text-slate-600 mb-4">
+              El dispositivo <strong>"{pendingDeviceModel || deviceModel}"</strong> no está en el listado.
+              Por favor, selecciona la categoría del dispositivo:
+            </p>
+            <div className="space-y-2 mb-6">
+              <button
+                onClick={() => {
+                  setDeviceType("iphone");
+                  setShowDeviceCategoryModal(false);
+                }}
+                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+              >
+                <span className="font-medium">📱 Celular</span>
+                <p className="text-sm text-slate-600">iPhone, Android, etc.</p>
+              </button>
+              <button
+                onClick={() => {
+                  setDeviceType("ipad");
+                  setShowDeviceCategoryModal(false);
+                }}
+                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+              >
+                <span className="font-medium">📱 Tablet</span>
+                <p className="text-sm text-slate-600">iPad, Android Tablet, etc.</p>
+              </button>
+              <button
+                onClick={() => {
+                  setDeviceType("macbook");
+                  setShowDeviceCategoryModal(false);
+                }}
+                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+              >
+                <span className="font-medium">💻 Notebook / Laptop</span>
+                <p className="text-sm text-slate-600">MacBook, Windows Laptop, etc.</p>
+              </button>
+              <button
+                onClick={() => {
+                  setDeviceType("apple_watch");
+                  setShowDeviceCategoryModal(false);
+                }}
+                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+              >
+                <span className="font-medium">⌚ Smartwatch</span>
+                <p className="text-sm text-slate-600">Apple Watch, Android Watch, etc.</p>
+              </button>
+              <button
+                onClick={() => {
+                  // Para "Otro", usar un tipo genérico o permitir crear uno nuevo
+                  // Por ahora usaremos "iphone" como base pero el usuario puede agregar items personalizados
+                  setDeviceType("iphone");
+                  setShowDeviceCategoryModal(false);
+                }}
+                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+              >
+                <span className="font-medium">🔧 Otro</span>
+                <p className="text-sm text-slate-600">Otro tipo de dispositivo</p>
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setShowDeviceCategoryModal(false);
+                setPendingDeviceModel("");
+              }}
+              className="w-full px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Botón para agregar categoría si no se detectó tipo */}
+      {deviceModel && !deviceType && !showDeviceCategoryModal && (
+        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-md">
+          <p className="text-sm text-amber-800 mb-2">
+            No se detectó la categoría del dispositivo. Para mostrar el checklist, selecciona la categoría:
+          </p>
+          <button
+            onClick={() => {
+              setPendingDeviceModel(deviceModel);
+              setShowDeviceCategoryModal(true);
+            }}
+            className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 text-sm font-medium"
+          >
+            ➕ Agregar Nuevo Dispositivo
+          </button>
+        </div>
+      )}
 
       {/* Checklist Dinámico */}
       {deviceType && (
