@@ -34,6 +34,13 @@ let cacheTimestamp: number | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos en milisegundos
 
 export async function getSystemSettings(forceRefresh: boolean = false): Promise<SystemSettings> {
+  // Si se fuerza la recarga, limpiar el caché primero
+  if (forceRefresh) {
+    cachedSettings = null;
+    cacheTimestamp = null;
+    console.log("[SETTINGS] Forzando recarga de configuraciones del sistema");
+  }
+  
   // Si hay caché válido y no se fuerza la recarga, usar caché
   if (!forceRefresh && cachedSettings && cacheTimestamp) {
     const now = Date.now();

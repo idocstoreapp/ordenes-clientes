@@ -12,3 +12,4 @@ CREATE POLICY "customers_update_all" ON customers FOR UPDATE
   USING (true)
   WITH CHECK (true);
 
+

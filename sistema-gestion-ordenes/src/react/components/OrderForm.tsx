@@ -30,6 +30,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [deviceUnlockPattern, setDeviceUnlockPattern] = useState<number[]>([]);
   const [showPatternDrawer, setShowPatternDrawer] = useState(false);
   const [problemDescription, setProblemDescription] = useState("");
+  const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
   const [checklistData, setChecklistData] = useState<Record<string, "ok" | "damaged" | "replaced" | "no_probado">>({});
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [replacementCost, setReplacementCost] = useState(0);
@@ -94,6 +95,12 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     
     if (!selectedCustomer || !deviceModel || !problemDescription || selectedServices.length === 0 || serviceValue <= 0) {
       alert("Por favor completa todos los campos obligatorios (incluyendo valor del servicio)");
+      return;
+    }
+    
+    // Validar que la descripción no exceda el límite de caracteres
+    if (problemDescription.length > MAX_DESCRIPTION_LENGTH) {
+      alert(`La descripción excede el límite máximo de ${MAX_DESCRIPTION_LENGTH} caracteres. Por favor, acórtala.`);
       return;
     }
 
@@ -276,6 +283,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       }));
       
       // Mostrar éxito inmediatamente
+      // IMPORTANTE: Resetear isSubmitting ANTES de mostrar el preview para evitar duplicaciones
+      setIsSubmitting(false);
+      setLoading(false);
+      
       setCreatedOrder(orderWithRelations);
       setCreatedOrderServices(orderServicesForPDF);
       setShowPDFPreview(true);
@@ -441,7 +452,12 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     } catch (error: any) {
       console.error("Error creando orden:", error);
       alert(`Error: ${error.message}`);
+      // Asegurar que se reseteen los estados incluso en caso de error
+      setShowPDFPreview(false);
+      setCreatedOrder(null);
+      setCreatedOrderServices([]);
     } finally {
+      // Asegurar que siempre se reseteen los estados
       setLoading(false);
       setIsSubmitting(false);
     }
@@ -719,14 +735,38 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       {/* Descripción del Problema */}
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-2">
-          Descripción del Problema *
+          Descripción del Problema * (Máximo {MAX_DESCRIPTION_LENGTH} caracteres)
         </label>
         <textarea
-          className="w-full border border-slate-300 rounded-md px-3 py-2 min-h-[100px]"
+          className={`w-full border rounded-md px-3 py-2 min-h-[100px] ${
+            problemDescription.length > MAX_DESCRIPTION_LENGTH
+              ? "border-red-500 bg-red-50"
+              : "border-slate-300"
+          }`}
           value={problemDescription}
-          onChange={(e) => setProblemDescription(e.target.value)}
+          onChange={(e) => {
+            const newValue = e.target.value;
+            // Limitar a MAX_DESCRIPTION_LENGTH caracteres
+            if (newValue.length <= MAX_DESCRIPTION_LENGTH) {
+              setProblemDescription(newValue);
+            }
+          }}
+          maxLength={MAX_DESCRIPTION_LENGTH}
           required
         />
+        <div className="mt-1 flex justify-between items-center">
+          <span className={`text-xs ${
+            problemDescription.length > MAX_DESCRIPTION_LENGTH
+              ? "text-red-600 font-semibold"
+              : problemDescription.length > MAX_DESCRIPTION_LENGTH * 0.9
+              ? "text-amber-600"
+              : "text-slate-500"
+          }`}>
+            {problemDescription.length > MAX_DESCRIPTION_LENGTH
+              ? `⚠️ Excede el límite por ${problemDescription.length - MAX_DESCRIPTION_LENGTH} caracteres`
+              : `${problemDescription.length} / ${MAX_DESCRIPTION_LENGTH} caracteres`}
+          </span>
+        </div>
       </div>
 
       {/* Servicios */}
@@ -862,7 +902,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </button>
         <button
           type="submit"
-          disabled={loading || isSubmitting}
+          disabled={loading || isSubmitting || problemDescription.length > MAX_DESCRIPTION_LENGTH}
           className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading || isSubmitting ? "Guardando..." : "Crear Orden"}

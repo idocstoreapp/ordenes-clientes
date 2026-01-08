@@ -73,7 +73,7 @@ export const POST: APIRoute = async ({ request }) => {
       pdfBase64, 
       pdfUrl, // URL del PDF si se subió a storage
       branchName,
-      branchEmail,
+      branchEmail, // Ya no se usa, pero se mantiene para compatibilidad
       emailType = 'order_created' // 'order_created' o 'ready_for_pickup'
     } = body;
     
@@ -101,9 +101,10 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // Email de origen (usar el de la sucursal si está disponible, o uno por defecto)
+    // Email de origen: SIEMPRE usar el email del admin (todas las sucursales usan el mismo)
     // IMPORTANTE: El email debe ser del dominio verificado en Resend
-    const fromEmail = branchEmail || "informacion@app.idocstore.cl";
+    // Todas las sucursales envían desde el mismo correo del admin
+    const fromEmail = "info@idocstore.cl";
     const fromName = branchName ? `${branchName} - iDocStore` : "iDocStore";
     
     // Validar que el email del destinatario sea válido
