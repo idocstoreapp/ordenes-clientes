@@ -867,16 +867,20 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         <CustomerEditModal
           customer={editingCustomer}
           onClose={() => setEditingCustomer(null)}
-          onSave={(updatedCustomer) => {
+          onSave={async (updatedCustomer) => {
+            console.log("[OrdersTable] Cliente actualizado recibido:", updatedCustomer);
             // Actualizar el cliente en todas las órdenes que lo referencian
             setOrders(orders.map(order => {
-              if ((order.customer as any)?.id === updatedCustomer.id) {
+              const customerId = (order.customer as any)?.id || (order.customer as Customer)?.id;
+              if (customerId === updatedCustomer.id) {
+                console.log("[OrdersTable] Actualizando cliente en orden:", order.order_number);
                 return { ...order, customer: updatedCustomer };
               }
               return order;
             }));
             setEditingCustomer(null);
-            loadOrders(); // Recargar para asegurar consistencia
+            // Recargar órdenes para asegurar consistencia con la base de datos
+            await loadOrders();
           }}
         />
       )}

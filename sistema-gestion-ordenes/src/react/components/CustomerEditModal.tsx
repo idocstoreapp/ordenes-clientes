@@ -43,32 +43,59 @@ export default function CustomerEditModal({ customer, onClose, onSave }: Custome
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Preparar datos de actualización
+      const updateData = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        phone_country_code: formData.phoneCountryCode,
+        rut_document: formData.rutDocument?.trim() || null,
+        address: formData.address?.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log("[CustomerEditModal] Actualizando cliente:", customer.id, updateData);
+
+      // Hacer el update con select para obtener el resultado directamente
+      const { data: updatedCustomer, error: updateError } = await supabase
         .from("customers")
-        .update({
-          name: formData.name.trim(),
-          email: formData.email.trim().toLowerCase(),
-          phone: formData.phone.trim(),
-          phone_country_code: formData.phoneCountryCode,
-          rut_document: formData.rutDocument?.trim() || null,
-          address: formData.address?.trim() || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", customer.id)
         .select()
-        .single();
+        .maybeSingle();
 
-      if (error) {
-        console.error("Error actualizando cliente:", error);
-        alert(`Error al actualizar cliente: ${error.message}`);
+      if (updateError) {
+        console.error("[CustomerEditModal] Error actualizando cliente:", updateError);
+        alert(`Error al actualizar cliente: ${updateError.message}`);
         setLoading(false);
         return;
       }
 
-      if (data) {
-        onSave(data);
+      if (!updatedCustomer) {
+        console.error("[CustomerEditModal] No se obtuvo cliente actualizado después del update");
+        // Intentar obtener el cliente nuevamente como fallback
+        const { data: fallbackCustomer, error: selectError } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("id", customer.id)
+          .maybeSingle();
+
+        if (selectError || !fallbackCustomer) {
+          alert("Error: No se pudo obtener el cliente actualizado. Por favor, recarga la página.");
+          setLoading(false);
+          return;
+        }
+
+        // Usar el cliente del fallback
+        console.log("[CustomerEditModal] Usando cliente del fallback:", fallbackCustomer);
+        onSave(fallbackCustomer);
         onClose();
+        return;
       }
+
+      console.log("[CustomerEditModal] Cliente actualizado exitosamente:", updatedCustomer);
+      onSave(updatedCustomer);
+      onClose();
     } catch (error: any) {
       console.error("Error inesperado:", error);
       alert(`Error inesperado: ${error.message}`);
