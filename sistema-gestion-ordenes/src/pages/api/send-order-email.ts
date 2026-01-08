@@ -104,7 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
     // Email de origen: SIEMPRE usar el email del admin (todas las sucursales usan el mismo)
     // IMPORTANTE: El email debe ser del dominio verificado en Resend
     // Todas las sucursales envían desde el mismo correo del admin
-    const fromEmail = "info@idocstore.cl";
+    const fromEmail = "info@app.idocstore.cl";
     const fromName = branchName ? `${branchName} - iDocStore` : "iDocStore";
     
     // Validar que el email del destinatario sea válido
