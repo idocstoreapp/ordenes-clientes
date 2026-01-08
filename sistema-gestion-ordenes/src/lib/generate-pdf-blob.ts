@@ -56,8 +56,8 @@ export async function generatePDFBlob(
   const contentWidth = pageWidth - 2 * margin;
   let yPosition = margin;
 
-  // Cargar configuración del sistema
-  const settings = await getSystemSettings();
+  // Cargar configuración del sistema (forzar recarga para obtener garantías más recientes)
+  const settings = await getSystemSettings(true);
 
   // Color de las franjas (gris claro para ahorrar tinta)
   const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro

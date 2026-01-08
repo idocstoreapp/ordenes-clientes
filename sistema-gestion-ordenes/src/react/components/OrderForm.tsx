@@ -38,6 +38,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [commitmentDate, setCommitmentDate] = useState("");
   const [warrantyDays, setWarrantyDays] = useState(30);
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra múltiples submits
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [createdOrderServices, setCreatedOrderServices] = useState<Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>>([]);
@@ -84,11 +85,19 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    
+    // Protección contra múltiples submits
+    if (isSubmitting || loading) {
+      console.warn("Submit ya en progreso, ignorando llamada duplicada");
+      return;
+    }
+    
     if (!selectedCustomer || !deviceModel || !problemDescription || selectedServices.length === 0 || serviceValue <= 0) {
       alert("Por favor completa todos los campos obligatorios (incluyendo valor del servicio)");
       return;
     }
 
+    setIsSubmitting(true);
     setLoading(true);
 
     try {
@@ -432,6 +441,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       alert(`Error: ${error.message}`);
     } finally {
       setLoading(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -849,10 +859,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </button>
         <button
           type="submit"
-          disabled={loading}
-          className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50"
+          disabled={loading || isSubmitting}
+          className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Guardando..." : "Crear Orden"}
+          {loading || isSubmitting ? "Guardando..." : "Crear Orden"}
         </button>
       </div>
 

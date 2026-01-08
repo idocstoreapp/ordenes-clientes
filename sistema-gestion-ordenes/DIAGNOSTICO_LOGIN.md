@@ -158,3 +158,4 @@ Si después de todo esto aún no funciona, comparte:
 - Las primeras letras de tu `PUBLIC_SUPABASE_URL` (para verificar formato)
 
 
+

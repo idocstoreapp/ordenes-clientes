@@ -30,10 +30,16 @@ const defaultSettings: SystemSettings = {
 };
 
 let cachedSettings: SystemSettings | null = null;
+let cacheTimestamp: number | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos en milisegundos
 
-export async function getSystemSettings(): Promise<SystemSettings> {
-  if (cachedSettings) {
-    return cachedSettings;
+export async function getSystemSettings(forceRefresh: boolean = false): Promise<SystemSettings> {
+  // Si hay caché válido y no se fuerza la recarga, usar caché
+  if (!forceRefresh && cachedSettings && cacheTimestamp) {
+    const now = Date.now();
+    if (now - cacheTimestamp < CACHE_DURATION) {
+      return cachedSettings;
+    }
   }
 
   try {
@@ -43,6 +49,10 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
     if (error) {
       console.error("Error cargando configuraciones:", error);
+      // Si hay error pero tenemos caché, usar caché en lugar de defaults
+      if (cachedSettings) {
+        return cachedSettings;
+      }
       return defaultSettings;
     }
 
@@ -53,10 +63,15 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       });
 
       cachedSettings = { ...defaultSettings, ...loadedSettings };
+      cacheTimestamp = Date.now();
       return cachedSettings;
     }
   } catch (error) {
     console.error("Error cargando configuraciones:", error);
+    // Si hay error pero tenemos caché, usar caché en lugar de defaults
+    if (cachedSettings) {
+      return cachedSettings;
+    }
   }
 
   return defaultSettings;
@@ -64,5 +79,6 @@ export async function getSystemSettings(): Promise<SystemSettings> {
 
 export function clearSettingsCache() {
   cachedSettings = null;
+  cacheTimestamp = null;
 }
 

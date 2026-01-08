@@ -375,3 +375,4 @@ Después de completar todas las pruebas, verifica:
 
 **Última actualización:** Después de ejecutar `fix_all_rls_for_branches.sql`
 
+

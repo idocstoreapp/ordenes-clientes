@@ -29,3 +29,4 @@ CREATE POLICY "customers_insert_all" ON customers FOR INSERT
 -- También puedes probar crear un cliente desde una sucursal para confirmar que funciona.
 
 
+

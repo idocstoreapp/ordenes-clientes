@@ -28,3 +28,4 @@ CREATE POLICY "order_services_insert_all" ON order_services FOR INSERT
 -- También puedes probar crear una orden con servicios desde una sucursal para confirmar que funciona.
 
 
+
