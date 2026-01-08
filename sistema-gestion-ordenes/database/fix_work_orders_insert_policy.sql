@@ -27,3 +27,4 @@ CREATE POLICY "work_orders_insert_all" ON work_orders FOR INSERT
 --
 -- También puedes probar crear una orden desde una sucursal para confirmar que funciona.
 
+

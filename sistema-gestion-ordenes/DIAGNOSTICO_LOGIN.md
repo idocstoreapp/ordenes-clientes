@@ -157,3 +157,4 @@ Si después de todo esto aún no funciona, comparte:
 - Si el usuario existe en la tabla `users`
 - Las primeras letras de tu `PUBLIC_SUPABASE_URL` (para verificar formato)
 
+
