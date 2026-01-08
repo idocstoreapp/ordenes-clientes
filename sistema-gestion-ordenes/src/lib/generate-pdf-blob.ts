@@ -14,7 +14,7 @@ export async function generatePDFBlob(
   warrantyDays: number,
   checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null,
   notes?: string[],
-  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>
+  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string; description?: string | null }>
 ): Promise<Blob> {
   // Cargar datos actualizados de la sucursal desde la base de datos
   // Esto asegura que el PDF siempre refleje los datos más recientes de la sucursal
@@ -394,7 +394,7 @@ export async function generatePDFBlob(
         quantity: os.quantity || 1,
         unit_price: os.unit_price || 0,
         total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
-        description: null
+        description: (os as any).description || null // Usar descripción si está disponible
       }))
     : services.map(s => ({
         name: s.name,
@@ -412,8 +412,12 @@ export async function generatePDFBlob(
     const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
     doc.text(serviceNameLines, colX + 2, yPosition);
     colX += colWidths[1];
-    // Usar la descripción completa del servicio o la descripción del problema completa
-    const serviceNote = serviceItem.description || order.problem_description || "Servicio de reparación";
+    // Usar solo la descripción del servicio (NO repetir la descripción del problema)
+    // Si la descripción del servicio es igual a la descripción del problema, usar texto genérico
+    let serviceNote = serviceItem.description || "Servicio de reparación";
+    if (serviceNote === order.problem_description) {
+      serviceNote = "Servicio de reparación";
+    }
     const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
     let noteY = yPosition;
     noteLines.forEach((line: string) => {

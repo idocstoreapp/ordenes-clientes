@@ -162,13 +162,22 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
             onClick={async () => {
               if (!order) return;
               try {
-                // Cargar servicios de la orden
+                // Cargar servicios de la orden con JOIN a services para obtener descripciones
                 const { data: orderServices, error: servicesError } = await supabase
                   .from("order_services")
-                  .select("*")
+                  .select(`
+                    *,
+                    service:services(description)
+                  `)
                   .eq("order_id", order.id);
 
                 if (servicesError) throw servicesError;
+                
+                // Agregar descripción a orderServices si está disponible
+                const orderServicesWithDescription = (orderServices || []).map((os: any) => ({
+                  ...os,
+                  description: os.service?.description || null
+                }));
 
                 // Cargar notas de la orden
                 const { data: orderNotes, error: notesError } = await supabase
@@ -212,8 +221,8 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                 // Calcular serviceValue: suma de todos los total_price de los servicios
                 // Si no hay servicios guardados, usar labor_cost
                 let serviceValue = order.labor_cost || 0;
-                if (orderServices && orderServices.length > 0) {
-                  serviceValue = orderServices.reduce((sum: number, os: any) => sum + (os.total_price || 0), 0);
+                if (orderServicesWithDescription && orderServicesWithDescription.length > 0) {
+                  serviceValue = orderServicesWithDescription.reduce((sum: number, os: any) => sum + (os.total_price || 0), 0);
                 }
 
                 const replacementCost = order.replacement_cost || 0;
@@ -229,7 +238,7 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                 setPdfOrderData({
                   order: orderWithUpdatedBranch,
                   services,
-                  orderServices: orderServices || undefined,
+                  orderServices: orderServicesWithDescription || undefined,
                   serviceValue,
                   replacementCost,
                   warrantyDays,

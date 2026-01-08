@@ -324,13 +324,22 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
   async function handleViewPDF(order: WorkOrder) {
     try {
-      // Cargar servicios de la orden
+      // Cargar servicios de la orden con JOIN a services para obtener descripciones
       const { data: orderServices, error: servicesError } = await supabase
         .from("order_services")
-        .select("*")
+        .select(`
+          *,
+          service:services(description)
+        `)
         .eq("order_id", order.id);
 
       if (servicesError) throw servicesError;
+      
+      // Agregar descripción a orderServices si está disponible
+      const orderServicesWithDescription = (orderServices || []).map((os: any) => ({
+        ...os,
+        description: os.service?.description || null
+      }));
 
       // Cargar notas de la orden
       const { data: orderNotes, error: notesError } = await supabase
@@ -391,7 +400,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       setPdfOrderData({
         order: orderWithUpdatedBranch,
         services,
-        orderServices: orderServices || undefined,
+        orderServices: orderServicesWithDescription || undefined,
         serviceValue,
         replacementCost,
         warrantyDays,
@@ -457,26 +466,35 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     }
 
     try {
-      // Cargar datos necesarios para el PDF
+      // Cargar datos necesarios para el PDF con JOIN a services para obtener descripciones
       const { data: orderServices, error: servicesError } = await supabase
         .from("order_services")
-        .select("*")
+        .select(`
+          *,
+          service:services(description)
+        `)
         .eq("order_id", order.id);
 
       if (servicesError) throw servicesError;
+      
+      // Agregar descripción a orderServices si está disponible
+      const orderServicesWithDescription = (orderServices || []).map((os: any) => ({
+        ...os,
+        description: os.service?.description || null
+      }));
 
       // Convertir order_services a servicios
-      const services: Service[] = (orderServices || []).map((os: any) => ({
+      const services: Service[] = (orderServicesWithDescription || []).map((os: any) => ({
         id: os.service_id || os.id,
         name: os.service_name,
-        description: null,
+        description: os.description,
         default_price: os.unit_price || 0,
         created_at: os.created_at || new Date().toISOString(),
       }));
 
       let serviceValue = order.labor_cost || 0;
-      if (orderServices && orderServices.length > 0) {
-        serviceValue = orderServices.reduce((sum: number, os: any) => sum + (os.total_price || 0), 0);
+      if (orderServicesWithDescription && orderServicesWithDescription.length > 0) {
+        serviceValue = orderServicesWithDescription.reduce((sum: number, os: any) => sum + (os.total_price || 0), 0);
       }
 
       const replacementCost = order.replacement_cost || 0;
@@ -490,7 +508,8 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         replacementCost,
         warrantyDays,
         order.checklist_data as Record<string, 'ok' | 'damaged' | 'replaced'> | null,
-        undefined
+        undefined,
+        orderServicesWithDescription
       );
 
       // Descargar PDF

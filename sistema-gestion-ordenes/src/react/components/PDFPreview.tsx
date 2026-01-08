@@ -10,7 +10,7 @@ import { getSystemSettings } from "@/lib/settings";
 interface PDFPreviewProps {
   order: WorkOrder & { customer?: Customer; sucursal?: Branch | null };
   services: Service[];
-  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>;
+  orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string; description?: string | null }>;
   serviceValue: number;
   replacementCost: number;
   warrantyDays: number;
@@ -471,7 +471,7 @@ export default function PDFPreview({
             quantity: os.quantity || 1,
             unit_price: os.unit_price || 0,
             total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
-            description: null
+            description: (os as any).description || null // Usar descripción si está disponible
           }))
         : services.map(s => ({
             name: s.name,
@@ -491,8 +491,12 @@ export default function PDFPreview({
         const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
         doc.text(serviceNameLines, colX + 2, yPosition);
         colX += colWidths[1];
-        // Usar la descripción completa del servicio o la descripción del problema completa
-        const serviceNote = serviceItem.description || order.problem_description || "Servicio de reparación";
+        // Usar solo la descripción del servicio (NO repetir la descripción del problema)
+        // Si la descripción del servicio es igual a la descripción del problema, usar texto genérico
+        let serviceNote = serviceItem.description || "Servicio de reparación";
+        if (serviceNote === order.problem_description) {
+          serviceNote = "Servicio de reparación";
+        }
         const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
         let noteY = yPosition;
         noteLines.forEach((line: string) => {
@@ -1296,7 +1300,11 @@ export default function PDFPreview({
     }
   }
 
-  async function handlePrint(format: 'a4' | 'boleta' | 'etiqueta') {
+  async function handlePrint(format: 'a4' | 'boleta' | 'etiqueta', e?: React.MouseEvent) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setLoading(true);
     try {
       let pdfToPrint: Blob;
@@ -1326,7 +1334,11 @@ export default function PDFPreview({
     }
   }
 
-  function handleWhatsApp() {
+  function handleWhatsApp(e?: React.MouseEvent) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!order.customer || !pdfBlob) return;
     
     const phone = order.customer.phone_country_code
@@ -1346,7 +1358,12 @@ export default function PDFPreview({
         <div className="bg-slate-800 text-white p-4 flex justify-between items-center">
           <h2 className="text-xl font-bold">Vista Previa del PDF</h2>
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
             className="text-white hover:text-gray-300 text-2xl"
           >
             ×
@@ -1376,12 +1393,18 @@ export default function PDFPreview({
 
         <div className="bg-slate-50 p-4 flex justify-end gap-3 border-t">
           <button
-            onClick={onClose}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
             className="px-4 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-100"
           >
             Cerrar
           </button>
           <button
+            type="button"
             onClick={handleWhatsApp}
             className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 flex items-center gap-2"
             disabled={!order.customer || !pdfBlob}
@@ -1390,7 +1413,12 @@ export default function PDFPreview({
           </button>
           <div className="relative" ref={printMenuRef}>
             <button
-              onClick={() => setShowPrintMenu(!showPrintMenu)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowPrintMenu(!showPrintMenu);
+              }}
               className="px-4 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark flex items-center gap-2"
               disabled={!pdfBlob}
             >
@@ -1400,19 +1428,22 @@ export default function PDFPreview({
             {showPrintMenu && (
               <div className="absolute bottom-full right-0 mb-2 bg-white border border-slate-300 rounded-md shadow-lg min-w-[200px] z-50">
                 <button
-                  onClick={() => handlePrint('a4')}
+                  type="button"
+                  onClick={(e) => handlePrint('a4', e)}
                   className="w-full text-left px-4 py-2 hover:bg-slate-50 border-b border-slate-200 first:rounded-t-md"
                 >
                   📄 Formato A4 (Carta)
                 </button>
                 <button
-                  onClick={() => handlePrint('boleta')}
+                  type="button"
+                  onClick={(e) => handlePrint('boleta', e)}
                   className="w-full text-left px-4 py-2 hover:bg-slate-50 border-b border-slate-200"
                 >
                   📋 Formato 80x2000 (Boleta)
                 </button>
                 <button
-                  onClick={() => handlePrint('etiqueta')}
+                  type="button"
+                  onClick={(e) => handlePrint('etiqueta', e)}
                   className="w-full text-left px-4 py-2 hover:bg-slate-50 last:rounded-b-md"
                 >
                   🏷️ Formato Etiqueta

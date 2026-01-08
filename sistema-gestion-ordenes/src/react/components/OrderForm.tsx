@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType } from "@/types";
@@ -266,11 +266,13 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       };
       
       // Construir orderServices para el PDF (misma estructura que se usa en otros lugares)
+      // Incluir la descripción del servicio para que no se repita la descripción del problema
       const orderServicesForPDF = selectedServices.map(service => ({
         quantity: 1,
         unit_price: serviceValue,
         total_price: serviceValue,
         service_name: service.name,
+        description: service.description || null, // Incluir descripción del servicio
       }));
       
       // Mostrar éxito inmediatamente
@@ -446,6 +448,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   }
 
   return (
+    <Fragment>
     <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 space-y-6">
       <h2 className="text-2xl font-bold text-slate-900">Nueva Orden de Trabajo</h2>
 
@@ -865,28 +868,30 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           {loading || isSubmitting ? "Guardando..." : "Crear Orden"}
         </button>
       </div>
-
-      {showPDFPreview && createdOrder && (
-        <PDFPreview
-          order={createdOrder}
-          services={selectedServices}
-          orderServices={createdOrderServices}
-          serviceValue={serviceValue}
-          replacementCost={replacementCost}
-          warrantyDays={warrantyDays}
-          checklistData={checklistData}
-          notes={[]}
-          onClose={() => {
-            setShowPDFPreview(false);
-            onSaved();
-          }}
-          onDownload={() => {
-            setShowPDFPreview(false);
-            onSaved();
-          }}
-        />
-      )}
     </form>
+
+    {/* PDFPreview fuera del formulario para evitar que los botones disparen el submit */}
+    {showPDFPreview && createdOrder && (
+      <PDFPreview
+        order={createdOrder}
+        services={selectedServices}
+        orderServices={createdOrderServices}
+        serviceValue={serviceValue}
+        replacementCost={replacementCost}
+        warrantyDays={warrantyDays}
+        checklistData={checklistData}
+        notes={[]}
+        onClose={() => {
+          setShowPDFPreview(false);
+          onSaved();
+        }}
+        onDownload={() => {
+          setShowPDFPreview(false);
+          onSaved();
+        }}
+      />
+    )}
+    </Fragment>
   );
 }
 
