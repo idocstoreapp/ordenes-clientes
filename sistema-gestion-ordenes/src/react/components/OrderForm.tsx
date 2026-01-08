@@ -16,25 +16,44 @@ interface OrderFormProps {
   onSaved: () => void;
 }
 
+// Interfaz para un equipo individual
+interface DeviceItem {
+  id: string; // ID único para cada equipo
+  deviceType: DeviceType | null;
+  deviceModel: string;
+  deviceSerial: string;
+  unlockType: "code" | "pattern" | "none";
+  deviceUnlockCode: string;
+  deviceUnlockPattern: number[];
+  problemDescription: string;
+  checklistData: Record<string, "ok" | "damaged" | "replaced" | "no_probado">;
+  selectedServices: Service[];
+  replacementCost: number;
+  serviceValue: number;
+}
+
 export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [deviceType, setDeviceType] = useState<DeviceType | null>(null);
-  const [deviceModel, setDeviceModel] = useState("");
-  const [deviceSuggestions, setDeviceSuggestions] = useState<string[]>([]);
-  const [showDeviceSuggestions, setShowDeviceSuggestions] = useState(false);
-  const deviceInputRef = useRef<HTMLInputElement>(null);
-  const deviceSuggestionsRef = useRef<HTMLDivElement>(null);
-  const [deviceSerial, setDeviceSerial] = useState("");
-  const [unlockType, setUnlockType] = useState<"code" | "pattern" | "none">("none");
-  const [deviceUnlockCode, setDeviceUnlockCode] = useState("");
-  const [deviceUnlockPattern, setDeviceUnlockPattern] = useState<number[]>([]);
-  const [showPatternDrawer, setShowPatternDrawer] = useState(false);
-  const [problemDescription, setProblemDescription] = useState("");
-  const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
-  const [checklistData, setChecklistData] = useState<Record<string, "ok" | "damaged" | "replaced" | "no_probado">>({});
-  const [selectedServices, setSelectedServices] = useState<Service[]>([]);
-  const [replacementCost, setReplacementCost] = useState(0);
-  const [serviceValue, setServiceValue] = useState(0);
+  
+  // Estado para múltiples equipos - empezar con un equipo vacío
+  const [devices, setDevices] = useState<DeviceItem[]>([
+    {
+      id: `device-${Date.now()}`,
+      deviceType: null,
+      deviceModel: "",
+      deviceSerial: "",
+      unlockType: "none",
+      deviceUnlockCode: "",
+      deviceUnlockPattern: [],
+      problemDescription: "",
+      checklistData: {},
+      selectedServices: [],
+      replacementCost: 0,
+      serviceValue: 0,
+    }
+  ]);
+  
+  // Estados compartidos para toda la orden
   const [priority, setPriority] = useState<"baja" | "media" | "urgente">("media");
   const [commitmentDate, setCommitmentDate] = useState("");
   const [warrantyDays, setWarrantyDays] = useState(30);
@@ -43,46 +62,98 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [createdOrderServices, setCreatedOrderServices] = useState<Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>>([]);
-  const [showDeviceCategoryModal, setShowDeviceCategoryModal] = useState(false);
+  const [showDeviceCategoryModal, setShowDeviceCategoryModal] = useState<{ deviceId: string; deviceModel: string } | null>(null);
   const [pendingDeviceModel, setPendingDeviceModel] = useState("");
+  
+  // Referencias para sugerencias de dispositivos (una por equipo)
+  const deviceInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const deviceSuggestionsRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [deviceSuggestions, setDeviceSuggestions] = useState<Record<string, string[]>>({});
+  const [showDeviceSuggestions, setShowDeviceSuggestions] = useState<Record<string, boolean>>({});
+  const [showPatternDrawer, setShowPatternDrawer] = useState<{ deviceId: string } | null>(null);
+  
+  const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
-  useEffect(() => {
-    if (deviceModel) {
-      const detected = detectDeviceType(deviceModel);
-      if (detected) {
-        setDeviceType(detected);
-        setShowDeviceCategoryModal(false);
-      } else {
-        // Si no se detecta el tipo pero hay texto, permitir continuar sin tipo
-        // El usuario puede seleccionar la categoría manualmente
-        setDeviceType(null);
-      }
-      const suggestions = getSmartSuggestions(deviceModel);
-      setDeviceSuggestions(suggestions.slice(0, 5));
-      setShowDeviceSuggestions(true);
-    } else {
-      setDeviceSuggestions([]);
-      setShowDeviceSuggestions(false);
-      setDeviceType(null);
+  // Funciones auxiliares para manejar múltiples equipos
+  const updateDevice = (deviceId: string, updates: Partial<DeviceItem>) => {
+    setDevices(devices.map(device => 
+      device.id === deviceId ? { ...device, ...updates } : device
+    ));
+  };
+
+  const addNewDevice = () => {
+    const newDevice: DeviceItem = {
+      id: `device-${Date.now()}-${Math.random()}`,
+      deviceType: null,
+      deviceModel: "",
+      deviceSerial: "",
+      unlockType: "none",
+      deviceUnlockCode: "",
+      deviceUnlockPattern: [],
+      problemDescription: "",
+      checklistData: {},
+      selectedServices: [],
+      replacementCost: 0,
+      serviceValue: 0,
+    };
+    setDevices([...devices, newDevice]);
+  };
+
+  const removeDevice = (deviceId: string) => {
+    if (devices.length <= 1) {
+      alert("Debe haber al menos un equipo en la orden");
+      return;
     }
-  }, [deviceModel]);
+    setDevices(devices.filter(device => device.id !== deviceId));
+  };
 
-  // Cerrar sugerencias al hacer click fuera
+  // Detectar tipo de dispositivo cuando cambia el modelo de un equipo específico
+  useEffect(() => {
+    devices.forEach(device => {
+      if (device.deviceModel) {
+        const detected = detectDeviceType(device.deviceModel);
+        if (detected && device.deviceType !== detected) {
+          updateDevice(device.id, { deviceType: detected });
+        }
+        const suggestions = getSmartSuggestions(device.deviceModel);
+        setDeviceSuggestions(prev => ({
+          ...prev,
+          [device.id]: suggestions.slice(0, 5)
+        }));
+        setShowDeviceSuggestions(prev => ({
+          ...prev,
+          [device.id]: true
+        }));
+      } else {
+        setDeviceSuggestions(prev => ({
+          ...prev,
+          [device.id]: []
+        }));
+        setShowDeviceSuggestions(prev => ({
+          ...prev,
+          [device.id]: false
+        }));
+      }
+    });
+  }, [devices.map(d => d.deviceModel).join(',')]);
+
+  // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        deviceInputRef.current && 
-        deviceSuggestionsRef.current &&
-        !deviceInputRef.current.contains(event.target as Node) &&
-        !deviceSuggestionsRef.current.contains(event.target as Node)
-      ) {
-        setShowDeviceSuggestions(false);
-      }
+      devices.forEach(device => {
+        const inputRef = deviceInputRefs.current[device.id];
+        const suggestionsRef = deviceSuggestionsRefs.current[device.id];
+        if (inputRef && suggestionsRef && 
+            !inputRef.contains(event.target as Node) &&
+            !suggestionsRef.contains(event.target as Node)) {
+          setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
+        }
+      });
     }
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [devices.map(d => d.id).join(',')]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,14 +164,26 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return;
     }
     
-    if (!selectedCustomer || !deviceModel || !problemDescription || selectedServices.length === 0 || serviceValue <= 0) {
-      alert("Por favor completa todos los campos obligatorios (incluyendo valor del servicio)");
+    // Validar cliente
+    if (!selectedCustomer) {
+      alert("Por favor selecciona un cliente");
       return;
     }
     
-    // Validar que la descripción no exceda el límite de caracteres
-    if (problemDescription.length > MAX_DESCRIPTION_LENGTH) {
-      alert(`La descripción excede el límite máximo de ${MAX_DESCRIPTION_LENGTH} caracteres. Por favor, acórtala.`);
+    // Validar que todos los equipos tengan los campos obligatorios
+    const invalidDevices: string[] = [];
+    devices.forEach((device, index) => {
+      if (!device.deviceModel || !device.problemDescription || device.selectedServices.length === 0 || device.serviceValue <= 0) {
+        invalidDevices.push(`Equipo ${index + 1}`);
+      }
+      // Validar descripción
+      if (device.problemDescription.length > MAX_DESCRIPTION_LENGTH) {
+        invalidDevices.push(`Equipo ${index + 1} (descripción excede ${MAX_DESCRIPTION_LENGTH} caracteres)`);
+      }
+    });
+    
+    if (invalidDevices.length > 0) {
+      alert(`Por favor completa todos los campos obligatorios para: ${invalidDevices.join(", ")}`);
       return;
     }
 
@@ -108,22 +191,27 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setLoading(true);
 
     try {
-      // Validar checklist primero antes de continuar
-      // Si hay items en checklistData, todos deben tener un valor seleccionado
-      const checklistItemNames = Object.keys(checklistData);
-      if (checklistItemNames.length > 0) {
-        const missingItems: string[] = [];
-        checklistItemNames.forEach((itemName) => {
-          if (!checklistData[itemName] || checklistData[itemName] === "") {
-            missingItems.push(itemName);
+      // Validar checklist para cada equipo
+      const invalidChecklists: string[] = [];
+      devices.forEach((device, index) => {
+        const checklistItemNames = Object.keys(device.checklistData);
+        if (checklistItemNames.length > 0) {
+          const missingItems: string[] = [];
+          checklistItemNames.forEach((itemName) => {
+            if (!device.checklistData[itemName] || device.checklistData[itemName] === "") {
+              missingItems.push(itemName);
+            }
+          });
+          if (missingItems.length > 0) {
+            invalidChecklists.push(`Equipo ${index + 1}: ${missingItems.join(", ")}`);
           }
-        });
-
-        if (missingItems.length > 0) {
-          setLoading(false);
-          alert(`Por favor selecciona una opción para todos los items del checklist. Faltan: ${missingItems.join(", ")}`);
-          return;
         }
+      });
+      
+      if (invalidChecklists.length > 0) {
+        setLoading(false);
+        alert(`Por favor selecciona una opción para todos los items del checklist.\n${invalidChecklists.join("\n")}`);
+        return;
       }
 
       // Verificar si es una sucursal (no tiene usuario en auth.users)
@@ -216,68 +304,78 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }
       }
 
-      // Preparar datos de inserción
-      // NOTA: Dejamos order_number como NULL para que el trigger de la BD lo genere automáticamente
-      // Esto garantiza números únicos incluso con alta concurrencia
-      const orderData: any = {
+      // Crear una orden por cada equipo
+      const createdOrders: any[] = [];
+      
+      for (const device of devices) {
+        // Preparar datos de inserción para este equipo
+        // NOTA: Dejamos order_number como NULL para que el trigger de la BD lo genere automáticamente
+        const orderData: any = {
           order_number: null, // El trigger de BD lo generará automáticamente
           customer_id: selectedCustomer.id,
           technician_id: actualTechnicianId, // NULL para sucursales, technicianId para usuarios normales
           sucursal_id: sucursalId,
-        device_type: deviceType || "iphone",
-        device_model: deviceModel,
-        device_serial_number: deviceSerial || null,
-        device_unlock_code: unlockType === "code" ? deviceUnlockCode : null,
-        problem_description: problemDescription,
-        checklist_data: checklistData,
-        replacement_cost: replacementCost,
-        labor_cost: serviceValue,
-        total_repair_cost: replacementCost + serviceValue,
-        priority,
-        commitment_date: commitmentDate || null,
-        warranty_days: warrantyDays,
-        status: "en_proceso",
-      };
+          device_type: device.deviceType || "iphone",
+          device_model: device.deviceModel,
+          device_serial_number: device.deviceSerial || null,
+          device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
+          problem_description: device.problemDescription,
+          checklist_data: device.checklistData,
+          replacement_cost: device.replacementCost,
+          labor_cost: device.serviceValue,
+          total_repair_cost: device.replacementCost + device.serviceValue,
+          priority,
+          commitment_date: commitmentDate || null,
+          warranty_days: warrantyDays,
+          status: "en_proceso",
+        };
 
-      // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
-      if (unlockType === "pattern" && deviceUnlockPattern.length > 0) {
-        orderData.device_unlock_pattern = deviceUnlockPattern;
+        // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
+        if (device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0) {
+          orderData.device_unlock_pattern = device.deviceUnlockPattern;
+        }
+
+        // Crear la orden para este equipo
+        const { data: order, error: orderError } = await supabase
+          .from("work_orders")
+          .insert(orderData)
+          .select()
+          .single();
+
+        if (orderError) throw orderError;
+
+        // Crear servicios de la orden (guardar el valor del servicio)
+        for (const service of device.selectedServices) {
+          await supabase.from("order_services").insert({
+            order_id: order.id,
+            service_id: service.id,
+            service_name: service.name,
+            quantity: 1,
+            unit_price: device.serviceValue,
+            total_price: device.serviceValue,
+          });
+        }
+
+        createdOrders.push(order);
       }
 
-      // Crear la orden
-      const { data: order, error: orderError } = await supabase
-        .from("work_orders")
-        .insert(orderData)
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Crear servicios de la orden (guardar el valor del servicio)
-      for (const service of selectedServices) {
-        await supabase.from("order_services").insert({
-          order_id: order.id,
-          service_id: service.id,
-          service_name: service.name,
-          quantity: 1,
-          unit_price: serviceValue,
-          total_price: serviceValue,
-        });
-      }
-
+      // Usar la primera orden creada para la vista previa del PDF
+      const firstOrder = createdOrders[0];
+      const firstDevice = devices[0];
+      
       // Preparar orden para vista previa
       const orderWithRelations = {
-        ...order,
+        ...firstOrder,
         customer: selectedCustomer,
         sucursal: branchData,
       };
       
       // Construir orderServices para el PDF (misma estructura que se usa en otros lugares)
       // Incluir la descripción del servicio para que no se repita la descripción del problema
-      const orderServicesForPDF = selectedServices.map(service => ({
+      const orderServicesForPDF = firstDevice.selectedServices.map(service => ({
         quantity: 1,
-        unit_price: serviceValue,
-        total_price: serviceValue,
+        unit_price: firstDevice.serviceValue,
+        total_price: firstDevice.serviceValue,
         service_name: service.name,
         description: service.description || null, // Incluir descripción del servicio
       }));
@@ -290,7 +388,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       setCreatedOrder(orderWithRelations);
       setCreatedOrderServices(orderServicesForPDF);
       setShowPDFPreview(true);
-      alert("Orden creada exitosamente. Se abrirá la vista previa del PDF.");
+      const ordersCount = createdOrders.length;
+      alert(`Se ${ordersCount === 1 ? 'creó' : 'crearon'} ${ordersCount} orden${ordersCount === 1 ? '' : 'es'} exitosamente. Se abrirá la vista previa del PDF del primer equipo.`);
       
       // Enviar email al cliente en segundo plano (no bloquear)
       // Usar setTimeout para que no bloquee la UI
@@ -310,17 +409,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             }
           }
 
-          // Generar PDF con el mismo diseño que se usa en la vista previa
+          // Generar PDF con el mismo diseño que se usa en la vista previa (solo para el primer equipo)
           const pdfBlob = await generatePDFBlob(
             {
               ...orderWithRelations,
               sucursal: updatedBranchData,
             },
-            selectedServices,
-            serviceValue,
-            replacementCost,
+            firstDevice.selectedServices,
+            firstDevice.serviceValue,
+            firstDevice.replacementCost,
             warrantyDays,
-            checklistData,
+            firstDevice.checklistData,
             [], // notes vacío para nueva orden
             orderServicesForPDF // Pasar orderServices para que el PDF tenga la misma información detallada
           );
@@ -331,7 +430,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           
           try {
             console.log("[ORDER FORM] Intentando subir PDF a Supabase Storage...");
-            pdfUrl = await uploadPDFToStorage(pdfBlob, order.order_number);
+            pdfUrl = await uploadPDFToStorage(pdfBlob, firstOrder.order_number);
             if (pdfUrl) {
               console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
             } else {
@@ -386,8 +485,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
           // Solo enviar email si tenemos PDF
           if (pdfUrl || pdfBase64) {
-            // Enviar email
-            console.log("[ORDER FORM] Enviando email de creación de orden:", order.order_number);
+            // Enviar email solo para la primera orden
+            console.log("[ORDER FORM] Enviando email de creación de orden:", firstOrder.order_number);
             const emailResponse = await fetch('/api/send-order-email', {
               method: 'POST',
               headers: {
@@ -479,47 +578,64 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         />
       </div>
 
-      {/* Información del Dispositivo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Equipos - Mostrar cada equipo en una sección separada */}
+      {devices.map((device, deviceIndex) => (
+        <div key={device.id} className="border border-slate-200 rounded-lg p-6 bg-slate-50">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold text-slate-900">
+              Equipo {deviceIndex + 1}
+            </h3>
+            {devices.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeDevice(device.id)}
+                className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
+              >
+                🗑️ Eliminar Equipo
+              </button>
+            )}
+          </div>
+
+          {/* Información del Dispositivo */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Dispositivo (Marca y Modelo) *
           </label>
           <input
-            ref={deviceInputRef}
+            ref={(el) => deviceInputRefs.current[device.id] = el}
             type="text"
             className="w-full border border-slate-300 rounded-md px-3 py-2"
             placeholder="Ej: iPhone 13 Pro Max"
-            value={deviceModel}
-            onChange={(e) => setDeviceModel(e.target.value)}
+            value={device.deviceModel}
+            onChange={(e) => updateDevice(device.id, { deviceModel: e.target.value })}
             onFocus={() => {
-              if (deviceSuggestions.length > 0) {
-                setShowDeviceSuggestions(true);
+              if (deviceSuggestions[device.id]?.length > 0) {
+                setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: true }));
               }
             }}
             onBlur={() => {
-              // Pequeño delay para permitir que el click en la sugerencia se procese
               setTimeout(() => {
-                setShowDeviceSuggestions(false);
+                setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
               }, 200);
             }}
             required
           />
-          {showDeviceSuggestions && deviceSuggestions.length > 0 && (
+          {showDeviceSuggestions[device.id] && deviceSuggestions[device.id]?.length > 0 && (
             <div 
-              ref={deviceSuggestionsRef}
+              ref={(el) => deviceSuggestionsRefs.current[device.id] = el}
               className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
             >
-              {deviceSuggestions.map((suggestion) => (
+              {deviceSuggestions[device.id].map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
                   className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
                   onMouseDown={(e) => {
-                    e.preventDefault(); // Prevenir que onBlur se ejecute antes del click
-                    setDeviceModel(suggestion);
-                    setDeviceSuggestions([]);
-                    setShowDeviceSuggestions(false);
+                    e.preventDefault();
+                    updateDevice(device.id, { deviceModel: suggestion });
+                    setDeviceSuggestions(prev => ({ ...prev, [device.id]: [] }));
+                    setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
                   }}
                 >
                   {suggestion}
@@ -536,8 +652,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           <input
             type="text"
             className="w-full border border-slate-300 rounded-md px-3 py-2"
-            value={deviceSerial}
-            onChange={(e) => setDeviceSerial(e.target.value)}
+            value={device.deviceSerial}
+            onChange={(e) => updateDevice(device.id, { deviceSerial: e.target.value })}
           />
         </div>
 
@@ -548,17 +664,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           <div className="space-y-2">
             <select
               className="w-full border border-slate-300 rounded-md px-3 py-2"
-              value={unlockType}
+              value={device.unlockType}
               onChange={(e) => {
                 const type = e.target.value as "code" | "pattern" | "none";
-                setUnlockType(type);
                 if (type === "pattern") {
-                  setShowPatternDrawer(true);
+                  setShowPatternDrawer({ deviceId: device.id });
                 } else {
-                  setDeviceUnlockPattern([]);
-                  if (type === "none") {
-                    setDeviceUnlockCode("");
-                  }
+                  updateDevice(device.id, { 
+                    unlockType: type,
+                    deviceUnlockPattern: [],
+                    deviceUnlockCode: type === "none" ? "" : device.deviceUnlockCode
+                  });
                 }
               }}
             >
@@ -567,25 +683,25 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               <option value="pattern">Patrón de desbloqueo</option>
             </select>
             
-            {unlockType === "code" && (
+            {device.unlockType === "code" && (
               <input
                 type="text"
                 className="w-full border border-slate-300 rounded-md px-3 py-2"
                 placeholder="Ej: 1234"
-                value={deviceUnlockCode}
-                onChange={(e) => setDeviceUnlockCode(e.target.value)}
+                value={device.deviceUnlockCode}
+                onChange={(e) => updateDevice(device.id, { deviceUnlockCode: e.target.value })}
               />
             )}
             
-            {unlockType === "pattern" && deviceUnlockPattern.length > 0 && (
+            {device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0 && (
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-md">
                 <p className="text-sm text-slate-600 mb-2">
-                  Patrón guardado ({deviceUnlockPattern.length} puntos)
+                  Patrón guardado ({device.deviceUnlockPattern.length} puntos)
                 </p>
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => setShowPatternDrawer(true)}
+                    onClick={() => setShowPatternDrawer({ deviceId: device.id })}
                     className="px-3 py-1 text-sm border border-slate-300 rounded-md hover:bg-slate-100"
                   >
                     Cambiar Patrón
@@ -593,8 +709,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      setDeviceUnlockPattern([]);
-                      setUnlockType("none");
+                      updateDevice(device.id, { deviceUnlockPattern: [], unlockType: "none" });
                     }}
                     className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
                   >
@@ -604,10 +719,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               </div>
             )}
             
-            {unlockType === "pattern" && deviceUnlockPattern.length === 0 && (
+            {device.unlockType === "pattern" && device.deviceUnlockPattern.length === 0 && (
               <button
                 type="button"
-                onClick={() => setShowPatternDrawer(true)}
+                onClick={() => setShowPatternDrawer({ deviceId: device.id })}
                 className="w-full px-4 py-2 border-2 border-dashed border-slate-300 rounded-md text-slate-600 hover:border-brand-light hover:text-brand-light transition-colors"
               >
                 Dibujar Patrón
@@ -616,195 +731,228 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           </div>
         </div>
         
-        {showPatternDrawer && (
+        {showPatternDrawer?.deviceId === device.id && (
           <PatternDrawer
             onPatternComplete={(pattern) => {
-              setDeviceUnlockPattern(pattern);
-              setShowPatternDrawer(false);
+              updateDevice(device.id, { deviceUnlockPattern: pattern });
+              setShowPatternDrawer(null);
             }}
-            onClose={() => setShowPatternDrawer(false)}
+            onClose={() => setShowPatternDrawer(null)}
           />
         )}
       </div>
 
-      {/* Modal para seleccionar categoría de dispositivo */}
-      {showDeviceCategoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">
-              Agregar Nuevo Dispositivo
-            </h3>
-            <p className="text-slate-600 mb-4">
-              El dispositivo <strong>"{pendingDeviceModel || deviceModel}"</strong> no está en el listado.
-              Por favor, selecciona la categoría del dispositivo:
-            </p>
-            <div className="space-y-2 mb-6">
+          {/* Modal para seleccionar categoría de dispositivo */}
+          {showDeviceCategoryModal?.deviceId === device.id && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 className="text-lg font-bold text-slate-900 mb-4">
+                  Agregar Nuevo Dispositivo
+                </h3>
+                <p className="text-slate-600 mb-4">
+                  El dispositivo <strong>"{showDeviceCategoryModal.deviceModel || device.deviceModel}"</strong> no está en el listado.
+                  Por favor, selecciona la categoría del dispositivo:
+                </p>
+                <div className="space-y-2 mb-6">
+                  <button
+                    onClick={() => {
+                      updateDevice(device.id, { deviceType: "iphone" });
+                      setShowDeviceCategoryModal(null);
+                    }}
+                    className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                  >
+                    <span className="font-medium">📱 Celular</span>
+                    <p className="text-sm text-slate-600">iPhone, Android, etc.</p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateDevice(device.id, { deviceType: "ipad" });
+                      setShowDeviceCategoryModal(null);
+                    }}
+                    className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                  >
+                    <span className="font-medium">📱 Tablet</span>
+                    <p className="text-sm text-slate-600">iPad, Android Tablet, etc.</p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateDevice(device.id, { deviceType: "macbook" });
+                      setShowDeviceCategoryModal(null);
+                    }}
+                    className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                  >
+                    <span className="font-medium">💻 Notebook / Laptop</span>
+                    <p className="text-sm text-slate-600">MacBook, Windows Laptop, etc.</p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateDevice(device.id, { deviceType: "apple_watch" });
+                      setShowDeviceCategoryModal(null);
+                    }}
+                    className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                  >
+                    <span className="font-medium">⌚ Smartwatch</span>
+                    <p className="text-sm text-slate-600">Apple Watch, Android Watch, etc.</p>
+                  </button>
+                  <button
+                    onClick={() => {
+                      updateDevice(device.id, { deviceType: "iphone" });
+                      setShowDeviceCategoryModal(null);
+                    }}
+                    className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                  >
+                    <span className="font-medium">🔧 Otro</span>
+                    <p className="text-sm text-slate-600">Otro tipo de dispositivo</p>
+                  </button>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDeviceCategoryModal(null);
+                  }}
+                  className="w-full px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Botón para agregar categoría si no se detectó tipo */}
+          {device.deviceModel && !device.deviceType && showDeviceCategoryModal?.deviceId !== device.id && (
+            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-md">
+              <p className="text-sm text-amber-800 mb-2">
+                No se detectó la categoría del dispositivo. Para mostrar el checklist, selecciona la categoría:
+              </p>
               <button
+                type="button"
                 onClick={() => {
-                  setDeviceType("iphone");
-                  setShowDeviceCategoryModal(false);
+                  setShowDeviceCategoryModal({ deviceId: device.id, deviceModel: device.deviceModel });
                 }}
-                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
+                className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 text-sm font-medium"
               >
-                <span className="font-medium">📱 Celular</span>
-                <p className="text-sm text-slate-600">iPhone, Android, etc.</p>
-              </button>
-              <button
-                onClick={() => {
-                  setDeviceType("ipad");
-                  setShowDeviceCategoryModal(false);
-                }}
-                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
-              >
-                <span className="font-medium">📱 Tablet</span>
-                <p className="text-sm text-slate-600">iPad, Android Tablet, etc.</p>
-              </button>
-              <button
-                onClick={() => {
-                  setDeviceType("macbook");
-                  setShowDeviceCategoryModal(false);
-                }}
-                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
-              >
-                <span className="font-medium">💻 Notebook / Laptop</span>
-                <p className="text-sm text-slate-600">MacBook, Windows Laptop, etc.</p>
-              </button>
-              <button
-                onClick={() => {
-                  setDeviceType("apple_watch");
-                  setShowDeviceCategoryModal(false);
-                }}
-                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
-              >
-                <span className="font-medium">⌚ Smartwatch</span>
-                <p className="text-sm text-slate-600">Apple Watch, Android Watch, etc.</p>
-              </button>
-              <button
-                onClick={() => {
-                  // Para "Otro", usar un tipo genérico o permitir crear uno nuevo
-                  // Por ahora usaremos "iphone" como base pero el usuario puede agregar items personalizados
-                  setDeviceType("iphone");
-                  setShowDeviceCategoryModal(false);
-                }}
-                className="w-full px-4 py-3 bg-slate-100 hover:bg-slate-200 rounded-md text-left transition-colors"
-              >
-                <span className="font-medium">🔧 Otro</span>
-                <p className="text-sm text-slate-600">Otro tipo de dispositivo</p>
+                ➕ Agregar Nuevo Dispositivo
               </button>
             </div>
-            <button
-              onClick={() => {
-                setShowDeviceCategoryModal(false);
-                setPendingDeviceModel("");
+          )}
+
+          {/* Checklist Dinámico */}
+          {device.deviceType && (
+            <DeviceChecklist
+              deviceType={device.deviceType}
+              checklistData={device.checklistData}
+              onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
+            />
+          )}
+
+          {/* Descripción del Problema */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Descripción del Problema * (Máximo {MAX_DESCRIPTION_LENGTH} caracteres)
+            </label>
+            <textarea
+              className={`w-full border rounded-md px-3 py-2 min-h-[100px] ${
+                device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                  ? "border-red-500 bg-red-50"
+                  : "border-slate-300"
+              }`}
+              value={device.problemDescription}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                if (newValue.length <= MAX_DESCRIPTION_LENGTH) {
+                  updateDevice(device.id, { problemDescription: newValue });
+                }
               }}
-              className="w-full px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
-            >
-              Cancelar
-            </button>
+              maxLength={MAX_DESCRIPTION_LENGTH}
+              required
+            />
+            <div className="mt-1 flex justify-between items-center">
+              <span className={`text-xs ${
+                device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                  ? "text-red-600 font-semibold"
+                  : device.problemDescription.length > MAX_DESCRIPTION_LENGTH * 0.9
+                  ? "text-amber-600"
+                  : "text-slate-500"
+              }`}>
+                {device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                  ? `⚠️ Excede el límite por ${device.problemDescription.length - MAX_DESCRIPTION_LENGTH} caracteres`
+                  : `${device.problemDescription.length} / ${MAX_DESCRIPTION_LENGTH} caracteres`}
+              </span>
+            </div>
+          </div>
+
+          {/* Servicios */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Servicios *
+            </label>
+            <ServiceSelector
+              selectedServices={device.selectedServices}
+              onServicesChange={(services) => updateDevice(device.id, { selectedServices: services })}
+            />
+          </div>
+
+          {/* Costos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Costo Repuesto (CLP)
+              </label>
+              <input
+                type="text"
+                className="w-full border border-slate-300 rounded-md px-3 py-2"
+                value={formatCLPInput(device.replacementCost)}
+                onChange={(e) => updateDevice(device.id, { replacementCost: parseCLPInput(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Valor del Servicio (CLP) *
+              </label>
+              <input
+                type="text"
+                className="w-full border border-slate-300 rounded-md px-3 py-2"
+                value={formatCLPInput(device.serviceValue)}
+                onChange={(e) => updateDevice(device.id, { serviceValue: parseCLPInput(e.target.value) })}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Total para este equipo */}
+          <div className="bg-slate-50 p-4 rounded space-y-2 mt-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Subtotal:</span>
+              <span className="text-sm font-medium text-slate-700">
+                {formatCLP((device.replacementCost + device.serviceValue) / 1.19)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">IVA (19%):</span>
+              <span className="text-sm font-medium text-slate-700">
+                {formatCLP(device.replacementCost + device.serviceValue - (device.replacementCost + device.serviceValue) / 1.19)}
+              </span>
+            </div>
+            <div className="border-t border-slate-300 pt-2 mt-2">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium text-slate-700">Total Equipo {deviceIndex + 1}:</span>
+                <span className="text-xl font-bold text-brand">
+                  {formatCLP(device.replacementCost + device.serviceValue)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      )}
+      ))}
 
-      {/* Botón para agregar categoría si no se detectó tipo */}
-      {deviceModel && !deviceType && !showDeviceCategoryModal && (
-        <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-md">
-          <p className="text-sm text-amber-800 mb-2">
-            No se detectó la categoría del dispositivo. Para mostrar el checklist, selecciona la categoría:
-          </p>
-          <button
-            onClick={() => {
-              setPendingDeviceModel(deviceModel);
-              setShowDeviceCategoryModal(true);
-            }}
-            className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 text-sm font-medium"
-          >
-            ➕ Agregar Nuevo Dispositivo
-          </button>
-        </div>
-      )}
-
-      {/* Checklist Dinámico */}
-      {deviceType && (
-        <DeviceChecklist
-          deviceType={deviceType}
-          checklistData={checklistData}
-          onChecklistChange={setChecklistData}
-        />
-      )}
-
-      {/* Descripción del Problema */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Descripción del Problema * (Máximo {MAX_DESCRIPTION_LENGTH} caracteres)
-        </label>
-        <textarea
-          className={`w-full border rounded-md px-3 py-2 min-h-[100px] ${
-            problemDescription.length > MAX_DESCRIPTION_LENGTH
-              ? "border-red-500 bg-red-50"
-              : "border-slate-300"
-          }`}
-          value={problemDescription}
-          onChange={(e) => {
-            const newValue = e.target.value;
-            // Limitar a MAX_DESCRIPTION_LENGTH caracteres
-            if (newValue.length <= MAX_DESCRIPTION_LENGTH) {
-              setProblemDescription(newValue);
-            }
-          }}
-          maxLength={MAX_DESCRIPTION_LENGTH}
-          required
-        />
-        <div className="mt-1 flex justify-between items-center">
-          <span className={`text-xs ${
-            problemDescription.length > MAX_DESCRIPTION_LENGTH
-              ? "text-red-600 font-semibold"
-              : problemDescription.length > MAX_DESCRIPTION_LENGTH * 0.9
-              ? "text-amber-600"
-              : "text-slate-500"
-          }`}>
-            {problemDescription.length > MAX_DESCRIPTION_LENGTH
-              ? `⚠️ Excede el límite por ${problemDescription.length - MAX_DESCRIPTION_LENGTH} caracteres`
-              : `${problemDescription.length} / ${MAX_DESCRIPTION_LENGTH} caracteres`}
-          </span>
-        </div>
-      </div>
-
-      {/* Servicios */}
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Servicios *
-        </label>
-        <ServiceSelector
-          selectedServices={selectedServices}
-          onServicesChange={setSelectedServices}
-        />
-      </div>
-
-      {/* Costos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Costo Repuesto (CLP)
-          </label>
-          <input
-            type="text"
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
-            value={formatCLPInput(replacementCost)}
-            onChange={(e) => setReplacementCost(parseCLPInput(e.target.value))}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Valor del Servicio (CLP) *
-          </label>
-          <input
-            type="text"
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
-            value={formatCLPInput(serviceValue)}
-            onChange={(e) => setServiceValue(parseCLPInput(e.target.value))}
-            required
-          />
-        </div>
+      {/* Botón para agregar otro equipo */}
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={addNewDevice}
+          className="px-6 py-3 bg-brand-light text-white rounded-md hover:bg-brand-dark font-medium flex items-center gap-2"
+        >
+          ➕ Agregar Otro Equipo
+        </button>
       </div>
 
       {/* Prioridad y Fechas */}
@@ -867,29 +1015,37 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </div>
       </div>
 
-      {/* Total con desglose de IVA */}
-      <div className="bg-slate-50 p-4 rounded space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-slate-600">Subtotal:</span>
-          <span className="text-sm font-medium text-slate-700">
-            {formatCLP((replacementCost + serviceValue) / 1.19)}
-          </span>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-sm text-slate-600">IVA (19%):</span>
-          <span className="text-sm font-medium text-slate-700">
-            {formatCLP((replacementCost + serviceValue) - ((replacementCost + serviceValue) / 1.19))}
-          </span>
-        </div>
-        <div className="border-t border-slate-300 pt-2 mt-2">
-          <div className="flex justify-between items-center">
-            <span className="text-lg font-medium text-slate-700">Total:</span>
-            <span className="text-2xl font-bold text-brand">
-              {formatCLP(replacementCost + serviceValue)}
-            </span>
+      {/* Total General - Suma de todos los equipos */}
+      {(() => {
+        const totalReplacementCost = devices.reduce((sum, device) => sum + device.replacementCost, 0);
+        const totalServiceValue = devices.reduce((sum, device) => sum + device.serviceValue, 0);
+        const totalGeneral = totalReplacementCost + totalServiceValue;
+        
+        return (
+          <div className="bg-slate-50 p-4 rounded space-y-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">Subtotal General:</span>
+              <span className="text-sm font-medium text-slate-700">
+                {formatCLP(totalGeneral / 1.19)}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-600">IVA (19%):</span>
+              <span className="text-sm font-medium text-slate-700">
+                {formatCLP(totalGeneral - (totalGeneral / 1.19))}
+              </span>
+            </div>
+            <div className="border-t border-slate-300 pt-2 mt-2">
+              <div className="flex justify-between items-center">
+                <span className="text-lg font-medium text-slate-700">Total General ({devices.length} {devices.length === 1 ? 'equipo' : 'equipos'}):</span>
+                <span className="text-2xl font-bold text-brand">
+                  {formatCLP(totalGeneral)}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Botones */}
       <div className="flex justify-end gap-4">
@@ -902,24 +1058,25 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </button>
         <button
           type="submit"
-          disabled={loading || isSubmitting || problemDescription.length > MAX_DESCRIPTION_LENGTH}
+          disabled={loading || isSubmitting || devices.some(device => device.problemDescription.length > MAX_DESCRIPTION_LENGTH)}
           className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading || isSubmitting ? "Guardando..." : "Crear Orden"}
+          {loading || isSubmitting ? "Guardando..." : `Crear ${devices.length === 1 ? 'Orden' : `${devices.length} Órdenes`}`}
         </button>
       </div>
     </form>
 
     {/* PDFPreview fuera del formulario para evitar que los botones disparen el submit */}
-    {showPDFPreview && createdOrder && (
+    {/* Mostrar preview solo del primer equipo */}
+    {showPDFPreview && createdOrder && devices.length > 0 && (
       <PDFPreview
         order={createdOrder}
-        services={selectedServices}
+        services={devices[0].selectedServices}
         orderServices={createdOrderServices}
-        serviceValue={serviceValue}
-        replacementCost={replacementCost}
+        serviceValue={devices[0].serviceValue}
+        replacementCost={devices[0].replacementCost}
         warrantyDays={warrantyDays}
-        checklistData={checklistData}
+        checklistData={devices[0].checklistData}
         notes={[]}
         onClose={() => {
           setShowPDFPreview(false);
