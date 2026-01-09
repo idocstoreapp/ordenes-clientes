@@ -391,10 +391,61 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       const warrantyDays = order.warranty_days || 30;
       const notes = (orderNotes || []).map((n: any) => n.note);
 
-      // Crear orden con datos actualizados de sucursal
+      // Construir all_devices para el PDF si hay devices_data
+      let allDevices = null;
+      if ((order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0) {
+        // Calcular costos del primer equipo restando los costos de los equipos adicionales del total
+        const additionalDevicesTotalReplacement = ((order as any).devices_data as any[]).reduce(
+          (sum: number, device: any) => sum + (device.replacement_cost || 0), 
+          0
+        );
+        const additionalDevicesTotalLabor = ((order as any).devices_data as any[]).reduce(
+          (sum: number, device: any) => sum + (device.labor_cost || 0), 
+          0
+        );
+        
+        // El costo del primer equipo es el total menos los costos de los equipos adicionales
+        const firstDeviceReplacementCost = Math.max(0, (order.replacement_cost || 0) - additionalDevicesTotalReplacement);
+        const firstDeviceLaborCost = Math.max(0, (order.labor_cost || 0) - additionalDevicesTotalLabor);
+        
+        // Construir all_devices con el primer equipo (principal) y los adicionales
+        allDevices = [
+          // Equipo principal (primer equipo)
+          {
+            index: 1,
+            device_type: order.device_type || "iphone",
+            device_model: order.device_model || "",
+            device_serial_number: order.device_serial_number || null,
+            device_unlock_code: order.device_unlock_code || null,
+            device_unlock_pattern: order.device_unlock_pattern || null,
+            problem_description: order.problem_description || "",
+            checklist_data: order.checklist_data || null,
+            replacement_cost: firstDeviceReplacementCost,
+            labor_cost: firstDeviceLaborCost,
+            selected_services: services,
+          },
+          // Equipos adicionales desde devices_data
+          ...((order as any).devices_data as any[]).map((device: any, idx: number) => ({
+            index: idx + 2,
+            device_type: device.device_type || "iphone",
+            device_model: device.device_model || "",
+            device_serial_number: device.device_serial_number || null,
+            device_unlock_code: device.device_unlock_code || null,
+            device_unlock_pattern: device.device_unlock_pattern || null,
+            problem_description: device.problem_description || "",
+            checklist_data: device.checklist_data || null,
+            replacement_cost: device.replacement_cost || 0,
+            labor_cost: device.labor_cost || 0,
+            selected_services: device.selected_services || [],
+          })),
+        ];
+      }
+
+      // Crear orden con datos actualizados de sucursal y all_devices
       const orderWithUpdatedBranch = {
         ...order,
         sucursal: branchData,
+        ...(allDevices ? { all_devices: allDevices } : {}),
       };
 
       setPdfOrderData({
@@ -712,7 +763,14 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
                     className="px-4 py-3 text-sm text-slate-700 cursor-pointer"
                     onClick={() => setSelectedOrderId(order.id)}
                   >
-                    {order.device_model}
+                    <div className="flex items-center gap-2">
+                      <span>{order.device_model}</span>
+                      {(order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                          +{(order as any).devices_data.length} más
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td 
                     className="px-4 py-3 text-sm cursor-pointer"

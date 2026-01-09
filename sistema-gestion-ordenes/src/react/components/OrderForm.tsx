@@ -76,9 +76,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
   // Funciones auxiliares para manejar múltiples equipos
   const updateDevice = (deviceId: string, updates: Partial<DeviceItem>) => {
-    setDevices(devices.map(device => 
-      device.id === deviceId ? { ...device, ...updates } : device
-    ));
+    setDevices(prevDevices => 
+      prevDevices.map(device => 
+        device.id === deviceId ? { ...device, ...updates } : device
+      )
+    );
   };
 
   const addNewDevice = () => {
@@ -171,19 +173,72 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     }
     
     // Validar que todos los equipos tengan los campos obligatorios
-    const invalidDevices: string[] = [];
+    const invalidDevices: Array<{ equipo: string; campos: string[] }> = [];
     devices.forEach((device, index) => {
-      if (!device.deviceModel || !device.problemDescription || device.selectedServices.length === 0 || device.serviceValue <= 0) {
-        invalidDevices.push(`Equipo ${index + 1}`);
+      const equipoNum = index + 1;
+      const camposFaltantes: string[] = [];
+      
+      // Validar modelo del dispositivo (no vacío y no solo espacios)
+      if (!device.deviceModel || !device.deviceModel.trim()) {
+        camposFaltantes.push("Dispositivo (Marca y Modelo)");
       }
-      // Validar descripción
-      if (device.problemDescription.length > MAX_DESCRIPTION_LENGTH) {
-        invalidDevices.push(`Equipo ${index + 1} (descripción excede ${MAX_DESCRIPTION_LENGTH} caracteres)`);
+      
+      // Validar descripción del problema (no vacío y no solo espacios)
+      if (!device.problemDescription || !device.problemDescription.trim()) {
+        camposFaltantes.push("Descripción del Problema");
+      }
+      
+      // Validar descripción no exceda el límite
+      if (device.problemDescription && device.problemDescription.length > MAX_DESCRIPTION_LENGTH) {
+        camposFaltantes.push(`Descripción excede ${MAX_DESCRIPTION_LENGTH} caracteres`);
+      }
+      
+      // Validar servicios seleccionados
+      if (!device.selectedServices || device.selectedServices.length === 0) {
+        camposFaltantes.push("Servicios");
+      }
+      
+      // Validar valor del servicio (debe ser mayor a 0)
+      if (!device.serviceValue || device.serviceValue <= 0 || isNaN(device.serviceValue)) {
+        camposFaltantes.push("Valor del Servicio (debe ser mayor a 0)");
+      }
+      
+      if (camposFaltantes.length > 0) {
+        invalidDevices.push({
+          equipo: `Equipo ${equipoNum}`,
+          campos: camposFaltantes
+        });
       }
     });
     
     if (invalidDevices.length > 0) {
-      alert(`Por favor completa todos los campos obligatorios para: ${invalidDevices.join(", ")}`);
+      const mensaje = invalidDevices.map(item => 
+        `${item.equipo}: ${item.campos.join(", ")}`
+      ).join("\n");
+      alert(`Por favor completa todos los campos obligatorios:\n\n${mensaje}`);
+      return;
+    }
+
+    // Validar checklist para cada equipo (ANTES de establecer estados de carga)
+    const invalidChecklists: string[] = [];
+    devices.forEach((device, index) => {
+      const checklistItemNames = Object.keys(device.checklistData);
+      if (checklistItemNames.length > 0) {
+        const missingItems: string[] = [];
+        checklistItemNames.forEach((itemName) => {
+          const value = device.checklistData[itemName];
+          if (!value || value === "") {
+            missingItems.push(itemName);
+          }
+        });
+        if (missingItems.length > 0) {
+          invalidChecklists.push(`Equipo ${index + 1}: ${missingItems.join(", ")}`);
+        }
+      }
+    });
+    
+    if (invalidChecklists.length > 0) {
+      alert(`Por favor selecciona una opción para todos los items del checklist.\n${invalidChecklists.join("\n")}`);
       return;
     }
 
@@ -191,28 +246,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setLoading(true);
 
     try {
-      // Validar checklist para cada equipo
-      const invalidChecklists: string[] = [];
-      devices.forEach((device, index) => {
-        const checklistItemNames = Object.keys(device.checklistData);
-        if (checklistItemNames.length > 0) {
-          const missingItems: string[] = [];
-          checklistItemNames.forEach((itemName) => {
-            if (!device.checklistData[itemName] || device.checklistData[itemName] === "") {
-              missingItems.push(itemName);
-            }
-          });
-          if (missingItems.length > 0) {
-            invalidChecklists.push(`Equipo ${index + 1}: ${missingItems.join(", ")}`);
-          }
-        }
-      });
-      
-      if (invalidChecklists.length > 0) {
-        setLoading(false);
-        alert(`Por favor selecciona una opción para todos los items del checklist.\n${invalidChecklists.join("\n")}`);
-        return;
-      }
 
       // Verificar si es una sucursal (no tiene usuario en auth.users)
       // Las sucursales tienen su sesión guardada en localStorage
@@ -304,81 +337,160 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }
       }
 
-      // Crear una orden por cada equipo
-      const createdOrders: any[] = [];
+      // === CREAR UNA SOLA ORDEN CON TODOS LOS EQUIPOS ===
+      // El primer equipo es el principal (se almacena en campos normales)
+      // Los equipos adicionales se almacenan en devices_data (JSONB)
+      const firstDevice = devices[0];
       
-      for (const device of devices) {
-        // Preparar datos de inserción para este equipo
-        // NOTA: Dejamos order_number como NULL para que el trigger de la BD lo genere automáticamente
-        const orderData: any = {
-          order_number: null, // El trigger de BD lo generará automáticamente
-          customer_id: selectedCustomer.id,
-          technician_id: actualTechnicianId, // NULL para sucursales, technicianId para usuarios normales
-          sucursal_id: sucursalId,
-          device_type: device.deviceType || "iphone",
-          device_model: device.deviceModel,
-          device_serial_number: device.deviceSerial || null,
-          device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
-          problem_description: device.problemDescription,
-          checklist_data: device.checklistData,
-          replacement_cost: device.replacementCost,
-          labor_cost: device.serviceValue,
-          total_repair_cost: device.replacementCost + device.serviceValue,
-          priority,
-          commitment_date: commitmentDate || null,
-          warranty_days: warrantyDays,
-          status: "en_proceso",
-        };
+      // Calcular totales combinados de todos los equipos
+      const totalReplacementCost = devices.reduce((sum, d) => sum + d.replacementCost, 0);
+      const totalLaborCost = devices.reduce((sum, d) => sum + d.serviceValue, 0);
+      const totalRepairCost = totalReplacementCost + totalLaborCost;
+      
+      // Preparar equipos adicionales (desde el segundo en adelante) para almacenar en JSONB
+      const additionalDevices = devices.slice(1).map(device => ({
+        device_type: device.deviceType || "iphone",
+        device_model: device.deviceModel,
+        device_serial_number: device.deviceSerial || null,
+        device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
+        device_unlock_pattern: device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0 
+          ? device.deviceUnlockPattern 
+          : null,
+        problem_description: device.problemDescription,
+        checklist_data: device.checklistData || {},
+        replacement_cost: device.replacementCost,
+        labor_cost: device.serviceValue,
+        selected_services: device.selectedServices.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.description || null,
+          quantity: 1,
+          unit_price: device.serviceValue,
+          total_price: device.serviceValue,
+        })),
+      }));
 
-        // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
-        if (device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0) {
-          orderData.device_unlock_pattern = device.deviceUnlockPattern;
-        }
+      // Preparar datos de inserción para la orden única
+      // NOTA: Dejamos order_number como NULL para que el trigger de la BD lo genere automáticamente
+      const orderData: any = {
+        order_number: null, // El trigger de BD lo generará automáticamente
+        customer_id: selectedCustomer.id,
+        technician_id: actualTechnicianId, // NULL para sucursales, technicianId para usuarios normales
+        sucursal_id: sucursalId,
+        // Datos del primer equipo (equipo principal)
+        device_type: firstDevice.deviceType || "iphone",
+        device_model: firstDevice.deviceModel,
+        device_serial_number: firstDevice.deviceSerial || null,
+        device_unlock_code: firstDevice.unlockType === "code" ? firstDevice.deviceUnlockCode : null,
+        problem_description: firstDevice.problemDescription,
+        checklist_data: firstDevice.checklistData,
+        // Totales combinados de todos los equipos
+        replacement_cost: totalReplacementCost,
+        labor_cost: totalLaborCost,
+        total_repair_cost: totalRepairCost,
+        priority,
+        commitment_date: commitmentDate || null,
+        warranty_days: warrantyDays,
+        status: "en_proceso",
+        // Almacenar equipos adicionales en JSONB (si hay más de un equipo)
+        // Nota: Si el campo devices_data no existe en la BD, simplemente no se guardará
+        // pero el código seguirá funcionando con all_devices en memoria
+        ...(additionalDevices.length > 0 ? { devices_data: additionalDevices } : {}),
+      };
 
-        // Crear la orden para este equipo
-        const { data: order, error: orderError } = await supabase
-          .from("work_orders")
-          .insert(orderData)
-          .select()
-          .single();
+      // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
+      if (firstDevice.unlockType === "pattern" && firstDevice.deviceUnlockPattern.length > 0) {
+        orderData.device_unlock_pattern = firstDevice.deviceUnlockPattern;
+      }
 
-        if (orderError) throw orderError;
+      // Crear la orden única
+      const { data: order, error: orderError } = await supabase
+        .from("work_orders")
+        .insert(orderData)
+        .select()
+        .single();
 
-        // Crear servicios de la orden (guardar el valor del servicio)
-        for (const service of device.selectedServices) {
+      if (orderError) throw orderError;
+
+      // Crear servicios de la orden para TODOS los equipos
+      // Servicios del primer equipo
+      for (const service of firstDevice.selectedServices) {
+        await supabase.from("order_services").insert({
+          order_id: order.id,
+          service_id: service.id,
+          service_name: service.name,
+          quantity: 1,
+          unit_price: firstDevice.serviceValue,
+          total_price: firstDevice.serviceValue,
+          description: service.description || null,
+        });
+      }
+
+      // Servicios de los equipos adicionales (almacenados en devices_data)
+      for (const additionalDevice of additionalDevices) {
+        for (const service of additionalDevice.selected_services) {
           await supabase.from("order_services").insert({
             order_id: order.id,
             service_id: service.id,
             service_name: service.name,
             quantity: 1,
-            unit_price: device.serviceValue,
-            total_price: device.serviceValue,
+            unit_price: service.unit_price,
+            total_price: service.total_price,
+            description: service.description || null,
           });
         }
-
-        createdOrders.push(order);
       }
 
-      // Usar la primera orden creada para la vista previa del PDF
-      const firstOrder = createdOrders[0];
-      const firstDevice = devices[0];
+      const createdOrders = [order]; // Array con una sola orden
+
+      // Usar la orden creada para la vista previa del PDF (una sola orden con todos los equipos)
+      const createdOrder = createdOrders[0];
       
-      // Preparar orden para vista previa
+      // Preparar orden para vista previa con todos los equipos
       const orderWithRelations = {
-        ...firstOrder,
+        ...createdOrder,
         customer: selectedCustomer,
         sucursal: branchData,
+        // Incluir información de todos los equipos para el PDF
+        all_devices: devices.map((device, index) => ({
+          index: index + 1,
+          device_type: device.deviceType || "iphone",
+          device_model: device.deviceModel,
+          device_serial_number: device.deviceSerial || null,
+          device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
+          device_unlock_pattern: device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0 
+            ? device.deviceUnlockPattern 
+            : null,
+          problem_description: device.problemDescription,
+          checklist_data: device.checklistData || {},
+          replacement_cost: device.replacementCost,
+          labor_cost: device.serviceValue,
+          selected_services: device.selectedServices,
+        })),
       };
       
-      // Construir orderServices para el PDF (misma estructura que se usa en otros lugares)
+      // Construir orderServices para el PDF (todos los servicios de todos los equipos)
       // Incluir la descripción del servicio para que no se repita la descripción del problema
-      const orderServicesForPDF = firstDevice.selectedServices.map(service => ({
-        quantity: 1,
-        unit_price: firstDevice.serviceValue,
-        total_price: firstDevice.serviceValue,
-        service_name: service.name,
-        description: service.description || null, // Incluir descripción del servicio
-      }));
+      const orderServicesForPDF: Array<{
+        quantity: number;
+        unit_price: number;
+        total_price: number;
+        service_name: string;
+        description?: string | null;
+      }> = [];
+      
+      // Agregar servicios de todos los equipos
+      devices.forEach(device => {
+        device.selectedServices.forEach(service => {
+          orderServicesForPDF.push({
+            quantity: 1,
+            unit_price: device.serviceValue,
+            total_price: device.serviceValue,
+            service_name: service.name,
+            description: service.description || null,
+          });
+        });
+      });
       
       // Mostrar éxito inmediatamente
       // IMPORTANTE: Resetear isSubmitting ANTES de mostrar el preview para evitar duplicaciones
@@ -388,8 +500,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       setCreatedOrder(orderWithRelations);
       setCreatedOrderServices(orderServicesForPDF);
       setShowPDFPreview(true);
-      const ordersCount = createdOrders.length;
-      alert(`Se ${ordersCount === 1 ? 'creó' : 'crearon'} ${ordersCount} orden${ordersCount === 1 ? '' : 'es'} exitosamente. Se abrirá la vista previa del PDF del primer equipo.`);
+      const devicesCount = devices.length;
+      alert(`Orden creada exitosamente con ${devicesCount} equipo${devicesCount === 1 ? '' : 's'}. Se abrirá la vista previa del PDF.`);
       
       // Enviar email al cliente en segundo plano (no bloquear)
       // Usar setTimeout para que no bloquee la UI
@@ -409,17 +521,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             }
           }
 
-          // Generar PDF con el mismo diseño que se usa en la vista previa (solo para el primer equipo)
+          // Generar PDF con el mismo diseño que se usa en la vista previa (todos los equipos)
+          // Recopilar todos los servicios de todos los equipos
+          const allServices = devices.flatMap(device => device.selectedServices);
+          
           const pdfBlob = await generatePDFBlob(
             {
               ...orderWithRelations,
               sucursal: updatedBranchData,
             },
-            firstDevice.selectedServices,
-            firstDevice.serviceValue,
-            firstDevice.replacementCost,
+            allServices,
+            totalLaborCost, // Total de servicios de todos los equipos
+            totalReplacementCost, // Total de repuestos de todos los equipos
             warrantyDays,
-            firstDevice.checklistData,
+            firstDevice.checklistData, // Checklist del primer equipo (para compatibilidad)
             [], // notes vacío para nueva orden
             orderServicesForPDF // Pasar orderServices para que el PDF tenga la misma información detallada
           );
@@ -430,7 +545,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           
           try {
             console.log("[ORDER FORM] Intentando subir PDF a Supabase Storage...");
-            pdfUrl = await uploadPDFToStorage(pdfBlob, firstOrder.order_number);
+            pdfUrl = await uploadPDFToStorage(pdfBlob, createdOrder.order_number);
             if (pdfUrl) {
               console.log("[ORDER FORM] PDF subido exitosamente a:", pdfUrl);
             } else {
@@ -485,8 +600,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
           // Solo enviar email si tenemos PDF
           if (pdfUrl || pdfBase64) {
-            // Enviar email solo para la primera orden
-            console.log("[ORDER FORM] Enviando email de creación de orden:", firstOrder.order_number);
+            // Enviar email para la orden creada
+            console.log("[ORDER FORM] Enviando email de creación de orden:", createdOrder.order_number);
             const emailResponse = await fetch('/api/send-order-email', {
               method: 'POST',
               headers: {
@@ -495,7 +610,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               body: JSON.stringify({
                 to: selectedCustomer.email,
                 customerName: selectedCustomer.name,
-                orderNumber: order.order_number,
+                orderNumber: createdOrder.order_number,
                 pdfBase64: pdfBase64, // Puede ser null si se subió a storage
                 pdfUrl: pdfUrl, // URL del PDF si se subió exitosamente
                 branchName: updatedBranchData?.name || branchData?.name,
@@ -1061,20 +1176,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           disabled={loading || isSubmitting || devices.some(device => device.problemDescription.length > MAX_DESCRIPTION_LENGTH)}
           className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading || isSubmitting ? "Guardando..." : `Crear ${devices.length === 1 ? 'Orden' : `${devices.length} Órdenes`}`}
+          {loading || isSubmitting ? "Guardando..." : `Crear Orden${devices.length > 1 ? ` (${devices.length} equipos)` : ''}`}
         </button>
       </div>
     </form>
 
     {/* PDFPreview fuera del formulario para evitar que los botones disparen el submit */}
-    {/* Mostrar preview solo del primer equipo */}
+    {/* Mostrar preview de todos los equipos en una sola orden */}
     {showPDFPreview && createdOrder && devices.length > 0 && (
       <PDFPreview
         order={createdOrder}
-        services={devices[0].selectedServices}
+        services={devices.flatMap(d => d.selectedServices)}
         orderServices={createdOrderServices}
-        serviceValue={devices[0].serviceValue}
-        replacementCost={devices[0].replacementCost}
+        serviceValue={devices.reduce((sum, d) => sum + d.serviceValue, 0)}
+        replacementCost={devices.reduce((sum, d) => sum + d.replacementCost, 0)}
         warrantyDays={warrantyDays}
         checklistData={devices[0].checklistData}
         notes={[]}
