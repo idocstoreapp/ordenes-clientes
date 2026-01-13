@@ -2,8 +2,12 @@ import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { getSystemSettings, clearSettingsCache, type SystemSettings } from "@/lib/settings";
 import ChecklistEditor from "./ChecklistEditor";
+import ServicesEditor from "./ServicesEditor";
+
+type TabType = "logos" | "checklists" | "services" | "warranties";
 
 export default function Settings() {
+  const [activeTab, setActiveTab] = useState<TabType>("logos");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [headerLogoFile, setHeaderLogoFile] = useState<File | null>(null);
@@ -198,13 +202,47 @@ export default function Settings() {
     );
   }
 
+  const tabs: Array<{ id: TabType; label: string; icon: string }> = [
+    { id: "logos", label: "Logos", icon: "🖼️" },
+    { id: "checklists", label: "Checklists", icon: "✓" },
+    { id: "services", label: "Servicios", icon: "🔧" },
+    { id: "warranties", label: "Garantías", icon: "🛡️" },
+  ];
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <h2 className="text-xl font-bold text-slate-900 mb-6">Configuración del Sistema</h2>
 
-      <div className="space-y-8">
-        {/* Logo del Header */}
-        <div className="border-b border-slate-200 pb-6">
+      {/* Pestañas */}
+      <div className="border-b border-slate-200 mb-6">
+        <nav className="flex space-x-1" aria-label="Tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                px-4 py-2 text-sm font-medium rounded-t-lg transition-colors
+                ${
+                  activeTab === tab.id
+                    ? "bg-brand-light text-white border-b-2 border-brand-dark"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }
+              `}
+            >
+              <span className="mr-2">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Contenido de las pestañas */}
+      <div className="min-h-[400px]">
+        {/* Pestaña: Logos */}
+        {activeTab === "logos" && (
+          <div className="space-y-8">
+            {/* Logo del Header */}
+            <div className="border-b border-slate-200 pb-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Logo del Header</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -360,46 +398,66 @@ export default function Settings() {
             </div>
           </div>
         </div>
-
-        {/* Editor de Checklists */}
-        <ChecklistEditor />
-
-        {/* Políticas de Garantía */}
-        <div className="border-b border-slate-200 pb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-slate-900">Políticas de Garantía</h3>
-            <button
-              onClick={addWarrantyPolicy}
-              className="px-3 py-1 text-sm bg-brand-light text-white rounded-md hover:bg-brand-dark"
-            >
-              + Agregar Política
-            </button>
           </div>
+        )}
 
-          <div className="space-y-3">
-            {settings.warranty_policies.policies.map((policy, index) => (
-              <div key={index} className="flex gap-2">
-                <input
-                  type="text"
-                  className="flex-1 border border-slate-300 rounded-md px-3 py-2"
-                  value={policy}
-                  onChange={(e) => updateWarrantyPolicy(index, e.target.value)}
-                  placeholder="Escribe una política de garantía..."
-                />
+        {/* Pestaña: Checklists */}
+        {activeTab === "checklists" && (
+          <div>
+            <ChecklistEditor />
+          </div>
+        )}
+
+        {/* Pestaña: Servicios */}
+        {activeTab === "services" && (
+          <div>
+            <ServicesEditor />
+          </div>
+        )}
+
+        {/* Pestaña: Garantías */}
+        {activeTab === "warranties" && (
+          <div>
+            {/* Políticas de Garantía */}
+            <div className="pb-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Políticas de Garantía</h3>
                 <button
-                  onClick={() => removeWarrantyPolicy(index)}
-                  className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
-                  disabled={settings.warranty_policies.policies.length === 1}
+                  onClick={addWarrantyPolicy}
+                  className="px-3 py-1 text-sm bg-brand-light text-white rounded-md hover:bg-brand-dark"
                 >
-                  ✕
+                  + Agregar Política
                 </button>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Botón Guardar */}
-        <div className="flex justify-end">
+              <div className="space-y-3">
+                {settings.warranty_policies.policies.map((policy, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 border border-slate-300 rounded-md px-3 py-2"
+                      value={policy}
+                      onChange={(e) => updateWarrantyPolicy(index, e.target.value)}
+                      placeholder="Escribe una política de garantía..."
+                    />
+                    <button
+                      onClick={() => removeWarrantyPolicy(index)}
+                      className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+                      disabled={settings.warranty_policies.policies.length === 1}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Botón Guardar (solo visible en pestañas que requieren guardado) */}
+      {(activeTab === "logos" || activeTab === "warranties") && (
+        <div className="flex justify-end mt-6 pt-6 border-t border-slate-200">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -408,7 +466,7 @@ export default function Settings() {
             {saving ? "Guardando..." : "Guardar Configuración"}
           </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

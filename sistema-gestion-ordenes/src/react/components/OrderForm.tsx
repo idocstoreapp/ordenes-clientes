@@ -29,7 +29,8 @@ interface DeviceItem {
   checklistData: Record<string, "ok" | "damaged" | "replaced" | "no_probado">;
   selectedServices: Service[];
   replacementCost: number;
-  serviceValue: number;
+  serviceValue: number; // DEPRECADO: mantener por compatibilidad, usar servicePrices en su lugar
+  servicePrices: Record<string, number>; // Mapa de precios: serviceId -> price
 }
 
 export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
@@ -49,7 +50,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       checklistData: {},
       selectedServices: [],
       replacementCost: 0,
-      serviceValue: 0,
+      serviceValue: 0, // DEPRECADO
+      servicePrices: {}, // Mapa de precios por servicio
     }
   ]);
   
@@ -74,6 +76,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
+  // Función helper para calcular el total de servicios de un equipo
+  const getDeviceServiceTotal = (device: DeviceItem): number => {
+    return device.selectedServices.reduce((sum, service) => {
+      const price = device.servicePrices[service.id] || 0;
+      return sum + price;
+    }, 0);
+  };
+
   // Funciones auxiliares para manejar múltiples equipos
   const updateDevice = (deviceId: string, updates: Partial<DeviceItem>) => {
     setDevices(prevDevices => 
@@ -96,7 +106,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       checklistData: {},
       selectedServices: [],
       replacementCost: 0,
-      serviceValue: 0,
+      serviceValue: 0, // DEPRECADO
+      servicePrices: {}, // Mapa de precios por servicio
     };
     setDevices([...devices, newDevice]);
   };
@@ -198,9 +209,16 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         camposFaltantes.push("Servicios");
       }
       
-      // Validar valor del servicio (debe ser mayor a 0)
-      if (!device.serviceValue || device.serviceValue <= 0 || isNaN(device.serviceValue)) {
-        camposFaltantes.push("Valor del Servicio (debe ser mayor a 0)");
+      // Validar que cada servicio tenga un precio válido
+      const serviciosSinPrecio: string[] = [];
+      device.selectedServices.forEach(service => {
+        const precio = device.servicePrices[service.id];
+        if (!precio || precio <= 0 || isNaN(precio)) {
+          serviciosSinPrecio.push(service.name);
+        }
+      });
+      if (serviciosSinPrecio.length > 0) {
+        camposFaltantes.push(`Precios de servicios: ${serviciosSinPrecio.join(", ")}`);
       }
       
       if (camposFaltantes.length > 0) {
@@ -344,7 +362,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       
       // Calcular totales combinados de todos los equipos
       const totalReplacementCost = devices.reduce((sum, d) => sum + d.replacementCost, 0);
-      const totalLaborCost = devices.reduce((sum, d) => sum + d.serviceValue, 0);
+      const totalLaborCost = devices.reduce((sum, d) => sum + getDeviceServiceTotal(d), 0);
       const totalRepairCost = totalReplacementCost + totalLaborCost;
       
       // Preparar equipos adicionales (desde el segundo en adelante) para almacenar en JSONB
@@ -359,14 +377,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         problem_description: device.problemDescription,
         checklist_data: device.checklistData || {},
         replacement_cost: device.replacementCost,
-        labor_cost: device.serviceValue,
+        labor_cost: getDeviceServiceTotal(device),
         selected_services: device.selectedServices.map(s => ({
           id: s.id,
           name: s.name,
           description: s.description || null,
           quantity: 1,
-          unit_price: device.serviceValue,
-          total_price: device.serviceValue,
+          unit_price: device.servicePrices[s.id] || 0,
+          total_price: device.servicePrices[s.id] || 0,
         })),
       }));
 
@@ -414,16 +432,43 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
       // Crear servicios de la orden para TODOS los equipos
       // Servicios del primer equipo
-      for (const service of firstDevice.selectedServices) {
-        await supabase.from("order_services").insert({
-          order_id: order.id,
-          service_id: service.id,
-          service_name: service.name,
-          quantity: 1,
-          unit_price: firstDevice.serviceValue,
-          total_price: firstDevice.serviceValue,
-          description: service.description || null,
-        });
+      console.log("[OrderForm] Guardando servicios del primer equipo:", {
+        order_id: order.id,
+        servicios_count: firstDevice.selectedServices.length,
+        servicios: firstDevice.selectedServices.map(s => ({ id: s.id, name: s.name, price: firstDevice.servicePrices[s.id] || 0 })),
+        servicePrices: firstDevice.servicePrices,
+      });
+      
+      // Validar que hay servicios antes de guardar
+      if (!firstDevice.selectedServices || firstDevice.selectedServices.length === 0) {
+        console.warn("[OrderForm] ADVERTENCIA: El primer equipo no tiene servicios seleccionados. No se guardarán servicios en order_services.");
+      } else {
+        for (const service of firstDevice.selectedServices) {
+          const servicePrice = firstDevice.servicePrices[service.id] || 0;
+          
+          // Validar que el precio sea válido
+          if (!servicePrice || servicePrice <= 0 || isNaN(servicePrice)) {
+            console.error(`[OrderForm] Error: El servicio ${service.name} no tiene un precio válido (${servicePrice}). Saltando...`);
+            continue;
+          }
+          
+          const { data: insertedData, error: insertError } = await supabase.from("order_services").insert({
+            order_id: order.id,
+            service_id: service.id,
+            service_name: service.name,
+            quantity: 1,
+            unit_price: servicePrice,
+            total_price: servicePrice,
+            // NOTA: La tabla order_services NO tiene columna 'description'
+          }).select();
+          
+          if (insertError) {
+            console.error(`[OrderForm] Error guardando servicio ${service.name}:`, insertError);
+            // No lanzar error, solo registrar para no bloquear el proceso
+          } else {
+            console.log(`[OrderForm] Servicio guardado exitosamente: ${service.name} (precio: ${servicePrice})`, insertedData);
+          }
+        }
       }
 
       // Servicios de los equipos adicionales (almacenados en devices_data)
@@ -436,7 +481,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             quantity: 1,
             unit_price: service.unit_price,
             total_price: service.total_price,
-            description: service.description || null,
+            // NOTA: La tabla order_services NO tiene columna 'description'
           });
         }
       }
@@ -447,27 +492,54 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       const createdOrder = createdOrders[0];
       
       // Preparar orden para vista previa con todos los equipos
+      // DEBUG: Verificar servicios antes de construir all_devices
+      console.log("[OrderForm] Construyendo all_devices. Total equipos:", devices.length);
+      devices.forEach((device, index) => {
+        console.log(`[OrderForm] Equipo ${index + 1}:`, {
+          id: device.id,
+          model: device.deviceModel,
+          selectedServices_count: device.selectedServices.length,
+          selectedServices: device.selectedServices,
+          servicePrices: device.servicePrices,
+        });
+      });
+      
       const orderWithRelations = {
         ...createdOrder,
         customer: selectedCustomer,
         sucursal: branchData,
         // Incluir información de todos los equipos para el PDF
-        all_devices: devices.map((device, index) => ({
-          index: index + 1,
-          device_type: device.deviceType || "iphone",
-          device_model: device.deviceModel,
-          device_serial_number: device.deviceSerial || null,
-          device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
-          device_unlock_pattern: device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0 
-            ? device.deviceUnlockPattern 
-            : null,
-          problem_description: device.problemDescription,
-          checklist_data: device.checklistData || {},
-          replacement_cost: device.replacementCost,
-          labor_cost: device.serviceValue,
-          selected_services: device.selectedServices,
-        })),
+        all_devices: devices.map((device, index) => {
+          const deviceServices = device.selectedServices.map(s => ({
+            id: s.id,
+            name: s.name,
+            description: s.description || null,
+            quantity: 1,
+            unit_price: device.servicePrices[s.id] || 0,
+            total_price: device.servicePrices[s.id] || 0,
+          }));
+          
+          console.log(`[OrderForm] Equipo ${index + 1} - Servicios mapeados:`, deviceServices);
+          
+          return {
+            index: index + 1,
+            device_type: device.deviceType || "iphone",
+            device_model: device.deviceModel,
+            device_serial_number: device.deviceSerial || null,
+            device_unlock_code: device.unlockType === "code" ? device.deviceUnlockCode : null,
+            device_unlock_pattern: device.unlockType === "pattern" && device.deviceUnlockPattern.length > 0 
+              ? device.deviceUnlockPattern 
+              : null,
+            problem_description: device.problemDescription,
+            checklist_data: device.checklistData || {},
+            replacement_cost: device.replacementCost,
+            labor_cost: getDeviceServiceTotal(device),
+            selected_services: deviceServices,
+          };
+        }),
       };
+      
+      console.log("[OrderForm] all_devices construido:", orderWithRelations.all_devices);
       
       // Construir orderServices para el PDF (todos los servicios de todos los equipos)
       // Incluir la descripción del servicio para que no se repita la descripción del problema
@@ -482,10 +554,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       // Agregar servicios de todos los equipos
       devices.forEach(device => {
         device.selectedServices.forEach(service => {
+          const servicePrice = device.servicePrices[service.id] || 0;
           orderServicesForPDF.push({
             quantity: 1,
-            unit_price: device.serviceValue,
-            total_price: device.serviceValue,
+            unit_price: servicePrice,
+            total_price: servicePrice,
             service_name: service.name,
             description: service.description || null,
           });
@@ -1002,8 +1075,51 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             </label>
             <ServiceSelector
               selectedServices={device.selectedServices}
-              onServicesChange={(services) => updateDevice(device.id, { selectedServices: services })}
+              onServicesChange={(services) => {
+                console.log(`[OrderForm] onServicesChange llamado para equipo ${device.id}:`, {
+                  servicios_anteriores: device.selectedServices.length,
+                  servicios_nuevos: services.length,
+                  servicios: services,
+                });
+                // Al cambiar servicios, limpiar precios de servicios eliminados
+                const currentPrices = device.servicePrices;
+                const newPrices: Record<string, number> = {};
+                services.forEach(service => {
+                  // Mantener precio existente si el servicio ya estaba, sino usar 0
+                  newPrices[service.id] = currentPrices[service.id] || 0;
+                });
+                updateDevice(device.id, { 
+                  selectedServices: services,
+                  servicePrices: newPrices
+                });
+                console.log(`[OrderForm] Estado actualizado para equipo ${device.id}. Nuevos servicios:`, services.length);
+              }}
             />
+            
+            {/* Lista de servicios con precios individuales */}
+            {device.selectedServices.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {device.selectedServices.map((service) => (
+                  <div key={service.id} className="flex items-center gap-3 bg-slate-50 p-3 rounded border border-slate-200">
+                    <span className="font-medium text-slate-900 flex-1">{service.name}</span>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-slate-600 whitespace-nowrap">Precio (CLP):</label>
+                      <input
+                        type="text"
+                        className="w-32 border border-slate-300 rounded-md px-3 py-2"
+                        value={formatCLPInput(device.servicePrices[service.id] || 0)}
+                        onChange={(e) => {
+                          const newPrices = { ...device.servicePrices };
+                          newPrices[service.id] = parseCLPInput(e.target.value);
+                          updateDevice(device.id, { servicePrices: newPrices });
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Costos */}
@@ -1019,18 +1135,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 onChange={(e) => updateDevice(device.id, { replacementCost: parseCLPInput(e.target.value) })}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Valor del Servicio (CLP) *
-              </label>
-              <input
-                type="text"
-                className="w-full border border-slate-300 rounded-md px-3 py-2"
-                value={formatCLPInput(device.serviceValue)}
-                onChange={(e) => updateDevice(device.id, { serviceValue: parseCLPInput(e.target.value) })}
-                required
-              />
-            </div>
           </div>
 
           {/* Total para este equipo */}
@@ -1038,20 +1142,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Subtotal:</span>
               <span className="text-sm font-medium text-slate-700">
-                {formatCLP((device.replacementCost + device.serviceValue) / 1.19)}
+                {formatCLP((device.replacementCost + getDeviceServiceTotal(device)) / 1.19)}
               </span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">IVA (19%):</span>
               <span className="text-sm font-medium text-slate-700">
-                {formatCLP(device.replacementCost + device.serviceValue - (device.replacementCost + device.serviceValue) / 1.19)}
+                {formatCLP(device.replacementCost + getDeviceServiceTotal(device) - (device.replacementCost + getDeviceServiceTotal(device)) / 1.19)}
               </span>
             </div>
             <div className="border-t border-slate-300 pt-2 mt-2">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-medium text-slate-700">Total Equipo {deviceIndex + 1}:</span>
                 <span className="text-xl font-bold text-brand">
-                  {formatCLP(device.replacementCost + device.serviceValue)}
+                  {formatCLP(device.replacementCost + getDeviceServiceTotal(device))}
                 </span>
               </div>
             </div>
@@ -1133,7 +1237,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       {/* Total General - Suma de todos los equipos */}
       {(() => {
         const totalReplacementCost = devices.reduce((sum, device) => sum + device.replacementCost, 0);
-        const totalServiceValue = devices.reduce((sum, device) => sum + device.serviceValue, 0);
+        const totalServiceValue = devices.reduce((sum, device) => sum + getDeviceServiceTotal(device), 0);
         const totalGeneral = totalReplacementCost + totalServiceValue;
         
         return (
@@ -1188,7 +1292,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         order={createdOrder}
         services={devices.flatMap(d => d.selectedServices)}
         orderServices={createdOrderServices}
-        serviceValue={devices.reduce((sum, d) => sum + d.serviceValue, 0)}
+        serviceValue={devices.reduce((sum, d) => sum + getDeviceServiceTotal(d), 0)}
         replacementCost={devices.reduce((sum, d) => sum + d.replacementCost, 0)}
         warrantyDays={warrantyDays}
         checklistData={devices[0].checklistData}

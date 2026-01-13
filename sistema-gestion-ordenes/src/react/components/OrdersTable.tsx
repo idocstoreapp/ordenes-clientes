@@ -32,9 +32,19 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   const [editingOrder, setEditingOrder] = useState<WorkOrder | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [openActionsMenu, setOpenActionsMenu] = useState<string | null>(null);
+  const [showNotificationDialog, setShowNotificationDialog] = useState<{
+    orderId: string;
+    newStatus: string;
+    order: WorkOrder;
+  } | null>(null);
+  const [notificationMethods, setNotificationMethods] = useState<{
+    email: boolean;
+    whatsapp: boolean;
+  }>({ email: true, whatsapp: false });
   const [pdfOrderData, setPdfOrderData] = useState<{
     order: WorkOrder;
     services: Service[];
+    orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string; description?: string | null }>;
     serviceValue: number;
     replacementCost: number;
     warrantyDays: number;
@@ -211,6 +221,32 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       return;
     }
 
+    // Obtener la orden
+    const order = orders.find(o => o.id === orderId);
+    if (!order) {
+      alert("Orden no encontrada");
+      return;
+    }
+
+    // Si el estado cambió a "por_entregar" y hay cliente, mostrar diálogo de notificación
+    if (newStatus === 'por_entregar' && order.customer) {
+      // Resetear métodos de notificación (email por defecto)
+      setNotificationMethods({ email: true, whatsapp: false });
+      // Mostrar diálogo
+      setShowNotificationDialog({ orderId, newStatus, order });
+      return;
+    }
+
+    // Para otros estados, cambiar directamente sin notificación
+    await updateOrderStatus(orderId, newStatus, order, { email: false, whatsapp: false });
+  }
+
+  async function updateOrderStatus(
+    orderId: string,
+    newStatus: string,
+    order: WorkOrder,
+    methods: { email: boolean; whatsapp: boolean }
+  ) {
     try {
       const { error } = await supabase
         .from("work_orders")
@@ -219,100 +255,75 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
       if (error) throw error;
 
-      // Obtener la orden actualizada con relaciones
-      const order = orders.find(o => o.id === orderId);
-      
-      // Si el estado cambió a "por_entregar" y hay cliente con email, enviar notificación
-      if (newStatus === 'por_entregar') {
-        console.log("[ORDERS TABLE] Estado cambiado a 'por_entregar' para orden:", order?.order_number);
-        console.log("[ORDERS TABLE] Datos del cliente:", {
-          hasCustomer: !!order?.customer,
-          hasEmail: !!order?.customer?.email,
-          email: order?.customer?.email ? `${order.customer.email.substring(0, 3)}***` : 'no disponible'
-        });
-        
-        if (!order?.customer) {
-          console.warn("[ORDERS TABLE] No se puede enviar email: la orden no tiene cliente asociado");
-        } else if (!order.customer.email) {
-          console.warn("[ORDERS TABLE] No se puede enviar email: el cliente no tiene email configurado");
-        } else {
-          console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
-          console.log("[ORDERS TABLE] URL completa:", window.location.origin + '/api/send-order-email');
-          console.log("[ORDERS TABLE] Datos a enviar:", {
-            to: order.customer.email,
-            orderNumber: order.order_number,
-            emailType: 'ready_for_pickup'
-          });
-          try {
-          const emailResponse = await fetch('/api/send-order-email', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: order.customer.email,
-              customerName: order.customer.name,
-              orderNumber: order.order_number,
-              branchName: order.sucursal?.name,
-              branchEmail: order.sucursal?.email,
-              emailType: 'ready_for_pickup',
-            }),
-          });
+      // Enviar notificaciones según los métodos seleccionados
+      if (newStatus === 'por_entregar' && order.customer) {
+        const notifications: string[] = [];
 
-          if (!emailResponse.ok) {
-            let errorData: any = {};
-            try {
-              const text = await emailResponse.text();
-              console.error("[ORDERS TABLE] Respuesta de error (texto):", text);
-              if (text) {
-                try {
-                  errorData = JSON.parse(text);
-                } catch (parseError) {
-                  errorData = { error: text || 'Error desconocido', status: emailResponse.status };
+        // Enviar email si está seleccionado
+        if (methods.email && order.customer.email) {
+          try {
+            console.log("[ORDERS TABLE] Enviando email de notificación para orden:", order.order_number);
+            const emailResponse = await fetch('/api/send-order-email', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: order.customer.email,
+                customerName: order.customer.name,
+                orderNumber: order.order_number,
+                branchName: order.sucursal?.name,
+                branchEmail: order.sucursal?.email,
+                emailType: 'ready_for_pickup',
+              }),
+            });
+
+            if (!emailResponse.ok) {
+              let errorData: any = {};
+              try {
+                const text = await emailResponse.text();
+                if (text) {
+                  try {
+                    errorData = JSON.parse(text);
+                  } catch {
+                    errorData = { error: text || 'Error desconocido' };
+                  }
                 }
-              } else {
-                errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+              } catch {
+                errorData = { error: `Error ${emailResponse.status}` };
               }
-            } catch (textError) {
-              console.error("[ORDERS TABLE] Error leyendo respuesta:", textError);
-              errorData = { error: `Error ${emailResponse.status}: ${emailResponse.statusText}`, status: emailResponse.status };
+              notifications.push(`⚠️ Error al enviar email: ${errorData.error || 'Error desconocido'}`);
+            } else {
+              notifications.push(`✅ Email enviado a ${order.customer.email}`);
             }
-            console.error("[ORDERS TABLE] Error enviando email de notificación:", errorData);
-            alert(`Orden actualizada, pero hubo un error al enviar el email: ${errorData.error || 'Error desconocido'}\n\nDetalles: ${errorData.details || 'Sin detalles adicionales'}\n\nEmail de origen usado: ${errorData.from || 'No especificado'}`);
-          } else {
-            let successData: any = {};
-            try {
-              const text = await emailResponse.text();
-              if (text) {
-                try {
-                  successData = JSON.parse(text);
-                } catch (parseError) {
-                  successData = { message: text || 'Email enviado' };
-                }
-              }
-            } catch (textError) {
-              console.error("[ORDERS TABLE] Error leyendo respuesta exitosa:", textError);
-              successData = { message: 'Email enviado (sin respuesta del servidor)' };
-            }
-            console.log("[ORDERS TABLE] ========================================");
-            console.log("[ORDERS TABLE] ✅ EMAIL ENVIADO EXITOSAMENTE");
-            console.log("[ORDERS TABLE] Email ID:", successData.emailId || 'N/A');
-            console.log("[ORDERS TABLE] Mensaje:", successData.message || 'Email enviado');
-            console.log("[ORDERS TABLE] Timestamp:", successData.timestamp || new Date().toISOString());
-            console.log("[ORDERS TABLE] ========================================");
-            alert(`✅ Orden actualizada y email de notificación enviado a ${order.customer.email}`);
+          } catch (emailError: any) {
+            console.error("[ORDERS TABLE] Excepción al enviar email:", emailError);
+            notifications.push(`⚠️ Error al enviar email: ${emailError.message || 'Error de red'}`);
           }
-        } catch (emailError: any) {
-          console.error("[ORDERS TABLE] Excepción al enviar email de notificación:", emailError);
-          alert(`⚠️ Orden actualizada, pero hubo un error al enviar el email: ${emailError.message || 'Error de red'}\n\nRevisa la consola para más detalles.`);
-          // No fallar el cambio de estado si el email falla
         }
+
+        // Enviar WhatsApp si está seleccionado
+        if (methods.whatsapp && order.customer.phone) {
+          try {
+            await sendWhatsAppNotification(order);
+            notifications.push(`✅ WhatsApp abierto para ${order.customer.name}`);
+          } catch (whatsappError: any) {
+            console.error("[ORDERS TABLE] Excepción al enviar WhatsApp:", whatsappError);
+            notifications.push(`⚠️ Error al abrir WhatsApp: ${whatsappError.message || 'Error desconocido'}`);
+          }
+        }
+
+        // Mostrar resumen de notificaciones
+        if (notifications.length > 0) {
+          alert(`Orden actualizada a "Por entregar"\n\n${notifications.join('\n')}`);
+        } else if (methods.email || methods.whatsapp) {
+          alert(`Orden actualizada a "Por entregar"\n\n⚠️ No se pudo enviar ninguna notificación (faltan datos del cliente)`);
         }
       }
 
       // Actualizar estado local
-      setOrders(orders.map(order => 
-        order.id === orderId ? { ...order, status: newStatus as any } : order
+      setOrders(orders.map(o => 
+        o.id === orderId ? { ...o, status: newStatus as any } : o
       ));
       
       setEditingStatus(null);
@@ -322,9 +333,45 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     }
   }
 
+  async function handleConfirmNotification() {
+    if (!showNotificationDialog) return;
+
+    const { orderId, newStatus, order } = showNotificationDialog;
+    setShowNotificationDialog(null);
+    
+    await updateOrderStatus(orderId, newStatus, order, notificationMethods);
+  }
+
+  async function sendWhatsAppNotification(order: WorkOrder) {
+    if (!order.customer || !order.customer.phone) {
+      throw new Error("El cliente no tiene teléfono configurado");
+    }
+
+    // Preparar número de teléfono
+    const phone = order.customer.phone_country_code
+      ? order.customer.phone_country_code.replace("+", "") + order.customer.phone.replace(/\D/g, "")
+      : "56" + order.customer.phone.replace(/\D/g, "");
+
+    // Mensaje de notificación de cambio de estado (sin PDF, solo texto)
+    const message = encodeURIComponent(
+      `Hola ${order.customer.name},\n\n` +
+      `Te informamos que tu orden ${order.order_number} está lista para retirar.\n\n` +
+      `Estado: Por Entregar\n` +
+      `${order.sucursal?.name ? `Sucursal: ${order.sucursal.name}\n` : ''}` +
+      `${order.sucursal?.address ? `Dirección: ${order.sucursal.address}\n` : ''}` +
+      `${order.sucursal?.phone ? `Teléfono: ${order.sucursal.phone}\n` : ''}\n` +
+      `Por favor acércate a retirar tu equipo.\n\n` +
+      `Saludos,\n${order.sucursal?.name || 'iDocStore'}`
+    );
+
+    // Abrir WhatsApp Web con el mensaje
+    window.open(`https://wa.me/${phone}?text=${message}`, "_blank");
+  }
+
   async function handleViewPDF(order: WorkOrder) {
     try {
       // Cargar servicios de la orden con JOIN a services para obtener descripciones
+      console.log("[OrdersTable] Cargando orderServices para orden:", order.id, "order_number:", order.order_number);
       const { data: orderServices, error: servicesError } = await supabase
         .from("order_services")
         .select(`
@@ -333,7 +380,12 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         `)
         .eq("order_id", order.id);
 
-      if (servicesError) throw servicesError;
+      if (servicesError) {
+        console.error("[OrdersTable] Error cargando orderServices:", servicesError);
+        throw servicesError;
+      }
+      
+      console.log("[OrdersTable] orderServices cargados:", orderServices?.length || 0, orderServices);
       
       // Agregar descripción a orderServices si está disponible
       const orderServicesWithDescription = (orderServices || []).map((os: any) => ({
@@ -408,6 +460,66 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         const firstDeviceReplacementCost = Math.max(0, (order.replacement_cost || 0) - additionalDevicesTotalReplacement);
         const firstDeviceLaborCost = Math.max(0, (order.labor_cost || 0) - additionalDevicesTotalLabor);
         
+        // IMPORTANTE: Separar servicios del primer equipo de los servicios de equipos adicionales
+        // Los equipos adicionales tienen sus servicios en devices_data[].selected_services
+        // ESTRATEGIA: Usar el orden de inserción en lugar de filtrar por nombre/ID
+        // Los servicios se guardan primero para el primer equipo, luego para los equipos adicionales
+        // Por lo tanto, los primeros N servicios (donde N = cantidad de servicios del primer equipo) son del primer equipo
+        
+        console.log("[OrdersTable] DEBUG: Separando servicios. Total servicios en orderServices:", orderServices?.length);
+        console.log("[OrdersTable] DEBUG: devices_data:", (order as any).devices_data);
+        
+        // Calcular cuántos servicios tiene el primer equipo
+        // Si hay devices_data, el primer equipo tiene: total_servicios - servicios_equipos_adicionales
+        let firstDeviceServicesCount = services.length;
+        let additionalDevicesServicesCount = 0;
+        
+        if ((order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0) {
+          ((order as any).devices_data as any[]).forEach((device: any, deviceIdx: number) => {
+            console.log(`[OrdersTable] DEBUG: Equipo adicional ${deviceIdx + 1}:`, {
+              model: device.device_model,
+              selected_services: device.selected_services,
+              selected_services_count: device.selected_services?.length || 0,
+            });
+            
+            if (device.selected_services && Array.isArray(device.selected_services)) {
+              additionalDevicesServicesCount += device.selected_services.length;
+            }
+          });
+          
+          firstDeviceServicesCount = services.length - additionalDevicesServicesCount;
+          console.log(`[OrdersTable] DEBUG: Servicios del primer equipo (calculado): ${firstDeviceServicesCount}, Servicios de equipos adicionales: ${additionalDevicesServicesCount}`);
+        }
+        
+        // Los primeros N servicios en orderServices son del primer equipo (orden de inserción)
+        // Tomar los primeros firstDeviceServicesCount servicios de orderServices
+        const firstDeviceOrderServices = (orderServices || []).slice(0, firstDeviceServicesCount);
+        
+        console.log("[OrdersTable] DEBUG: Servicios del primer equipo (por orden):", firstDeviceOrderServices.length, firstDeviceOrderServices.map((os: any) => ({ 
+          service_id: os.service_id, 
+          service_name: os.service_name,
+          unit_price: os.unit_price 
+        })));
+        
+        // Convertir firstDeviceOrderServices al formato correcto
+        const firstDeviceServicesWithPrices = firstDeviceOrderServices.map((os: any) => {
+          return {
+            id: (os as any).service_id || (os as any).id,
+            name: os.service_name,
+            description: (os as any).description || null,
+            quantity: os.quantity || 1,
+            unit_price: os.unit_price || 0,
+            total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+          };
+        });
+        
+        console.log("[OrdersTable] Servicios del primer equipo calculados:", {
+          total_servicios: services.length,
+          servicios_equipos_adicionales: additionalDevicesServicesCount,
+          servicios_primer_equipo: firstDeviceServicesWithPrices.length,
+          servicios_primer_equipo_detalle: firstDeviceServicesWithPrices,
+        });
+        
         // Construir all_devices con el primer equipo (principal) y los adicionales
         allDevices = [
           // Equipo principal (primer equipo)
@@ -422,7 +534,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
             checklist_data: order.checklist_data || null,
             replacement_cost: firstDeviceReplacementCost,
             labor_cost: firstDeviceLaborCost,
-            selected_services: services,
+            selected_services: firstDeviceServicesWithPrices,
           },
           // Equipos adicionales desde devices_data
           ...((order as any).devices_data as any[]).map((device: any, idx: number) => ({
@@ -911,6 +1023,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
         <PDFPreview
           order={pdfOrderData.order}
           services={pdfOrderData.services}
+          orderServices={pdfOrderData.orderServices}
           serviceValue={pdfOrderData.serviceValue}
           replacementCost={pdfOrderData.replacementCost}
           warrantyDays={pdfOrderData.warrantyDays}
@@ -919,6 +1032,77 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           onClose={() => setPdfOrderData(null)}
           onDownload={() => setPdfOrderData(null)}
         />
+      )}
+
+      {/* Diálogo de selección de método de notificación */}
+      {showNotificationDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">
+              Seleccionar método de notificación
+            </h3>
+            <p className="text-sm text-slate-600 mb-4">
+              La orden se cambiará a "Por entregar". ¿Cómo deseas notificar al cliente?
+            </p>
+            
+            <div className="space-y-3 mb-6">
+              <label className="flex items-center gap-3 p-3 border border-slate-300 rounded-md cursor-pointer hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={notificationMethods.email}
+                  onChange={(e) => setNotificationMethods({ ...notificationMethods, email: e.target.checked })}
+                  className="w-4 h-4 text-brand-light focus:ring-brand-light"
+                  disabled={!showNotificationDialog.order.customer?.email}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-slate-900">📧 Enviar por correo</div>
+                  {showNotificationDialog.order.customer?.email ? (
+                    <div className="text-xs text-slate-500">{showNotificationDialog.order.customer.email}</div>
+                  ) : (
+                    <div className="text-xs text-red-500">El cliente no tiene email configurado</div>
+                  )}
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border border-slate-300 rounded-md cursor-pointer hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={notificationMethods.whatsapp}
+                  onChange={(e) => setNotificationMethods({ ...notificationMethods, whatsapp: e.target.checked })}
+                  className="w-4 h-4 text-brand-light focus:ring-brand-light"
+                  disabled={!showNotificationDialog.order.customer?.phone}
+                />
+                <div className="flex-1">
+                  <div className="font-medium text-slate-900">📱 Enviar por WhatsApp</div>
+                  {showNotificationDialog.order.customer?.phone ? (
+                    <div className="text-xs text-slate-500">{showNotificationDialog.order.customer.phone}</div>
+                  ) : (
+                    <div className="text-xs text-red-500">El cliente no tiene teléfono configurado</div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowNotificationDialog(null);
+                  setNotificationMethods({ email: true, whatsapp: false });
+                }}
+                className="px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmNotification}
+                disabled={!notificationMethods.email && !notificationMethods.whatsapp}
+                className="px-4 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirmar y Cambiar Estado
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingCustomer && (

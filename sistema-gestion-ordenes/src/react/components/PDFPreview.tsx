@@ -46,8 +46,17 @@ export default function PDFPreview({
         module.clearSettingsCache();
       }
     });
+    // Forzar regeneración del PDF cuando cambian los datos críticos
+    if (order) {
+      console.log("[PDF Preview] Regenerando PDF con order:", {
+        order_number: order.order_number,
+        has_all_devices: !!(order as any).all_devices,
+        all_devices_length: (order as any).all_devices?.length || 0,
+        all_devices: (order as any).all_devices
+      });
     generatePDF();
-  }, []);
+    }
+  }, [order?.id, order?.order_number]);
 
   // Cerrar menú al hacer click fuera
   useEffect(() => {
@@ -120,16 +129,8 @@ export default function PDFPreview({
       const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
       const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
 
-      // Generar QR Code
-      let qrDataUrl = "";
-      try {
-        qrDataUrl = await QRCode.toDataURL(
-          `https://ordenes.idocstore.cl/${order.order_number}`,
-          { width: 60, margin: 1 }
-        );
-      } catch (error) {
-        console.error("Error generando QR:", error);
-      }
+      // QR Code ELIMINADO según solicitud del usuario
+      // No generar QR Code
 
       // Cargar logo desde configuración
       let logoDataUrl = "";
@@ -155,19 +156,21 @@ export default function PDFPreview({
       }
 
       // === HEADER CON FRANJA AZUL OSCURA ===
+      // Reducir altura del header (eliminado QR)
+      const headerHeight = 25; // Reducido de 28 a 25 para más espacio
       doc.setFillColor(...darkStripeColor);
-      doc.rect(0, 0, pageWidth, 32, "F");
+      doc.rect(0, 0, pageWidth, headerHeight, "F");
 
       // Logo de la empresa (sobre la franja, izquierda)
       if (logoDataUrl) {
         const logoHeight = settings.pdf_logo.height;
         const logoWidth = settings.pdf_logo.width;
-        const logoY = (32 - logoHeight) / 2; // Centrar verticalmente en el header (32 puntos de altura)
+        const logoY = (headerHeight - logoHeight) / 2;
         doc.addImage(logoDataUrl, "PNG", margin, logoY, logoWidth, logoHeight);
       }
 
       // N° Orden en caja pequeña (CENTRO del header) - solo el texto "N° Orden:" dentro
-      doc.setFillColor(80, 80, 80); // Gris oscuro
+      doc.setFillColor(180, 180, 180); // Gris mucho más claro pero que se distinga del header
       doc.setFontSize(8);
       doc.setFont("helvetica", "bold");
       const orderLabelText = "N° Orden:";
@@ -175,7 +178,7 @@ export default function PDFPreview({
       const orderBoxWidth = orderLabelWidth + 6; // Solo el ancho necesario + padding
       const orderBoxHeight = 7; // Altura más pequeña
       const orderBoxX = (pageWidth - orderBoxWidth) / 2;
-      const orderBoxY = 8;
+      const orderBoxY = 5; // Ajustado para header más pequeño
       doc.rect(orderBoxX, orderBoxY, orderBoxWidth, orderBoxHeight, "F");
       
       // Texto "N° Orden:" dentro del cuadro (blanco)
@@ -186,150 +189,180 @@ export default function PDFPreview({
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
-      const orderNumberY = orderBoxY + orderBoxHeight + 4;
+      const orderNumberY = orderBoxY + orderBoxHeight + 3; // Reducido de 4 a 3
       doc.text(order.order_number, orderBoxX + (orderBoxWidth - doc.getTextWidth(order.order_number)) / 2, orderNumberY);
       doc.setFontSize(7);
       const dateTimeText = formatDateTime(order.created_at);
-      const dateTimeY = orderNumberY + 4;
+      const dateTimeY = orderNumberY + 3; // Reducido de 4 a 3
       doc.text(dateTimeText, orderBoxX + (orderBoxWidth - doc.getTextWidth(dateTimeText)) / 2, dateTimeY);
 
-      // QR Code (esquina superior derecha del header)
-      if (qrDataUrl) {
-        const qrSize = 20;
-        doc.addImage(qrDataUrl, "PNG", pageWidth - margin - qrSize, 6, qrSize, qrSize);
-      }
+      // QR Code ELIMINADO según solicitud del usuario
 
-      yPosition = 45;
+      // ELIMINAR espacio excesivo después del header (área marcada en rojo)
+      yPosition = headerHeight + 2; // Casi pegado al header (solo 2 puntos de separación)
 
       // === PANEL NEGOCIO (Izquierda) ===
       const panelStartY = yPosition;
       
-      // Primero calcular la altura necesaria
-      let tempPanelY = yPosition + 10;
+      // Ancho disponible para contenido de paneles (ajustado para que texto se adapte)
+      const panelContentWidth = (contentWidth - 10) / 2 - 25;
+      
+      // Calcular altura necesaria PRECISAMENTE antes de dibujar
+      // Usar tamaño de fuente estándar para el cálculo
+      doc.setFontSize(9);
+      let tempPanelY = yPosition + 8; // Padding superior
       const branchName = orderForPDF.sucursal?.name || "Sucursal";
-      const nameLines = doc.splitTextToSize(branchName, (contentWidth - 10) / 2 - 30);
-      tempPanelY += nameLines.length * 5;
+      
+      // Calcular líneas de texto reales
+      const nameLines = doc.splitTextToSize(branchName, panelContentWidth);
+      tempPanelY += nameLines.length * 4; // Interlineado compacto (4pt por línea)
       
       if (orderForPDF.sucursal?.address) {
-        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
-        tempPanelY += addressLines.length * 5;
+        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, panelContentWidth);
+        tempPanelY += addressLines.length * 4; // Interlineado compacto
       }
       if (orderForPDF.sucursal?.phone) {
-        tempPanelY += 5;
+        const phoneLines = doc.splitTextToSize(orderForPDF.sucursal.phone, panelContentWidth);
+        tempPanelY += phoneLines.length * 4; // Altura estándar
       }
       if (orderForPDF.sucursal?.email) {
-        tempPanelY += 5;
+        const emailLines = doc.splitTextToSize(orderForPDF.sucursal.email, panelContentWidth);
+        tempPanelY += emailLines.length * 4; // Altura estándar
       }
       
-      const businessPanelHeight = tempPanelY - panelStartY + 2;
+      // Altura del panel de negocio
+      const businessPanelHeight = tempPanelY - panelStartY + 1; // +1 para padding inferior mínimo
       
-      // Dibujar fondo y borde del panel PRIMERO
+      // === PANEL CLIENTE (Derecha) - calcular antes de dibujar ===
+      const clientPanelX = margin + (contentWidth - 10) / 2 + 10;
+      const clientPanelStartY = yPosition;
+      
+      // Calcular altura necesaria PRECISAMENTE antes de dibujar
+      doc.setFontSize(9);
+      let tempClientPanelY = yPosition + 8; // Padding superior
+      if (order.customer) {
+        const customerNameLines = doc.splitTextToSize(order.customer.name, panelContentWidth);
+        tempClientPanelY += customerNameLines.length * 4; // Nombre (interlineado compacto)
+        
+        const phoneText = order.customer.phone_country_code
+          ? `${order.customer.phone_country_code} ${order.customer.phone}`
+          : order.customer.phone;
+        const phoneLines = doc.splitTextToSize(phoneText, panelContentWidth);
+        tempClientPanelY += phoneLines.length * 4; // Teléfono
+        
+        const emailLines = doc.splitTextToSize(order.customer.email, panelContentWidth);
+        tempClientPanelY += emailLines.length * 4; // Correo
+        
+        if (order.customer.address) {
+          const addressLines = doc.splitTextToSize(order.customer.address, panelContentWidth);
+          tempClientPanelY += addressLines.length * 4; // Dirección (interlineado compacto)
+        }
+      }
+      // Altura del panel de cliente
+      const clientPanelHeight = tempClientPanelY - clientPanelStartY + 1; // +1 para padding inferior mínimo
+      
+      // ALTURA FIJA IGUAL PARA AMBOS PANELES - el panel más alto determina la altura
+      const fixedPanelHeight = Math.max(businessPanelHeight, clientPanelHeight);
+      
+      // Dibujar fondo y borde de AMBOS paneles con ALTURA FIJA
+      // El panel NO se deforma - el texto se ajusta dentro
+      const panelWidth = (contentWidth - 10) / 2;
+      
+      // Panel de negocio (izquierda)
       doc.setFillColor(250, 250, 250);
-      doc.rect(margin, panelStartY, (contentWidth - 10) / 2, businessPanelHeight, "F");
+      doc.rect(margin, panelStartY, panelWidth, fixedPanelHeight, "F");
       doc.setDrawColor(200, 200, 200);
-      doc.rect(margin, panelStartY, (contentWidth - 10) / 2, businessPanelHeight, "S");
+      doc.rect(margin, panelStartY, panelWidth, fixedPanelHeight, "S");
       
-      // Título del panel con franja azul
+      // Panel de cliente (derecha)
+      doc.setFillColor(250, 250, 250);
+      doc.rect(clientPanelX, clientPanelStartY, panelWidth, fixedPanelHeight, "F");
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(clientPanelX, clientPanelStartY, panelWidth, fixedPanelHeight, "S");
+      
+      // Títulos de los paneles con franja azul
       doc.setFillColor(...stripeColor);
-      doc.rect(margin, yPosition, (contentWidth - 10) / 2, 8, "F");
+      doc.rect(margin, yPosition, panelWidth, 8, "F");
+      doc.rect(clientPanelX, yPosition, panelWidth, 8, "F");
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("iDocStore", margin + 3, yPosition + 6);
+      doc.text("CLIENTE", clientPanelX + 3, yPosition + 6);
 
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
-      // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
-      let panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
+      // Reducir margen superior (de 12 a 10)
+      let panelY = yPosition + 10;
 
-      // Nombre de la sucursal
+      // Nombre de la sucursal - texto se ajusta dentro del cuadro fijo
       doc.setFont("helvetica", "bold");
       doc.text("Sucursal:", margin + 3, panelY);
       doc.setFont("helvetica", "normal");
-      doc.text(nameLines, margin + 25, panelY);
-      panelY += nameLines.length * 5;
+      // Usar panelContentWidth para ajuste automático de texto - NO se sale del cuadro
+      const nameLinesFinal = doc.splitTextToSize(branchName, panelContentWidth);
+      doc.text(nameLinesFinal, margin + 25, panelY);
+      panelY += nameLinesFinal.length * 4; // Interlineado compacto (4pt)
 
       if (orderForPDF.sucursal?.address) {
         doc.setFont("helvetica", "bold");
         doc.text("Dirección:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, (contentWidth - 10) / 2 - 30);
+        // El texto se ajusta automáticamente - SIEMPRE dentro del cuadro
+        const addressLines = doc.splitTextToSize(orderForPDF.sucursal.address, panelContentWidth);
         doc.text(addressLines, margin + 25, panelY);
-        panelY += addressLines.length * 5;
+        panelY += addressLines.length * 4; // Interlineado compacto (4pt)
       }
 
       if (orderForPDF.sucursal?.phone) {
         doc.setFont("helvetica", "bold");
         doc.text("Teléfono:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        doc.text(orderForPDF.sucursal.phone, margin + 25, panelY);
-        panelY += 5;
+        const phoneText = doc.splitTextToSize(orderForPDF.sucursal.phone, panelContentWidth);
+        doc.text(phoneText, margin + 25, panelY);
+        panelY += phoneText.length * 4;
       }
 
       if (orderForPDF.sucursal?.email) {
         doc.setFont("helvetica", "bold");
         doc.text("Correo:", margin + 3, panelY);
         doc.setFont("helvetica", "normal");
-        doc.text(orderForPDF.sucursal.email, margin + 25, panelY);
-        panelY += 5;
+        const emailText = doc.splitTextToSize(orderForPDF.sucursal.email, panelContentWidth);
+        doc.text(emailText, margin + 25, panelY);
+        panelY += emailText.length * 4;
       }
 
-      // === PANEL CLIENTE (Derecha) ===
-      const clientPanelX = margin + (contentWidth - 10) / 2 + 10;
-      const clientPanelStartY = yPosition;
-      
-      // Calcular altura necesaria primero
-      let tempClientPanelY = yPosition + 10;
-      if (order.customer) {
-        tempClientPanelY += 5; // Nombre
-        tempClientPanelY += 5; // Teléfono
-        tempClientPanelY += 5; // Correo
-        if (order.customer.address) {
-          const addressLines = doc.splitTextToSize(order.customer.address, (contentWidth - 10) / 2 - 30);
-          tempClientPanelY += addressLines.length * 5;
-        }
-      }
-      const clientPanelHeight = tempClientPanelY - clientPanelStartY + 2;
-      
-      // Dibujar fondo y borde del panel PRIMERO
-      doc.setFillColor(250, 250, 250);
-      doc.rect(clientPanelX, clientPanelStartY, (contentWidth - 10) / 2, clientPanelHeight, "F");
-      doc.setDrawColor(200, 200, 200);
-      doc.rect(clientPanelX, clientPanelStartY, (contentWidth - 10) / 2, clientPanelHeight, "S");
-      
-      doc.setFillColor(...stripeColor);
-      doc.rect(clientPanelX, yPosition, (contentWidth - 10) / 2, 8, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("CLIENTE", clientPanelX + 3, yPosition + 6);
-
+      // Panel de cliente ya está dibujado arriba, ahora solo el contenido
       if (order.customer) {
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(9);
-        // Centrar verticalmente el contenido dentro del cuadro (más espacio arriba)
-        panelY = yPosition + 12; // Aumentar solo el margen superior para centrar el texto
+        // Reducir margen superior (de 12 a 10)
+        let clientPanelY = yPosition + 10;
 
         doc.setFont("helvetica", "bold");
-        doc.text("Nombre:", clientPanelX + 3, panelY);
+        doc.text("Nombre:", clientPanelX + 3, clientPanelY);
         doc.setFont("helvetica", "normal");
-        doc.text(order.customer.name, clientPanelX + 25, panelY);
-        panelY += 5;
+        // Texto se ajusta dentro del cuadro fijo - NO se sale
+        const customerNameLines = doc.splitTextToSize(order.customer.name, panelContentWidth);
+        doc.text(customerNameLines, clientPanelX + 25, clientPanelY);
+        clientPanelY += customerNameLines.length * 4; // Interlineado compacto (4pt)
 
         const phoneText = order.customer.phone_country_code
           ? `${order.customer.phone_country_code} ${order.customer.phone}`
           : order.customer.phone;
         doc.setFont("helvetica", "bold");
-        doc.text("Teléfono:", clientPanelX + 3, panelY);
+        doc.text("Teléfono:", clientPanelX + 3, clientPanelY);
         doc.setFont("helvetica", "normal");
-        doc.text(phoneText, clientPanelX + 25, panelY);
-        panelY += 5;
+        const phoneLines = doc.splitTextToSize(phoneText, panelContentWidth);
+        doc.text(phoneLines, clientPanelX + 25, clientPanelY);
+        clientPanelY += phoneLines.length * 4; // Interlineado compacto
 
         doc.setFont("helvetica", "bold");
-        doc.text("Correo:", clientPanelX + 3, panelY);
+        doc.text("Correo:", clientPanelX + 3, clientPanelY);
         doc.setFont("helvetica", "normal");
-        doc.text(order.customer.email, clientPanelX + 25, panelY);
+        const emailLines = doc.splitTextToSize(order.customer.email, panelContentWidth);
+        doc.text(emailLines, clientPanelX + 25, clientPanelY);
         panelY += 5;
 
         if (order.customer.address) {
@@ -342,8 +375,9 @@ export default function PDFPreview({
         }
       }
 
-      // Usar la altura máxima de ambos paneles para continuar
-      yPosition = Math.max(panelStartY + businessPanelHeight, clientPanelStartY + clientPanelHeight) + 5;
+      // Usar la altura fija para continuar
+      // ELIMINAR completamente el espacio entre paneles de sucursal/cliente y datos del equipo (área marcada en rojo)
+      yPosition = panelStartY + fixedPanelHeight + 0;
 
       // === RECOPILAR TODOS LOS EQUIPOS ===
       // El primer equipo es el principal (orden principal)
@@ -359,6 +393,7 @@ export default function PDFPreview({
         checklist_data?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
         replacement_cost: number;
         labor_cost: number;
+        selected_services?: Array<{ id?: string; name: string; description?: string | null; quantity: number; unit_price: number; total_price: number }>;
       }> = [];
 
       // Agregar el primer equipo (equipo principal de la orden)
@@ -366,6 +401,89 @@ export default function PDFPreview({
       if ((order as any).all_devices && Array.isArray((order as any).all_devices) && (order as any).all_devices.length > 0) {
         // Si viene desde OrderForm o OrdersTable con all_devices, usar el primer elemento
         const firstDeviceData = (order as any).all_devices[0];
+        console.log("[PDF Preview] firstDeviceData completo:", firstDeviceData);
+        console.log("[PDF Preview] firstDeviceData.selected_services:", firstDeviceData.selected_services);
+        console.log("[PDF Preview] firstDeviceData.selected_services tipo:", typeof firstDeviceData.selected_services);
+        console.log("[PDF Preview] firstDeviceData.selected_services es array?:", Array.isArray(firstDeviceData.selected_services));
+        console.log("[PDF Preview] all_devices completo:", (order as any).all_devices);
+        console.log("[PDF Preview] all_devices[0] completo:", JSON.stringify((order as any).all_devices[0], null, 2));
+        console.log("[PDF Preview] all_devices[0].selected_services:", (order as any).all_devices[0]?.selected_services);
+        console.log("[PDF Preview] all_devices[0].selected_services length:", (order as any).all_devices[0]?.selected_services?.length);
+        console.log("[PDF Preview] all_devices[0].labor_cost:", (order as any).all_devices[0]?.labor_cost);
+        
+        // Asegurar que selected_services sea un array válido
+        let firstDeviceServices = firstDeviceData.selected_services;
+        if (!Array.isArray(firstDeviceServices)) {
+          console.warn("[PDF Preview] firstDeviceData.selected_services no es un array, convirtiendo...");
+          firstDeviceServices = [];
+        }
+        
+        // Si selected_services está vacío, intentar reconstruir desde orderServices o desde all_devices del OrderForm
+        if (firstDeviceServices.length === 0) {
+          console.log("[PDF Preview] selected_services está vacío, intentando reconstruir...");
+          
+          // Primero intentar desde orderServices si está disponible
+          if (orderServices && orderServices.length > 0) {
+            console.log("[PDF Preview] Reconstruyendo desde orderServices...");
+            // Si hay devices_data, separar servicios del primer equipo
+            if ((order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0) {
+              const additionalDevicesServices = new Set<string>();
+              ((order as any).devices_data as any[]).forEach((device: any) => {
+                if (device.selected_services && Array.isArray(device.selected_services)) {
+                  device.selected_services.forEach((service: any) => {
+                    const serviceId = service.id || service.service_id;
+                    if (serviceId) {
+                      additionalDevicesServices.add(serviceId);
+                    }
+                    if (service.name) {
+                      additionalDevicesServices.add(service.name);
+                    }
+                  });
+                }
+              });
+              
+              const firstDeviceOrderServices = orderServices.filter((os: any) => {
+                const serviceId = (os as any).service_id || (os as any).id;
+                const serviceName = os.service_name;
+                return !additionalDevicesServices.has(serviceId) && !additionalDevicesServices.has(serviceName);
+              });
+              
+              firstDeviceServices = firstDeviceOrderServices.map((os: any) => ({
+                id: (os as any).service_id || (os as any).id,
+                name: os.service_name,
+                description: (os as any).description || null,
+                quantity: os.quantity || 1,
+                unit_price: os.unit_price || 0,
+                total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+              }));
+              
+              console.log("[PDF Preview] Servicios reconstruidos desde orderServices (con equipos adicionales):", firstDeviceServices);
+            } else {
+              // Si no hay equipos adicionales, todos los orderServices son del primer equipo
+              firstDeviceServices = orderServices.map((os: any) => ({
+                id: (os as any).service_id || (os as any).id,
+                name: os.service_name,
+                description: (os as any).description || null,
+                quantity: os.quantity || 1,
+                unit_price: os.unit_price || 0,
+                total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+              }));
+              console.log("[PDF Preview] Servicios reconstruidos desde orderServices (sin equipos adicionales):", firstDeviceServices);
+            }
+          } else {
+            // Si orderServices está vacío, verificar si hay servicios en all_devices[0] que se perdieron
+            // Esto puede pasar si all_devices se construyó correctamente pero selected_services se perdió
+            console.log("[PDF Preview] orderServices está vacío, verificando all_devices completo...");
+            console.log("[PDF Preview] all_devices[0] completo:", JSON.stringify((order as any).all_devices[0], null, 2));
+            
+            // Si el primer equipo tiene labor_cost > 0, significa que tiene servicios pero no se guardaron
+            // En este caso, no podemos reconstruir los servicios sin más información
+            if (firstDeviceData.labor_cost > 0) {
+              console.warn("[PDF Preview] ADVERTENCIA: El primer equipo tiene labor_cost > 0 pero no tiene servicios. Esto indica que los servicios no se guardaron correctamente en order_services.");
+            }
+          }
+        }
+        
         allDevices.push({
           index: 1,
           device_type: firstDeviceData.device_type || order.device_type || "iphone",
@@ -377,6 +495,7 @@ export default function PDFPreview({
           checklist_data: firstDeviceData.checklist_data || checklistData || null,
           replacement_cost: firstDeviceData.replacement_cost || 0,
           labor_cost: firstDeviceData.labor_cost || 0,
+          selected_services: firstDeviceServices,
         });
       } else {
         // Si no hay all_devices, construir el primer equipo desde los datos de la orden
@@ -399,6 +518,104 @@ export default function PDFPreview({
           firstDeviceLaborCost = Math.max(0, (order.labor_cost || 0) - additionalDevicesTotalLabor);
         }
         
+        // Construir selected_services: preferir orderServices si está disponible (tiene precios reales)
+        // IMPORTANTE: Si hay devices_data, separar servicios del primer equipo de los servicios de equipos adicionales
+        let firstDeviceServices: Array<{ id?: string; name: string; description?: string | null; quantity: number; unit_price: number; total_price: number }> = [];
+        
+        if (orderServices && orderServices.length > 0) {
+          // Si hay devices_data con equipos adicionales, filtrar servicios del primer equipo
+          if ((order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0) {
+            // Obtener todos los servicios de los equipos adicionales
+            const additionalDevicesServices = new Set<string>();
+            ((order as any).devices_data as any[]).forEach((device: any) => {
+              if (device.selected_services && Array.isArray(device.selected_services)) {
+                device.selected_services.forEach((service: any) => {
+                  const serviceId = service.id || service.service_id;
+                  if (serviceId) {
+                    additionalDevicesServices.add(serviceId);
+                  }
+                  if (service.name) {
+                    additionalDevicesServices.add(service.name);
+                  }
+                });
+              }
+            });
+            
+            // Filtrar orderServices: excluir los que están en equipos adicionales
+            const firstDeviceOrderServices = orderServices.filter((os: any) => {
+              const serviceId = (os as any).service_id || (os as any).id;
+              const serviceName = os.service_name;
+              return !additionalDevicesServices.has(serviceId) && !additionalDevicesServices.has(serviceName);
+            });
+            
+            // Mapear a formato correcto
+            firstDeviceServices = firstDeviceOrderServices.map((os: any) => ({
+              id: (os as any).service_id || (os as any).id,
+              name: os.service_name,
+              description: (os as any).description || null,
+              quantity: os.quantity || 1,
+              unit_price: os.unit_price || 0,
+              total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+            }));
+            
+            console.log("[PDF Preview] Servicios del primer equipo separados:", {
+              total_orderServices: orderServices.length,
+              servicios_equipos_adicionales: additionalDevicesServices.size,
+              servicios_primer_equipo: firstDeviceServices.length,
+              servicios_primer_equipo_detalle: firstDeviceServices,
+            });
+          } else {
+            // Si no hay equipos adicionales, usar todos los orderServices para el primer equipo
+            firstDeviceServices = orderServices.map((os: any) => ({
+              id: (os as any).service_id || (os as any).id,
+              name: os.service_name,
+              description: (os as any).description || null,
+              quantity: os.quantity || 1,
+              unit_price: os.unit_price || 0,
+              total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
+            }));
+          }
+        } else if (services && services.length > 0) {
+          // Fallback a services si no hay orderServices
+          // Si hay devices_data, también filtrar aquí
+          if ((order as any).devices_data && Array.isArray((order as any).devices_data) && (order as any).devices_data.length > 0) {
+            const additionalDevicesServices = new Set<string>();
+            ((order as any).devices_data as any[]).forEach((device: any) => {
+              if (device.selected_services && Array.isArray(device.selected_services)) {
+                device.selected_services.forEach((service: any) => {
+                  const serviceId = service.id || service.service_id;
+                  if (serviceId) {
+                    additionalDevicesServices.add(serviceId);
+                  }
+                  if (service.name) {
+                    additionalDevicesServices.add(service.name);
+                  }
+                });
+              }
+            });
+            
+            firstDeviceServices = services
+              .filter(s => !additionalDevicesServices.has(s.id) && !additionalDevicesServices.has(s.name))
+              .map(s => ({
+                id: s.id,
+                name: s.name,
+                description: s.description || null,
+                quantity: 1,
+                unit_price: s.default_price || 0,
+                total_price: s.default_price || 0,
+              }));
+          } else {
+            firstDeviceServices = services.map(s => ({
+              id: s.id,
+              name: s.name,
+              description: s.description || null,
+              quantity: 1,
+              unit_price: s.default_price || 0,
+              total_price: s.default_price || 0,
+            }));
+          }
+        }
+        
         allDevices.push({
           index: 1,
           device_type: order.device_type || "iphone",
@@ -410,6 +627,7 @@ export default function PDFPreview({
           checklist_data: checklistData || null,
           replacement_cost: firstDeviceReplacementCost,
           labor_cost: firstDeviceLaborCost,
+          selected_services: firstDeviceServices,
         });
       }
 
@@ -429,6 +647,7 @@ export default function PDFPreview({
             checklist_data: device.checklist_data || null,
             replacement_cost: device.replacement_cost || 0,
             labor_cost: device.labor_cost || 0,
+            selected_services: device.selected_services || [],
           });
         });
       } else if ((order as any).devices_data && Array.isArray((order as any).devices_data)) {
@@ -445,19 +664,43 @@ export default function PDFPreview({
             checklist_data: device.checklist_data || null,
             replacement_cost: device.replacement_cost || 0,
             labor_cost: device.labor_cost || 0,
+            selected_services: device.selected_services || [],
           });
         });
       }
       
       // Debug: Log para verificar que se están cargando los equipos
+      console.log("[PDF Preview] ====== INICIO DEBUG EQUIPOS ======");
+      console.log("[PDF Preview] order.all_devices:", (order as any).all_devices);
+      console.log("[PDF Preview] order.devices_data:", (order as any).devices_data);
+      console.log("[PDF Preview] orderServices:", orderServices);
+      console.log("[PDF Preview] services:", services);
       console.log("[PDF Preview] Total equipos encontrados:", allDevices.length);
-      console.log("[PDF Preview] Equipos:", allDevices.map(d => ({ index: d.index, model: d.device_model })));
+      allDevices.forEach((d, idx) => {
+        console.log(`[PDF Preview] Equipo ${idx + 1}:`, {
+          index: d.index,
+          model: d.device_model,
+          has_selected_services: !!d.selected_services,
+          selected_services_count: d.selected_services?.length || 0,
+          selected_services: d.selected_services,
+          labor_cost: d.labor_cost,
+          replacement_cost: d.replacement_cost
+        });
+      });
+      console.log("[PDF Preview] ====== FIN DEBUG EQUIPOS ======");
 
       // === PANEL DATOS DEL EQUIPO ===
       const equipmentPanelStartY = yPosition;
       
+      // DIBUJAR EL FONDO DEL PANEL PRIMERO (antes del contenido)
+      // Usar una altura estimada grande que luego se ajustará con el borde
+      const estimatedPanelHeight = 300; // Altura estimada grande
+      doc.setFillColor(250, 250, 250);
+      doc.rect(margin, equipmentPanelStartY, contentWidth, estimatedPanelHeight, "F");
+      
       // === CÁLCULO DE ESPACIO DISPONIBLE CON PRESUPUESTOS DE ALTURA ===
-      // Necesitamos espacio para: garantías + cuadro de firma + márgenes
+      // IMPORTANTE: Las garantías SIEMPRE deben tener un espacio mínimo garantizado
+      // Calcular espacio necesario para garantías y firma (NUNCA se invaden)
       const pageHeight = doc.internal.pageSize.getHeight();
       const sigBoxHeight = 18;
       const sigTextHeight = 6;
@@ -466,23 +709,40 @@ export default function PDFPreview({
       const signatureTextSpacing = 5; // Espacio entre el cuadro de firma y el texto "FIRMA DEL CLIENTE"
       const spaceNeededForSignature = sigBoxHeight + sigTextHeight + spaceAfterWarranty + bottomMargin;
       const warrantyTitleHeight = 6;
-      const warrantyPaddingTop = 8; // Reducido para dar más espacio al contenido
-      const warrantyPaddingBottom = 3; // Reducido para maximizar espacio
-      const warrantyMinHeight = 50; // Altura mínima estimada para garantías
+      const warrantyPaddingTop = 8;
+      const warrantyPaddingBottom = 3;
+      // ESPACIO MÍNIMO GARANTIZADO PARA GARANTÍAS (calculado dinámicamente según número de garantías)
+      // Calcular altura mínima basada en el número real de garantías
+      const warrantyTextForCalculation = settings.warranty_policies.policies.map(policy => {
+        return policy.replace("{warrantyDays}", warrantyDays.toString());
+      });
+      const numWarrantiesForCalculation = warrantyTextForCalculation.length;
+      // CALCULAR espacio mínimo necesario para garantías de forma más realista
+      // Reducir el espacio reservado inicialmente para dar más flexibilidad
+      const minHeightPerWarranty = 3.5; // Reducido para dar más espacio a equipos
+      const warrantyMinHeight = Math.max(25, numWarrantiesForCalculation * minHeightPerWarranty); // Mínimo reducido
       const spaceNeededForWarranty = warrantyTitleHeight + warrantyPaddingTop + warrantyMinHeight + warrantyPaddingBottom;
       const totalSpaceNeeded = spaceNeededForWarranty + spaceNeededForSignature;
-      const maxEquipmentPanelHeight = pageHeight - equipmentPanelStartY - totalSpaceNeeded - 20; // 20 de margen extra
+      // ESPACIO MÁXIMO PARA EQUIPOS: El resto del espacio disponible
+      // Reducir margen para dar más espacio a los equipos
+      const maxAllowedYForEquipment = pageHeight - totalSpaceNeeded - 3; // Reducido margen
+      const maxEquipmentPanelHeight = Math.max(120, maxAllowedYForEquipment - equipmentPanelStartY); // Reducido mínimo
+      
+      console.log("[PDF Preview] Número de garantías:", numWarrantiesForCalculation);
+      console.log("[PDF Preview] Espacio reservado para garantías:", warrantyMinHeight, "puntos");
+      console.log("[PDF Preview] Posición Y máxima para equipos:", maxAllowedYForEquipment, "puntos");
+      console.log("[PDF Preview] Espacio máximo para panel de equipos:", maxEquipmentPanelHeight, "puntos");
       
       // === PRESUPUESTO DE ALTURA POR ZONA ===
       // Distribuir el espacio disponible entre las diferentes zonas del panel
-      const headerHeight = 12; // Header "DATOS DEL EQUIPO"
+      const equipmentPanelHeaderHeight = 12; // Header "DATOS DEL EQUIPO" (renombrado para evitar conflicto)
       const tableHeaderHeight = 10; // Header de la tabla (#, Modelo, Nota, Total)
       const totalBoxHeight = 20; // Cuadro de totales
       const spacingBetweenSections = 5; // Espacio entre secciones
       
       // Calcular espacio disponible para la zona de ítems (equipos + servicios)
-      const reservedHeight = headerHeight + tableHeaderHeight + totalBoxHeight + spacingBetweenSections;
-      const maxItemsZoneHeight = Math.max(100, maxEquipmentPanelHeight - reservedHeight - 10); // Mínimo 100 puntos
+      const reservedHeight = equipmentPanelHeaderHeight + tableHeaderHeight + totalBoxHeight + spacingBetweenSections;
+      const maxItemsZoneHeight = Math.max(150, maxEquipmentPanelHeight - reservedHeight - 10); // Aumentado mínimo de 100 a 150
       
       // Calcular altura disponible por equipo (distribución proporcional)
       const numberOfDevices = allDevices.length;
@@ -509,14 +769,8 @@ export default function PDFPreview({
       }
       doc.setFontSize(adaptiveFontSize);
       
-      // Altura estimada inicial del panel (será ajustada dinámicamente)
-      const estimatedPanelHeight = Math.min(300, maxEquipmentPanelHeight);
-      
-      // Dibujar el fondo del panel PRIMERO con altura estimada
-      doc.setFillColor(250, 250, 250);
-      doc.rect(margin, yPosition, contentWidth, estimatedPanelHeight, "F");
-      
-      // Dibujar el header del panel (encima del fondo)
+      // NO dibujar el fondo ahora - se dibujará DESPUÉS del loop con la altura real
+      // Solo dibujar el header del panel
       doc.setFillColor(...stripeColor);
       doc.rect(margin, yPosition, contentWidth, 8, "F");
       doc.setTextColor(255, 255, 255);
@@ -657,19 +911,9 @@ export default function PDFPreview({
         const deviceRowHeight = Math.max(modelHeight, descHeight);
         
         // === PROTECCIÓN: Verificar que el equipo no exceda el espacio disponible ===
-        // Si el equipo no cabe, ajustar para que quepa sin invadir zonas protegidas
-        const maxAllowedY = pageHeight - totalSpaceNeeded - 10; // Margen de seguridad
-        if (yPosition + deviceRowHeight > maxAllowedY) {
-          console.warn(`[PDF Preview] Equipo ${device.index} excede espacio disponible. Ajustando...`);
-          // Forzar que el equipo quepa reduciendo altura si es necesario
-          const availableSpace = maxAllowedY - yPosition;
-          if (availableSpace < minHeightPerDevice) {
-            console.error(`[PDF Preview] ERROR: No hay espacio suficiente para el equipo ${device.index}`);
-            // En este caso extremo, truncar descripción más agresivamente
-            descriptionLines = descriptionLines.slice(0, Math.max(1, Math.floor(availableSpace / descLineSpacing)));
-            descLineSpacing = Math.max(2, availableSpace / descriptionLines.length);
-          }
-        }
+        // PERMITIR que el equipo use más espacio si es necesario - no truncar agresivamente
+        // Las garantías se ajustarán después
+        // NO limitar estrictamente aquí - permitir que el contenido se muestre completo
         
         // === MOSTRAR TOTAL DEL EQUIPO ===
         // Calcular total del equipo: replacement_cost + labor_cost
@@ -699,107 +943,174 @@ export default function PDFPreview({
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0);
         
-        // Actualizar posición Y para el siguiente equipo
-        yPosition = equipmentRowY + deviceRowHeight + 3; // +3 para espaciado entre equipos
-      }
-
-      // Filas de servicios - cada servicio es una fila separada SIN número (# vacío o guion)
-      // Usar orderServices si está disponible (con quantity y total_price), sino usar services
-      const servicesToShow = orderServices && orderServices.length > 0 
-        ? orderServices.map(os => ({
-            name: os.service_name,
-            quantity: os.quantity || 1,
-            unit_price: os.unit_price || 0,
-            total_price: os.total_price || (os.unit_price || 0) * (os.quantity || 1),
-            description: (os as any).description || null // Usar descripción si está disponible
-          }))
-        : services.map(s => ({
-            name: s.name,
-            quantity: 1,
-            unit_price: s.default_price || 0,
-            total_price: s.default_price || 0,
-            description: s.description
-          }));
-
-      // === PROTECCIÓN: Calcular espacio máximo disponible para servicios ===
-      // Considerar que necesitamos espacio para: total box + garantías + firma
-      const maxAllowedYForServices = pageHeight - totalSpaceNeeded - totalBoxHeight - 10;
-      
-      // Aplicar tipografía adaptativa a servicios también
-      doc.setFontSize(adaptiveFontSize);
-      const serviceLineSpacing = adaptiveFontSize * 0.5;
-      
-      servicesToShow.forEach((serviceItem, index) => {
-        // === PROTECCIÓN: Verificar que el servicio no invada zonas protegidas ===
-        if (yPosition > maxAllowedYForServices) {
-          console.warn(`[PDF Preview] Servicios exceden espacio disponible. Omitiendo servicios restantes.`);
-          return; // Salir del bucle para no invadir garantías y firma
-        }
+        // Actualizar posición Y después de los datos del equipo
+        yPosition = equipmentRowY + deviceRowHeight + 2; // Reducido de 3 a 2
         
-        colX = margin + 3;
-        // No poner número, solo un guion o espacio en blanco
-        doc.text("-", colX + 2, yPosition);
-        colX += colWidths[0];
-        // Ajustar nombre del servicio si es muy largo
-        const serviceNameText = serviceItem.name.toUpperCase();
-        const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
-        doc.text(serviceNameLines, colX + 2, yPosition);
-        colX += colWidths[1];
-        // Usar solo la descripción del servicio (NO repetir la descripción del problema)
-        // Si la descripción del servicio es igual a la descripción del problema, usar texto genérico
-        let serviceNote = serviceItem.description || "Servicio de reparación";
-        // Verificar contra descripciones de todos los equipos
-        const matchesAnyDeviceDesc = allDevices.some(d => serviceNote === d.problem_description);
-        if (matchesAnyDeviceDesc) {
-          serviceNote = "Servicio de reparación";
-        }
-        const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
-        let noteY = yPosition;
-        noteLines.forEach((line: string) => {
-          doc.text(line, colX + 2, noteY);
-          noteY += serviceLineSpacing; // Usar espaciado adaptativo
+        // === MOSTRAR SERVICIOS DEL EQUIPO (ANTES DEL CHECKLIST) ===
+        const deviceServices = device.selected_services || [];
+        console.log(`[PDF Preview] Equipo ${device.index} - Servicios encontrados:`, deviceServices.length);
+        console.log(`[PDF Preview] Equipo ${device.index} - device.selected_services:`, device.selected_services);
+        console.log(`[PDF Preview] Equipo ${device.index} - device completo:`, {
+          index: device.index,
+          model: device.device_model,
+          has_selected_services: !!device.selected_services,
+          selected_services_length: device.selected_services?.length || 0,
+          selected_services: device.selected_services
         });
-        colX += colWidths[2];
-        // === MOSTRAR TOTAL DEL SERVICIO ===
-        // Calcular total: quantity * unit_price (o usar total_price si está disponible)
-        const totalAmount = serviceItem.total_price || (serviceItem.unit_price * serviceItem.quantity);
-        const totalText = formatCLP(totalAmount, { withLabel: false });
         
-        // Asegurar que el total sea visible y destacado
-        doc.setFontSize(adaptiveFontSize);
-        doc.setFont("helvetica", "bold"); // Hacer el total en negrita para que sea más visible
-        doc.setTextColor(0, 0, 0); // Negro para que sea visible
-        const totalWidth = doc.getTextWidth(totalText);
-        const totalX = colX + colWidths[3] - totalWidth - 2;
-        doc.text(totalText, totalX, yPosition);
+        // SIEMPRE mostrar los servicios si existen, sin restricciones de espacio
+        if (deviceServices && deviceServices.length > 0) {
+          doc.setFontSize(adaptiveFontSize);
+          // REDUCIR espaciado entre servicios para aprovechar mejor el espacio
+          const serviceLineSpacing = adaptiveFontSize * 0.25; // Reducido de 0.35 a 0.25
+          
+          // Mostrar título "Servicios a realizar" antes de los servicios
+          doc.setFontSize(6);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0, 0, 0);
+          doc.text(`Servicios a realizar - Equipo ${device.index}:`, margin + 3, yPosition);
+          yPosition += 3; // Reducido de 4 a 3
+          
+          deviceServices.forEach((serviceItem: any) => {
+            colX = margin + 3;
+            doc.text("-", colX + 2, yPosition);
+            colX += colWidths[0];
+            
+            // UNIFICAR FORMATO: Todos los servicios en negritas, sin mayúsculas forzadas
+            const serviceNameText = serviceItem.name || serviceItem.service_name || "";
+            doc.setFontSize(adaptiveFontSize);
+            doc.setFont("helvetica", "bold"); // NEGRITAS para todos
+            doc.setTextColor(0, 0, 0);
+            const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
+            doc.text(serviceNameLines, colX + 2, yPosition);
+            colX += colWidths[1];
+            
+            let serviceNote = serviceItem.description || "Servicio de reparación";
+            if (serviceNote === device.problem_description) {
+              serviceNote = "Servicio de reparación";
+            }
+            doc.setFont("helvetica", "normal"); // Descripción en normal
+            const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
+            let noteY = yPosition;
+            noteLines.forEach((line: string) => {
+              doc.text(line, colX + 2, noteY);
+              noteY += serviceLineSpacing;
+            });
+            colX += colWidths[2];
+            
+            // Mostrar total del servicio
+            const totalAmount = serviceItem.total_price || (serviceItem.unit_price || 0) * (serviceItem.quantity || 1);
+            const totalText = formatCLP(totalAmount, { withLabel: false });
+            
+            doc.setFontSize(adaptiveFontSize);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(0, 0, 0);
+            const totalWidth = doc.getTextWidth(totalText);
+            const totalX = colX + colWidths[3] - totalWidth - 2;
+            doc.text(totalText, totalX, yPosition);
+            
+            // Mostrar cantidad y precio unitario
+            doc.setFontSize(Math.max(5, adaptiveFontSize * 0.65));
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(120, 120, 120);
+            const detailText = `${serviceItem.quantity || 1} x ${formatCLP(serviceItem.unit_price || 0, { withLabel: false })}`;
+            const detailWidth = doc.getTextWidth(detailText);
+            const detailX = colX + colWidths[3] - detailWidth - 2;
+            doc.text(detailText, detailX, yPosition + 3);
+            
+            // Restaurar valores por defecto
+            doc.setFontSize(adaptiveFontSize);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(0, 0, 0);
+            
+            // REDUCIR altura entre servicios para aprovechar mejor el espacio
+            const maxHeight = Math.max(
+              serviceNameLines.length * serviceLineSpacing,
+              noteLines.length * serviceLineSpacing,
+              5 + 1 // Reducido de 6+2 a 5+1
+            );
+            yPosition += maxHeight + 0.5; // Reducido de 1 a 0.5 puntos de separación entre servicios
+          });
+        }
         
-        // Mostrar cantidad y precio unitario de manera discreta (texto pequeño debajo del total)
-        doc.setFontSize(Math.max(5, adaptiveFontSize * 0.65)); // Un poco más grande para legibilidad
-        doc.setFont("helvetica", "normal"); // Normal para los detalles
-        doc.setTextColor(120, 120, 120); // Gris medio para que sea visible pero discreto
-        const detailText = `${serviceItem.quantity} x ${formatCLP(serviceItem.unit_price, { withLabel: false })}`;
-        const detailWidth = doc.getTextWidth(detailText);
-        const detailX = colX + colWidths[3] - detailWidth - 2;
-        doc.text(detailText, detailX, yPosition + 4); // +4 para espaciado adecuado
+        // === MOSTRAR CHECKLIST DEL EQUIPO (DESPUÉS DE SERVICIOS, SIN TÍTULO) ===
+        if (device.checklist_data && Object.keys(device.checklist_data).length > 0) {
+          // Cargar items del checklist para este tipo de dispositivo
+          let deviceChecklistItems: DeviceChecklistItem[] = [];
+          try {
+            const { data: checklistData } = await supabase
+              .from("device_checklist_items")
+              .select("*")
+              .eq("device_type", device.device_type)
+              .order("item_order");
+            if (checklistData) {
+              deviceChecklistItems = checklistData;
+            }
+          } catch (error) {
+            console.error(`[PDF Preview] Error cargando checklist para equipo ${device.index}:`, error);
+          }
+          
+          if (deviceChecklistItems.length > 0 || Object.keys(device.checklist_data).length > 0) {
+            // SIN TÍTULO - mostrar checklist directamente después de servicios
+            // Items del checklist
+            doc.setFontSize(adaptiveFontSize);
+            doc.setFont("helvetica", "normal");
+            const checklistItemsList: string[] = [];
+            deviceChecklistItems.forEach((item) => {
+              const status = device.checklist_data?.[item.item_name];
+              if (status) {
+                let statusText = "";
+                if (status === "ok") {
+                  statusText = " (ok)";
+                } else if (status === "replaced") {
+                  statusText = " (reparado)";
+                } else if (status === "damaged") {
+                  statusText = " (dañado)";
+                } else if (status === "no_probado") {
+                  statusText = " (no probado)";
+                }
+                checklistItemsList.push(`${item.item_name}${statusText}`);
+              }
+            });
+            // También incluir items personalizados que no están en device_checklist_items
+            Object.keys(device.checklist_data).forEach((itemName) => {
+              if (!deviceChecklistItems.some(item => item.item_name === itemName)) {
+                const status = device.checklist_data?.[itemName];
+                let statusText = "";
+                if (status === "ok") {
+                  statusText = " (ok)";
+                } else if (status === "replaced") {
+                  statusText = " (reparado)";
+                } else if (status === "damaged") {
+                  statusText = " (dañado)";
+                } else if (status === "no_probado") {
+                  statusText = " (no probado)";
+                }
+                checklistItemsList.push(`${itemName}${statusText}`);
+              }
+            });
+            
+            if (checklistItemsList.length > 0) {
+              const checklistText = checklistItemsList.join(", ");
+              const totalBoxWidthForChecklist = 30;
+              const totalBoxXForChecklist = margin + contentWidth - totalBoxWidthForChecklist - 3;
+              const leftSideWidth = totalBoxXForChecklist - margin - 6;
+              const checklistLines = doc.splitTextToSize(checklistText, leftSideWidth);
+              checklistLines.forEach((line: string) => {
+                doc.text(line, margin + 3, yPosition);
+                yPosition += 2.5; // Reducido de 3 a 2.5
+              });
+              yPosition += 1; // Reducido de 2 a 1 punto después del checklist
+            }
+          }
+        }
         
-        // Restaurar valores por defecto
-        doc.setFontSize(adaptiveFontSize);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(0, 0, 0); // Volver a negro
         
-        // Ajustar yPosition según la altura máxima de las columnas con espaciado adaptativo
-        const maxHeight = Math.max(
-          serviceNameLines.length * serviceLineSpacing,
-          noteLines.length * serviceLineSpacing,
-          7 + 3 // +3 para el espacio del detalle discreto
-        );
-        yPosition += maxHeight;
-      });
-
-      // Si hay costo de repuesto, agregarlo como servicio adicional (SIN número)
-      if (replacementCost > 0) {
+        // === MOSTRAR REPUESTO DEL EQUIPO ===
+        if (device.replacement_cost > 0) {
+          // NO limitar - mostrar siempre si hay repuesto
+          // Las garantías se ajustarán después
         colX = margin + 3;
-        // No poner número, solo un guion
         doc.text("-", colX + 2, yPosition);
         colX += colWidths[0];
         doc.text("REPUESTO", colX, yPosition);
@@ -807,88 +1118,73 @@ export default function PDFPreview({
         const repuestoNote = doc.splitTextToSize("Repuesto original", colWidths[2] - 2);
         doc.text(repuestoNote, colX, yPosition);
         colX += colWidths[2];
-        // Formatear total con cantidad y precio unitario de manera discreta
-        const repuestoTotalAmount = replacementCost;
+          
+          const repuestoTotalAmount = device.replacement_cost;
         const repuestoTotalText = formatCLP(repuestoTotalAmount, { withLabel: false });
-        doc.setFontSize(8);
+          doc.setFontSize(adaptiveFontSize);
+          doc.setFont("helvetica", "bold");
         const repuestoTotalWidth = doc.getTextWidth(repuestoTotalText);
         const repuestoTotalX = colX + colWidths[3] - repuestoTotalWidth - 2;
         doc.text(repuestoTotalText, repuestoTotalX, yPosition);
-        // Mostrar cantidad y precio unitario de manera discreta (texto pequeño debajo)
-        doc.setFontSize(5);
-        doc.setTextColor(100, 100, 100); // Gris discreto
-        const repuestoDetailText = `1 x ${formatCLP(replacementCost, { withLabel: false })}`;
+          
+          doc.setFontSize(Math.max(5, adaptiveFontSize * 0.65));
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(120, 120, 120);
+          const repuestoDetailText = `1 x ${formatCLP(device.replacement_cost, { withLabel: false })}`;
         const repuestoDetailWidth = doc.getTextWidth(repuestoDetailText);
         const repuestoDetailX = colX + colWidths[3] - repuestoDetailWidth - 2;
-        doc.text(repuestoDetailText, repuestoDetailX, yPosition + 3);
-        doc.setFontSize(8);
-        doc.setTextColor(0, 0, 0); // Volver a negro
+          doc.text(repuestoDetailText, repuestoDetailX, yPosition + 4);
+          
+          doc.setFontSize(adaptiveFontSize);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(0, 0, 0);
         yPosition += 7;
       }
 
-      // === TOTAL Y ELEMENTOS ADJUNTOS (Checklist y Garantía) ===
-      // Calcular posición del total basándose en dónde terminaron los servicios
+        // Espacio adicional antes del siguiente equipo
+        yPosition += 3;
+      }
+
+      // NO mostrar servicios mezclados si ya se mostraron por equipo (allDevices con selected_services)
+      // Los servicios ya se mostraron dentro del bucle de equipos
+
+      // === TOTAL GENERAL ===
+      // IMPORTANTE: Calcular posición del total DESPUÉS de que todos los equipos se hayan mostrado
+      // yPosition ahora refleja dónde terminó el último equipo
       const totalBoxWidth = 30;
       const totalBoxX = margin + contentWidth - totalBoxWidth - 3;
-      const totalYPosition = yPosition + 5;
+      const totalYPosition = yPosition + 5; // Espacio después del último equipo
       const actualTotalBoxHeight = 20;
       
-      // Preparar checklist y garantía para mostrar al lado izquierdo del total
-      let checklistText = "";
-      if (checklistItems.length > 0 && checklistData && Object.keys(checklistData).length > 0) {
-        const checklistItemsList: string[] = [];
-        checklistItems.forEach((item) => {
-          const status = checklistData[item.item_name];
-          if (status) {
-            let statusText = "";
-            if (status === "ok") {
-              statusText = " (ok)";
-            } else if (status === "replaced") {
-              statusText = " (reparado)";
-            } else if (status === "damaged") {
-              statusText = " (dañado)";
-            } else if (status === "no_probado") {
-              statusText = " (no probado)";
-            }
-            checklistItemsList.push(`${item.item_name}${statusText}`);
-          }
-        });
-        if (checklistItemsList.length > 0) {
-          checklistText = checklistItemsList.join(", ");
-        }
-      }
-      
-      // Calcular altura necesaria para checklist y garantía (lado izquierdo del total)
-      const leftSideWidth = totalBoxX - margin - 6; // Ancho disponible a la izquierda del total
-      let leftSideHeight = 0;
-      let checklistLines: string[] = [];
-      if (checklistText) {
-        doc.setFontSize(5);
-        checklistLines = doc.splitTextToSize(checklistText, leftSideWidth);
-        leftSideHeight += 6 + (checklistLines.length * 3); // Título + líneas
-      }
-      // Garantía de días
-      doc.setFontSize(6);
-      const warrantyDaysText = `Garantía ${warrantyDays} días`;
-      leftSideHeight += 4; // Espacio para garantía
-      
-      // Ajustar altura del panel considerando el lado izquierdo
-      const maxLeftRightHeight = Math.max(actualTotalBoxHeight, leftSideHeight);
-      const panelEndY = Math.max(yPosition + 10, totalYPosition + maxLeftRightHeight + 5);
+      // Calcular panelEndY basándose en dónde terminó realmente el último equipo (yPosition)
+      // y el total box que se dibujará después
+      const calculatedPanelEndY = Math.max(yPosition + 10, totalYPosition + actualTotalBoxHeight + 5);
+      // NO limitar estrictamente - usar el espacio real que necesita el contenido
+      // Las garantías se ajustarán después
+      const panelEndY = calculatedPanelEndY; // Usar el espacio real, no limitar
       const finalPanelHeight = panelEndY - equipmentPanelStartY;
       
+      console.log("[PDF Preview] yPosition después de equipos:", yPosition, "puntos");
+      console.log("[PDF Preview] totalYPosition:", totalYPosition, "puntos");
+      console.log("[PDF Preview] Panel de equipos termina en:", panelEndY, "puntos (máximo permitido:", maxAllowedYForEquipment, "puntos)");
+      
+      // El fondo ya se dibujó antes del loop, ahora solo necesitamos redibujar el borde con la altura correcta
       // Dibujar el cuadro del total DENTRO del panel
+      // Asegurar que el total box sea visible y no se tape
       doc.setFillColor(240, 240, 240);
       doc.rect(totalBoxX, totalYPosition, totalBoxWidth, actualTotalBoxHeight, "F");
       doc.setDrawColor(150, 150, 150);
+      doc.setLineWidth(0.5);
       doc.rect(totalBoxX, totalYPosition, totalBoxWidth, actualTotalBoxHeight, "S");
 
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(5);
       doc.setFont("helvetica", "normal");
       
-      // Calcular total con IVA
-      const totalConIva = serviceValue + replacementCost;
+      // Calcular total con IVA - sumar todos los costos de todos los equipos
+      const totalConIva = allDevices.reduce((sum, device) => {
+        return sum + (device.replacement_cost || 0) + (device.labor_cost || 0);
+      }, 0);
       // Calcular total sin IVA (si el total incluye IVA del 19%)
       const totalSinIva = totalConIva / 1.19;
       const iva = totalConIva - totalSinIva;
@@ -920,60 +1216,73 @@ export default function PDFPreview({
       const totalTextX = Math.max(totalBoxX + 2, totalBoxX + totalBoxWidth - totalTextWidth - 2);
       doc.text(totalText, totalTextX, totalYPosition + 19);
 
-      // === CHECKLIST Y GARANTÍA AL LADO IZQUIERDO DEL TOTAL ===
-      let leftSideY = totalYPosition;
-      
-      // Checklist (si existe)
-      if (checklistLines.length > 0) {
-        doc.setFontSize(5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(0, 0, 0);
-        doc.text("Checklist:", margin + 3, leftSideY);
-        leftSideY += 4;
-        doc.setFont("helvetica", "normal");
-        checklistLines.forEach((line: string) => {
-          doc.text(line, margin + 3, leftSideY);
-          leftSideY += 3;
-        });
-        leftSideY += 2; // Espacio antes de garantía
-      }
-      
-      // Garantía de días
+      // Garantía de días (solo el texto, sin checklist duplicado)
       doc.setFontSize(6);
       doc.setFont("helvetica", "normal");
-      doc.text(warrantyDaysText, margin + 3, leftSideY);
+      const warrantyDaysText = `Garantía ${warrantyDays} días`;
+      doc.text(warrantyDaysText, margin + 3, totalYPosition + 4);
       
-      // Dibujar borde del panel
+      // Dibujar borde del panel DESPUÉS de todos los equipos y el total
+      // Esto asegura que el recuadro encierre TODOS los equipos
+      // Primero tapar el fondo excedente dibujando un rectángulo blanco
+      const excessHeight = estimatedPanelHeight - finalPanelHeight;
+      if (excessHeight > 0) {
+        doc.setFillColor(255, 255, 255);
+        doc.rect(margin, panelEndY, contentWidth, excessHeight, "F");
+      }
+      // Luego dibujar el borde con la altura correcta
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
       doc.rect(margin, equipmentPanelStartY, contentWidth, finalPanelHeight, "S");
 
-      // Actualizar yPosition para las políticas de garantía (después del panel)
-      yPosition = panelEndY + 10;
+      // Actualizar yPosition para las políticas de garantía (después de TODO el panel)
+      // IMPORTANTE: Las garantías DEBEN empezar DESPUÉS de donde terminó realmente el panel de equipos
+      // El panel termina en panelEndY (incluye el total box), así que las garantías empiezan después de eso
+      // REDUCIR el espacio al mínimo para aprovechar todo el espacio disponible
+      const spaceAfterPanel = 2; // Espacio mínimo después del panel antes de las garantías
+      yPosition = panelEndY + spaceAfterPanel;
+      
+      console.log("[PDF Preview] Posición final del panel (panelEndY):", panelEndY);
+      console.log("[PDF Preview] Posición Y para garantías:", yPosition);
 
       // === POLÍTICAS DE GARANTÍA - en dos columnas con texto pequeño ===
       const warrantyPanelStartY = yPosition;
       
-      // Usar políticas de garantía desde configuración
-      const warrantyText = settings.warranty_policies.policies.map(policy => {
-        // Reemplazar {warrantyDays} si existe en la política
-        return policy.replace("{warrantyDays}", warrantyDays.toString());
-      });
+      console.log("[PDF Preview] Panel de equipos termina en:", panelEndY, "puntos");
+      console.log("[PDF Preview] Garantías empiezan en:", warrantyPanelStartY, "puntos (después del panel con espacio de", spaceAfterPanel, "puntos)");
+      
+      // Usar políticas de garantía desde configuración (ya calculadas arriba)
+      const warrantyText = warrantyTextForCalculation;
       
       // Calcular espacio disponible para garantías (asegurando que el cuadro de firma siempre quepa)
-      // IMPORTANTE: Usar un margen de seguridad para evitar que se monte sobre la firma
-      const minSeparationForSignature = 5; // Separación MÍNIMA entre garantías y firma (aumentado de 2 a 5)
+      // IMPORTANTE: Usar TODO el espacio REAL disponible, especialmente cuando hay un solo equipo
+      const minSeparationForSignature = 2; // Separación MÍNIMA entre garantías y firma (reducido)
       const spaceForSignature = sigBoxHeight + signatureTextSpacing + sigTextHeight + minSeparationForSignature + bottomMargin;
-      // Calcular el espacio disponible con margen de seguridad - NUNCA exceder este espacio
-      const availableHeight = pageHeight - warrantyPanelStartY - warrantyTitleHeight - warrantyPaddingTop - warrantyPaddingBottom - spaceForSignature;
+      // Calcular el espacio disponible REAL - usar TODO el espacio disponible
+      // Reducir el espacio para la firma para dar más espacio a las garantías
+      const reducedSpaceForSignature = spaceForSignature - 8; // Reducir 8 puntos del espacio de la firma (aumentado de 5)
+      const calculatedAvailableHeight = pageHeight - warrantyPanelStartY - warrantyTitleHeight - warrantyPaddingTop - warrantyPaddingBottom - reducedSpaceForSignature;
+      // Cuando hay un solo equipo, aprovechar TODO el espacio disponible (sin mínimo)
+      // Cuando hay más equipos, usar el espacio disponible pero con un mínimo razonable
+      const isSingleDevice = allDevices.length === 1;
+      let availableHeight = isSingleDevice 
+        ? Math.max(calculatedAvailableHeight, 30) // Usar TODO el espacio disponible, mínimo 30 solo para seguridad
+        : Math.max(15, calculatedAvailableHeight); // Mínimo de 15 puntos cuando hay múltiples equipos (reducido de 20)
+      
+      console.log("[PDF Preview] Espacio calculado disponible para garantías:", calculatedAvailableHeight, "puntos");
+      console.log("[PDF Preview] Espacio real disponible (con mínimo garantizado):", availableHeight, "puntos");
       
       // Asegurar que el espacio disponible sea positivo
       if (availableHeight <= 0) {
         console.error("[PDF Preview] ERROR: No hay espacio disponible para garantías. Ajustando layout.");
-        // En caso extremo, reducir el espacio de la firma
-        const emergencySpace = pageHeight - warrantyPanelStartY - warrantyTitleHeight - warrantyPaddingTop - warrantyPaddingBottom - 20;
+        // En caso extremo, reducir el espacio de la firma y usar más espacio
+        const emergencySpace = pageHeight - warrantyPanelStartY - warrantyTitleHeight - warrantyPaddingTop - warrantyPaddingBottom - 15; // Reducir altura de firma de 20 a 15
         if (emergencySpace > 0) {
           console.warn("[PDF Preview] Usando espacio de emergencia:", emergencySpace);
+          // Usar el espacio de emergencia si es mayor que el disponible
+          if (emergencySpace > availableHeight) {
+            availableHeight = emergencySpace;
+          }
         }
       }
       
@@ -986,132 +1295,150 @@ export default function PDFPreview({
         console.warn("[PDF Preview] Espacio muy limitado para garantías, ajustando layout");
       }
       
-      // === CÁLCULO ADAPTATIVO DE TAMAÑO DE FUENTE PARA GARANTÍAS ===
-      // Ajustar dinámicamente el tamaño de fuente para que quepa todo
-      // IMPORTANTE: Cuando hay múltiples equipos, el espacio es más limitado
-      let fontSize = 6; // Tamaño inicial (fallback)
-      let maxY = 0;
-      let warrantyPanelHeight = 0;
-      let optimalLineSpacing = 0;
+      // === CÁLCULO DINÁMICO DE TAMAÑO DE FUENTE PARA GARANTÍAS ===
+      // Fórmula según especificaciones:
+      // - 14 garantías = 6pt
+      // - 10 garantías = 7pt
+      // - 12 garantías = 8pt (usuario solicita 1pt más)
+      // - Cada garantía suma/resta 0.25pt
+      // - Fórmula ajustada: tamaño = 7 - (num_garantias - 10) * 0.25 + 1 (para garantías >= 10 y < 14)
       const columnWidth = (contentWidth - 12) / 2;
+      const numWarranties = numWarrantiesForCalculation;
+      let fontSize = 7 - (numWarranties - 10) * 0.25;
       
-      // Calcular tamaño basado en espacio disponible y número de equipos
-      // Cuando hay más equipos, hay menos espacio, así que necesitamos fuente más pequeña
-      const estimatedLinesPerWarranty = 2.5; // Estimado más realista
-      const totalEstimatedLines = warrantyText.length * estimatedLinesPerWarranty;
-      const averageLineHeight = availableHeight / totalEstimatedLines;
-      
-      // Calcular tamaño sugerido de forma más realista
-      // Reducir el multiplicador para que sea más conservador con el espacio
-      let suggestedInitialSize = Math.min(10, Math.max(5, averageLineHeight * 2.5)); // Multiplicador más realista
-      
-      // Ajustar según el espacio disponible (más conservador cuando hay poco espacio)
-      if (availableHeight > 100) {
-        suggestedInitialSize = Math.max(suggestedInitialSize, 7); // Mínimo 7 si hay buen espacio
-      } else if (availableHeight > 60) {
-        suggestedInitialSize = Math.max(suggestedInitialSize, 6); // Mínimo 6 si hay espacio moderado
-      } else if (availableHeight > 40) {
-        suggestedInitialSize = Math.max(suggestedInitialSize, 5.5); // Mínimo 5.5 si hay poco espacio
-      } else {
-        suggestedInitialSize = Math.max(suggestedInitialSize, 5); // Mínimo 5 si hay muy poco espacio
+      // Ajuste: para 12 garantías debe ser 8pt (1pt más que el calculado)
+      if (numWarranties === 12) {
+        fontSize = 8;
+      }
+      // Para otras cantidades, usar la fórmula pero con ajuste para hacer texto más grande
+      if (numWarranties >= 10 && numWarranties < 14) {
+        fontSize = Math.max(fontSize, 7); // Mínimo 7pt para este rango
       }
       
-      // Ajustar según número de equipos: más equipos = menos espacio = fuente más pequeña
-      if (allDevices.length > 1) {
-        // Reducir tamaño sugerido cuando hay múltiples equipos
-        suggestedInitialSize = Math.max(5, suggestedInitialSize * 0.85); // Reducir 15% cuando hay múltiples equipos
-      }
+      // Asegurar tamaño mínimo razonable (no menos de 5pt) y máximo (no más de 12pt)
+      fontSize = Math.max(5, Math.min(12, fontSize));
       
-      // Debug: mostrar tamaño sugerido
-      console.log("[PDF Preview] Espacio disponible:", availableHeight, "puntos");
-      console.log("[PDF Preview] Número de garantías:", warrantyText.length);
-      console.log("[PDF Preview] Número de equipos:", allDevices.length);
-      console.log("[PDF Preview] Tamaño sugerido inicial:", suggestedInitialSize, "puntos");
+      console.log("[PDF Preview] Número de garantías:", numWarranties);
+      console.log("[PDF Preview] Tamaño de fuente calculado:", fontSize, "puntos");
       
-      // Empezar desde un tamaño razonable y reducir si es necesario
-      const startSize = Math.min(10, Math.max(suggestedInitialSize, 5)); // Rango realista: 5-10 puntos
-      console.log("[PDF Preview] Empezando búsqueda desde tamaño:", startSize, "puntos");
+      // Calcular interlineado y espacio entre garantías
+      // AJUSTAR dinámicamente el tamaño de fuente para que TODAS las garantías quepan
+      // Primero calcular cuánto espacio necesita cada garantía con el tamaño actual
+      doc.setFontSize(fontSize);
+      // jsPDF usa aproximadamente fontSize para el espaciado entre líneas cuando usas doc.text(lines, x, y)
+      // Usar un valor intermedio que sea realista pero permita aprovechar el espacio
+      let optimalLineSpacing = fontSize * 0.5; // Espaciado compacto pero realista
       
-      // Reducir el paso para encontrar el tamaño máximo más preciso
-      for (let testSize = startSize; testSize >= 4.5; testSize -= 0.1) { // Bajar hasta 4.5 puntos mínimo
-        doc.setFontSize(testSize);
-        let tempLeftY = warrantyPanelStartY + warrantyPaddingTop;
-        let tempRightY = warrantyPanelStartY + warrantyPaddingTop;
-        const maxYPerColumn: number[] = [];
-        
-        // Interlineado: ajustar según el espacio disponible
-        // Cuando hay múltiples equipos, usar interlineado más compacto
-        const lineSpacingMultiplier = allDevices.length > 1 ? 0.35 : 0.4; // Más compacto con múltiples equipos
-        const baseLineSpacing = testSize * lineSpacingMultiplier;
-        optimalLineSpacing = baseLineSpacing;
-        
-        warrantyText.forEach((text, index) => {
-          const isLeftColumn = index % 2 === 0;
-          const textWithBullet = `• ${text}`;
-          const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
-          const textHeight = lines.length * baseLineSpacing;
-          // Espacio entre garantías: más compacto cuando hay múltiples equipos
-          const spaceMultiplier = allDevices.length > 1 ? 0.25 : 0.3; // Menos espacio entre garantías con múltiples equipos
-          const minSpaceBetween = Math.max(3, testSize * spaceMultiplier); // Mínimo 3 puntos
-          const spaceBetweenWarranties = textHeight + minSpaceBetween;
-          if (isLeftColumn) {
-            tempLeftY += spaceBetweenWarranties;
-            maxYPerColumn.push(tempLeftY);
-          } else {
-            tempRightY += spaceBetweenWarranties;
-            maxYPerColumn.push(tempRightY);
-          }
-        });
-        
-        const testMaxY = Math.max(...maxYPerColumn, warrantyPanelStartY + warrantyPaddingTop);
-        const testPanelHeight = testMaxY - warrantyPanelStartY + warrantyPaddingBottom;
-        
-        // VERIFICAR que realmente quepa con un margen de seguridad
-        // El panel NO debe exceder el espacio disponible
-        const safetyMargin = 2; // Margen de seguridad adicional
-        if (testPanelHeight <= (availableHeight - safetyMargin)) {
-          fontSize = testSize;
-          maxY = testMaxY;
-          warrantyPanelHeight = testPanelHeight;
-          console.log("[PDF Preview] ✓ Tamaño que cabe encontrado:", testSize, "puntos, altura usada:", testPanelHeight, "/", availableHeight);
-          // SALIR INMEDIATAMENTE - ya encontramos el tamaño máximo que cabe
-          break;
+      // Calcular el espacio total necesario con el tamaño de fuente actual
+      // Primero calcular cuánto espacio necesita cada garantía en cada columna
+      let leftColumnHeight = 0;
+      let rightColumnHeight = 0;
+      warrantyText.forEach((text, index) => {
+        const textWithBullet = `• ${text}`;
+        const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+        const textHeight = lines.length * optimalLineSpacing;
+        if (index % 2 === 0) {
+          leftColumnHeight += textHeight;
         } else {
-          // Debug: mostrar cuando un tamaño no cabe
-          if (testSize >= 18) {
-            console.log("[PDF Preview] ✗ Tamaño", testSize, "NO cabe - altura necesaria:", testPanelHeight, "> disponible:", availableHeight);
-          }
+          rightColumnHeight += textHeight;
         }
-      }
+      });
       
-      // Si aún no cabe, usar un tamaño mínimo más realista
-      if (warrantyPanelHeight === 0 || warrantyPanelHeight > availableHeight) {
-        console.warn("[PDF Preview] No se encontró tamaño que quepa, usando tamaño mínimo forzado");
-        // Calcular tamaño mínimo más realista basado en el espacio disponible
-        // Considerar número de equipos para ajustar el cálculo
-        const devicesFactor = allDevices.length > 1 ? 0.8 : 1.0; // Reducir 20% cuando hay múltiples equipos
-        if (availableHeight > 50) {
-          fontSize = Math.max(5, Math.min(8, (availableHeight / warrantyText.length) * 0.4 * devicesFactor));
-        } else {
-          fontSize = Math.max(4.5, (availableHeight / warrantyText.length) * 0.35 * devicesFactor);
-        }
-        console.log("[PDF Preview] Tamaño mínimo forzado:", fontSize, "puntos (equipos:", allDevices.length, ")");
+      // El espacio necesario es el máximo de las dos columnas
+      let totalHeightNeeded = Math.max(leftColumnHeight, rightColumnHeight);
+      
+      // AJUSTAR el tamaño de fuente para que TODAS las garantías quepan
+      // Usar 99% del espacio disponible para aprovechar mejor el espacio
+      const maxUsableHeight = availableHeight * 0.99;
+      
+      // Si el espacio necesario excede el disponible, reducir el tamaño de fuente
+      if (totalHeightNeeded > maxUsableHeight) {
+        const ratio = maxUsableHeight / totalHeightNeeded;
+        fontSize = Math.max(3, fontSize * ratio); // Mínimo 3pt para que sea legible (reducido de 4)
+        optimalLineSpacing = fontSize * 0.45; // Reducir interlineado para que quepan más garantías
         doc.setFontSize(fontSize);
-        let tempLeftY = warrantyPanelStartY + warrantyPaddingTop;
-        let tempRightY = warrantyPanelStartY + warrantyPaddingTop;
-        const maxYPerColumn: number[] = [];
-        // Interlineado más compacto cuando hay múltiples equipos
-        const compactMultiplier = allDevices.length > 1 ? 0.3 : 0.35;
-        optimalLineSpacing = fontSize * compactMultiplier;
         
+        // Recalcular el espacio necesario con el nuevo tamaño
+        leftColumnHeight = 0;
+        rightColumnHeight = 0;
         warrantyText.forEach((text, index) => {
-          const isLeftColumn = index % 2 === 0;
           const textWithBullet = `• ${text}`;
           const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
           const textHeight = lines.length * optimalLineSpacing;
-          // Espacio más compacto cuando hay múltiples equipos
-          const spaceMultiplier = allDevices.length > 1 ? 0.2 : 0.25;
-          const minSpaceBetween = Math.max(2, fontSize * spaceMultiplier); // Mínimo 2 puntos
+          if (index % 2 === 0) {
+            leftColumnHeight += textHeight;
+          } else {
+            rightColumnHeight += textHeight;
+          }
+        });
+        totalHeightNeeded = Math.max(leftColumnHeight, rightColumnHeight);
+        
+        console.log("[PDF Preview] Tamaño de fuente REDUCIDO:", fontSize, "puntos");
+        console.log("[PDF Preview] Espacio necesario:", totalHeightNeeded, "puntos, disponible:", availableHeight, "puntos");
+      }
+      
+      // SIEMPRE intentar optimizar cuando hay un solo equipo y hay espacio disponible
+      if (isSingleDevice && totalHeightNeeded < maxUsableHeight) {
+        // Cuando hay un solo equipo, AUMENTAR el tamaño de fuente para ocupar TODO el espacio disponible
+        // Usar búsqueda para encontrar el tamaño máximo que quepa
+        let minFontSize = fontSize;
+        let maxFontSize = Math.min(12, fontSize * 3); // Máximo 12pt o el triple del tamaño actual
+        let bestFontSize = fontSize;
+        
+        // Probar diferentes tamaños desde el máximo hacia abajo hasta encontrar el que quepa
+        for (let testSize = maxFontSize; testSize >= minFontSize; testSize -= 0.25) {
+          doc.setFontSize(testSize);
+          const testLineSpacing = testSize * 0.5;
+          let testLeftHeight = 0;
+          let testRightHeight = 0;
+          
+          warrantyText.forEach((text, index) => {
+            const textWithBullet = `• ${text}`;
+            const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+            const textHeight = lines.length * testLineSpacing;
+            if (index % 2 === 0) {
+              testLeftHeight += textHeight;
+            } else {
+              testRightHeight += textHeight;
+            }
+          });
+          
+          const testTotalHeight = Math.max(testLeftHeight, testRightHeight);
+          
+          // Si todas las garantías caben con este tamaño, usarlo
+          if (testTotalHeight <= maxUsableHeight) {
+            bestFontSize = testSize;
+            fontSize = testSize;
+            optimalLineSpacing = testLineSpacing;
+            totalHeightNeeded = testTotalHeight;
+            leftColumnHeight = testLeftHeight;
+            rightColumnHeight = testRightHeight;
+            break; // Usar el primer tamaño que quepa (el más grande)
+          }
+        }
+        
+        console.log("[PDF Preview] Tamaño de fuente OPTIMIZADO para aprovechar TODO el espacio (un solo equipo):", fontSize, "puntos");
+        console.log("[PDF Preview] Espacio necesario:", totalHeightNeeded, "puntos, disponible:", availableHeight, "puntos (usando", (totalHeightNeeded / availableHeight * 100).toFixed(1), "%)");
+      }
+      
+      // Asegurar que el tamaño de fuente esté aplicado
+      doc.setFontSize(fontSize);
+      
+      let maxY = 0;
+      let warrantyPanelHeight = 0;
+      
+      // Calcular altura real necesaria con el tamaño calculado
+        let tempLeftY = warrantyPanelStartY + warrantyPaddingTop;
+        let tempRightY = warrantyPanelStartY + warrantyPaddingTop;
+        const maxYPerColumn: number[] = [];
+        
+        warrantyText.forEach((text, index) => {
+          const isLeftColumn = index % 2 === 0;
+          const textWithBullet = `• ${text}`;
+          const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
+        const textHeight = lines.length * optimalLineSpacing;
+        // ELIMINAR espacio entre garantías (solo el interlineado del texto)
+        const minSpaceBetween = 0; // Sin espacio extra entre garantías
           const spaceBetweenWarranties = textHeight + minSpaceBetween;
           if (isLeftColumn) {
             tempLeftY += spaceBetweenWarranties;
@@ -1122,9 +1449,18 @@ export default function PDFPreview({
           }
         });
         
-        maxY = Math.max(...maxYPerColumn, warrantyPanelStartY + warrantyPaddingTop);
-        warrantyPanelHeight = Math.min(maxY - warrantyPanelStartY + warrantyPaddingBottom, availableHeight);
-      }
+      let testMaxY = Math.max(...maxYPerColumn, warrantyPanelStartY + warrantyPaddingTop);
+      let testPanelHeight = testMaxY - warrantyPanelStartY + warrantyPaddingBottom;
+      
+      // NO expandir el interlineado - esto causa espacio excesivo entre garantías
+      // El espacio debe ser mínimo y compacto para dejar lugar a los equipos
+      // Usar el interlineado mínimo calculado sin expansión
+      
+          maxY = testMaxY;
+      warrantyPanelHeight = Math.min(testPanelHeight, availableHeight + warrantyTitleHeight + warrantyPaddingTop + warrantyPaddingBottom);
+      
+      console.log("[PDF Preview] Altura del panel de garantías:", warrantyPanelHeight, "puntos");
+      console.log("[PDF Preview] Interlineado óptimo:", optimalLineSpacing, "puntos");
       
       // Dibujar fondo del panel PRIMERO (el borde se redibuja después con la altura correcta)
       doc.setFillColor(250, 250, 250);
@@ -1153,28 +1489,8 @@ export default function PDFPreview({
       let leftY = yPosition;
       let rightY = yPosition;
       
-      // Usar el espaciado óptimo calculado (aumentado para más espacio entre líneas)
-      let lineSpacing = optimalLineSpacing || fontSize * 0.42; // Aumentado de 0.36 a 0.42
-      
-      // Calcular el espacio que realmente ocupará el contenido con el tamaño de fuente actual
-      let estimatedContentHeight = 0;
-      warrantyText.forEach((text) => {
-        const textWithBullet = `• ${text}`;
-        const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
-        const textHeight = lines.length * lineSpacing;
-        const minSpaceBetween = Math.max(5, fontSize * 0.4); // Aumentado de 0.3 a 0.4 y mínimo de 3 a 5
-        estimatedContentHeight += textHeight + minSpaceBetween;
-      });
-      estimatedContentHeight = estimatedContentHeight / 2; // Dividir por 2 porque son dos columnas
-      
-      // Si el contenido no ocupa todo el espacio disponible, aumentar SOLO el interlineado del texto
-      // NO aumentar el espacio entre garantías, solo hacer el texto más legible
-      const contentAreaHeight = availableHeight - warrantyTitleHeight - warrantyPaddingTop - warrantyPaddingBottom;
-      if (estimatedContentHeight < contentAreaHeight && contentAreaHeight > 0) {
-        // Calcular factor de aumento para llenar el espacio aumentando el interlineado
-        const expansionFactor = contentAreaHeight / estimatedContentHeight;
-        lineSpacing = lineSpacing * Math.min(expansionFactor, 1.4); // Limitar a 1.4x para no exagerar
-      }
+      // Usar el espaciado óptimo calculado (ya ajustado para ocupar todo el espacio)
+      const lineSpacing = optimalLineSpacing;
       
       // Distribuir políticas entre las dos columnas
       // IMPORTANTE: Calcular el Y máximo permitido (justo antes de la firma)
@@ -1192,7 +1508,8 @@ export default function PDFPreview({
         
         // Calcular altura del texto ANTES de dibujar
         const textHeight = lines.length * lineSpacing;
-        const minSpaceBetween = Math.max(5, fontSize * 0.4); // Aumentado de 0.3 a 0.4 y mínimo de 3 a 5
+        // ELIMINAR espacio entre garantías (solo el interlineado del texto)
+        const minSpaceBetween = 0; // Sin espacio extra entre garantías
         const spaceBetweenWarranties = textHeight + minSpaceBetween;
         
         // VERIFICAR que el texto completo quepa antes de dibujar
@@ -1542,7 +1859,7 @@ export default function PDFPreview({
       doc.text(valorPresupuestadoText, (pageWidth - valorPresupuestadoWidth) / 2, yPosition);
       yPosition += 10;
       
-      // Calcular total con IVA
+      // Calcular total con IVA (esta función no tiene acceso a allDevices, usar serviceValue + replacementCost)
       const totalConIva = serviceValue + replacementCost;
       const totalSinIva = totalConIva / 1.19;
       const iva = totalConIva - totalSinIva;
