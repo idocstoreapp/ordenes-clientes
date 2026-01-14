@@ -562,13 +562,13 @@ export async function generatePDFBlob(
   
   for (let deviceIndex = 0; deviceIndex < allDevices.length; deviceIndex++) {
     const device = allDevices[deviceIndex];
-    const equipmentRowY = yPosition;
-    colX = margin + 3;
+  const equipmentRowY = yPosition;
+  colX = margin + 3;
     
     // Número de equipo
     doc.text(device.index.toString(), colX, yPosition);
-    colX += colWidths[0];
-    
+  colX += colWidths[0];
+  
     // Construir el texto del modelo con identificación clara del equipo
     let modelText = `EQUIPO ${device.index}\n${device.device_model || ""}`;
     if (device.device_serial_number) {
@@ -582,38 +582,38 @@ export async function generatePDFBlob(
     }
     
     // Dividir el texto del modelo en líneas
-    const modelColWidth = colWidths[1] - 4;
-    const modelLines = doc.splitTextToSize(modelText, modelColWidth);
-    
-    colX += colWidths[1];
-    
+  const modelColWidth = colWidths[1] - 4;
+  const modelLines = doc.splitTextToSize(modelText, modelColWidth);
+  
+  colX += colWidths[1];
+  
     // Construir la descripción del problema con identificación clara del equipo
     let deviceDescription = `EQUIPO ${device.index} - ${device.problem_description || ""}`;
     
     // Notas adicionales (solo para el primer equipo)
     if (deviceIndex === 0 && notes && notes.length > 0) {
-      if (deviceDescription) deviceDescription += "\n";
-      notes.forEach((note) => {
-        deviceDescription += `${note}\n`;
-      });
-    }
-    
+    if (deviceDescription) deviceDescription += "\n";
+    notes.forEach((note) => {
+      deviceDescription += `${note}\n`;
+    });
+  }
+  
     // Dividir el texto en líneas que quepan en el ancho de la columna
-    const descriptionColWidth = colWidths[2] - 6;
-    
+  const descriptionColWidth = colWidths[2] - 6;
+  
     // Calcular altura disponible para este equipo
     const maxHeightForThisDevice = availableHeightPerDevice;
     const maxDescriptionHeightForDevice = Math.max(10, maxHeightForThisDevice - (modelLines.length * 4));
     
     // Dividir la descripción en líneas con límite de altura
     doc.setFontSize(adaptiveFontSize);
-    let descriptionLines = doc.splitTextToSize(deviceDescription || "-", descriptionColWidth);
-    
+  let descriptionLines = doc.splitTextToSize(deviceDescription || "-", descriptionColWidth);
+  
     // Calcular interlineado adaptativo
     const baseLineSpacing = adaptiveFontSize * 0.45;
     let descLineSpacing = baseLineSpacing;
     
-    if (descriptionLines.length > 0) {
+  if (descriptionLines.length > 0) {
       const requiredHeight = descriptionLines.length * descLineSpacing;
       if (requiredHeight > maxDescriptionHeightForDevice) {
         descLineSpacing = Math.max(adaptiveFontSize * 0.35, maxDescriptionHeightForDevice / descriptionLines.length);
@@ -635,12 +635,12 @@ export async function generatePDFBlob(
     });
     
     // Dibujar descripción (centro)
-    let descY = yPosition;
-    descriptionLines.forEach((line: string) => {
+  let descY = yPosition;
+  descriptionLines.forEach((line: string) => {
       doc.text(line, colX + 2, descY);
-      descY += descLineSpacing;
-    });
-    
+    descY += descLineSpacing;
+  });
+  
     // Calcular altura real usada por este equipo
     const modelHeight = Math.max(7, modelLines.length * modelLineSpacing);
     const descHeight = Math.max(7, descriptionLines.length * descLineSpacing);
@@ -649,8 +649,8 @@ export async function generatePDFBlob(
     // Mostrar total del equipo
     const deviceTotal = (device.replacement_cost || 0) + (device.labor_cost || 0);
     const deviceTotalText = formatCLP(deviceTotal, { withLabel: false });
-    
-    colX = margin + 3 + colWidths[0] + colWidths[1] + colWidths[2];
+  
+  colX = margin + 3 + colWidths[0] + colWidths[1] + colWidths[2];
     doc.setFontSize(adaptiveFontSize);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(0, 0, 0);
@@ -692,59 +692,59 @@ export async function generatePDFBlob(
       yPosition += 3; // Reducido de 6 a 3
       
       deviceServices.forEach((serviceItem: any) => {
-        colX = margin + 3;
-        doc.text("-", colX + 2, yPosition);
-        colX += colWidths[0];
+    colX = margin + 3;
+    doc.text("-", colX + 2, yPosition);
+    colX += colWidths[0];
         
         // UNIFICAR FORMATO: Todos los servicios en negritas, sin mayúsculas forzadas
         const serviceNameText = serviceItem.name || serviceItem.service_name || "";
         doc.setFontSize(adaptiveFontSize);
         doc.setFont("helvetica", "bold"); // NEGRITAS para todos
         doc.setTextColor(0, 0, 0);
-        const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
-        doc.text(serviceNameLines, colX + 2, yPosition);
-        colX += colWidths[1];
+    const serviceNameLines = doc.splitTextToSize(serviceNameText, colWidths[1] - 4);
+    doc.text(serviceNameLines, colX + 2, yPosition);
+    colX += colWidths[1];
         
-        let serviceNote = serviceItem.description || "Servicio de reparación";
+    let serviceNote = serviceItem.description || "Servicio de reparación";
         if (serviceNote === device.problem_description) {
-          serviceNote = "Servicio de reparación";
-        }
+      serviceNote = "Servicio de reparación";
+    }
         doc.setFont("helvetica", "normal"); // Descripción en normal
-        const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
-        let noteY = yPosition;
-        noteLines.forEach((line: string) => {
-          doc.text(line, colX + 2, noteY);
+    const noteLines = doc.splitTextToSize(serviceNote, colWidths[2] - 4);
+    let noteY = yPosition;
+    noteLines.forEach((line: string) => {
+      doc.text(line, colX + 2, noteY);
           noteY += serviceLineSpacing;
-        });
-        colX += colWidths[2];
+    });
+    colX += colWidths[2];
         
         // Mostrar total del servicio
         const totalAmount = serviceItem.total_price || (serviceItem.unit_price || 0) * (serviceItem.quantity || 1);
-        const totalText = formatCLP(totalAmount, { withLabel: false });
+    const totalText = formatCLP(totalAmount, { withLabel: false });
         
         doc.setFontSize(adaptiveFontSize);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(0, 0, 0);
-        const totalWidth = doc.getTextWidth(totalText);
-        const totalX = colX + colWidths[3] - totalWidth - 2;
-        doc.text(totalText, totalX, yPosition);
+    const totalWidth = doc.getTextWidth(totalText);
+    const totalX = colX + colWidths[3] - totalWidth - 2;
+    doc.text(totalText, totalX, yPosition);
         
         // Mostrar cantidad y precio unitario
         doc.setFontSize(Math.max(5, adaptiveFontSize * 0.65));
         doc.setFont("helvetica", "normal");
         doc.setTextColor(120, 120, 120);
         const detailText = `${serviceItem.quantity || 1} x ${formatCLP(serviceItem.unit_price || 0, { withLabel: false })}`;
-        const detailWidth = doc.getTextWidth(detailText);
-        const detailX = colX + colWidths[3] - detailWidth - 2;
-        doc.text(detailText, detailX, yPosition + 3);
+    const detailWidth = doc.getTextWidth(detailText);
+    const detailX = colX + colWidths[3] - detailWidth - 2;
+    doc.text(detailText, detailX, yPosition + 3);
         
         // Restaurar valores por defecto
         doc.setFontSize(adaptiveFontSize);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(0, 0, 0);
-        
+    doc.setTextColor(0, 0, 0);
+    
         // REDUCIR altura entre servicios para aprovechar mejor el espacio
-        const maxHeight = Math.max(
+    const maxHeight = Math.max(
           serviceNameLines.length * serviceLineSpacing,
           noteLines.length * serviceLineSpacing,
           5 + 1 // Reducido de 6+2 a 5+1
@@ -827,35 +827,35 @@ export async function generatePDFBlob(
     
     // === MOSTRAR REPUESTO DEL EQUIPO ===
     if (device.replacement_cost > 0) {
-      colX = margin + 3;
-      doc.text("-", colX + 2, yPosition);
-      colX += colWidths[0];
-      doc.text("REPUESTO", colX, yPosition);
-      colX += colWidths[1];
-      const repuestoNote = doc.splitTextToSize("Repuesto original", colWidths[2] - 2);
-      doc.text(repuestoNote, colX, yPosition);
-      colX += colWidths[2];
+    colX = margin + 3;
+    doc.text("-", colX + 2, yPosition);
+    colX += colWidths[0];
+    doc.text("REPUESTO", colX, yPosition);
+    colX += colWidths[1];
+    const repuestoNote = doc.splitTextToSize("Repuesto original", colWidths[2] - 2);
+    doc.text(repuestoNote, colX, yPosition);
+    colX += colWidths[2];
       
       const repuestoTotalAmount = device.replacement_cost;
-      const repuestoTotalText = formatCLP(repuestoTotalAmount, { withLabel: false });
+    const repuestoTotalText = formatCLP(repuestoTotalAmount, { withLabel: false });
       doc.setFontSize(adaptiveFontSize);
       doc.setFont("helvetica", "bold");
-      const repuestoTotalWidth = doc.getTextWidth(repuestoTotalText);
-      const repuestoTotalX = colX + colWidths[3] - repuestoTotalWidth - 2;
-      doc.text(repuestoTotalText, repuestoTotalX, yPosition);
+    const repuestoTotalWidth = doc.getTextWidth(repuestoTotalText);
+    const repuestoTotalX = colX + colWidths[3] - repuestoTotalWidth - 2;
+    doc.text(repuestoTotalText, repuestoTotalX, yPosition);
       
       doc.setFontSize(Math.max(5, adaptiveFontSize * 0.65));
       doc.setFont("helvetica", "normal");
       doc.setTextColor(120, 120, 120);
       const repuestoDetailText = `1 x ${formatCLP(device.replacement_cost, { withLabel: false })}`;
-      const repuestoDetailWidth = doc.getTextWidth(repuestoDetailText);
-      const repuestoDetailX = colX + colWidths[3] - repuestoDetailWidth - 2;
+    const repuestoDetailWidth = doc.getTextWidth(repuestoDetailText);
+    const repuestoDetailX = colX + colWidths[3] - repuestoDetailWidth - 2;
       doc.text(repuestoDetailText, repuestoDetailX, yPosition + 4);
       
       doc.setFontSize(adaptiveFontSize);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(0, 0, 0);
-      yPosition += 7;
+    doc.setTextColor(0, 0, 0);
+    yPosition += 7;
     }
     
     // Espacio adicional antes del siguiente equipo
@@ -1117,7 +1117,7 @@ export async function generatePDFBlob(
     
     // Probar diferentes tamaños desde el máximo hacia abajo hasta encontrar el que quepa
     for (let testSize = maxFontSize; testSize >= minFontSize; testSize -= 0.25) {
-      doc.setFontSize(testSize);
+    doc.setFontSize(testSize);
       const testLineSpacing = testSize * 0.5;
       let testLeftHeight = 0;
       let testRightHeight = 0;
@@ -1158,27 +1158,27 @@ export async function generatePDFBlob(
   let warrantyPanelHeight = 0;
   
   // Calcular altura real necesaria con el tamaño calculado
-  let tempLeftY = warrantyPanelStartY + warrantyPaddingTop;
-  let tempRightY = warrantyPanelStartY + warrantyPaddingTop;
-  const maxYPerColumn: number[] = [];
-  
-  warrantyText.forEach((text, index) => {
-    const isLeftColumn = index % 2 === 0;
-    const textWithBullet = `• ${text}`;
+    let tempLeftY = warrantyPanelStartY + warrantyPaddingTop;
+    let tempRightY = warrantyPanelStartY + warrantyPaddingTop;
+    const maxYPerColumn: number[] = [];
+    
+    warrantyText.forEach((text, index) => {
+      const isLeftColumn = index % 2 === 0;
+      const textWithBullet = `• ${text}`;
       const lines = doc.splitTextToSize(textWithBullet, columnWidth - 3);
       const textHeight = lines.length * optimalLineSpacing;
       // ELIMINAR espacio entre garantías (solo el interlineado del texto)
       const minSpaceBetween = 0; // Sin espacio extra entre garantías
       const spaceBetweenWarranties = textHeight + minSpaceBetween;
-    if (isLeftColumn) {
-      tempLeftY += spaceBetweenWarranties;
-      maxYPerColumn.push(tempLeftY);
-    } else {
-      tempRightY += spaceBetweenWarranties;
-      maxYPerColumn.push(tempRightY);
-    }
-  });
-  
+      if (isLeftColumn) {
+        tempLeftY += spaceBetweenWarranties;
+        maxYPerColumn.push(tempLeftY);
+      } else {
+        tempRightY += spaceBetweenWarranties;
+        maxYPerColumn.push(tempRightY);
+      }
+    });
+    
   let testMaxY = Math.max(...maxYPerColumn, warrantyPanelStartY + warrantyPaddingTop);
   let testPanelHeight = testMaxY - warrantyPanelStartY + warrantyPaddingBottom;
   

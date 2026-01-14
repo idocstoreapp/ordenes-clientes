@@ -216,7 +216,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
   async function handleStatusChange(orderId: string, newStatus: string) {
     // Verificar permiso para modificar órdenes
-    if (!hasPermission(user, "modify_orders") && !isAdmin) {
+    if (!hasPermission(user || null, "modify_orders") && !isAdmin) {
       alert("No tienes permisos para modificar órdenes");
       return;
     }
@@ -975,7 +975,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
                                 <span>📱</span> WhatsApp
                               </button>
                             )}
-                            {isAdmin && (
+                            {(isAdmin || hasPermission(user || null, "modify_orders")) && (
                               <>
                                 <button
                                   onClick={(e) => {
@@ -987,17 +987,19 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
                                 >
                                   <span>✏️</span> Editar
                                 </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteOrder(order.id);
-                                    setOpenActionsMenu(null);
-                                  }}
-                                  disabled={deletingOrderId === order.id}
-                                  className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <span>🗑️</span> {deletingOrderId === order.id ? "Eliminando..." : "Eliminar"}
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteOrder(order.id);
+                                      setOpenActionsMenu(null);
+                                    }}
+                                    disabled={deletingOrderId === order.id}
+                                    className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <span>🗑️</span> {deletingOrderId === order.id ? "Eliminando..." : "Eliminar"}
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>
