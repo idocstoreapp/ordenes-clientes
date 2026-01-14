@@ -319,6 +319,9 @@ DROP POLICY IF EXISTS "customers_update_authenticated" ON customers;
 DROP POLICY IF EXISTS "services_select_all" ON services;
 DROP POLICY IF EXISTS "services_insert_admin" ON services;
 DROP POLICY IF EXISTS "device_checklist_items_select_all" ON device_checklist_items;
+DROP POLICY IF EXISTS "device_checklist_items_insert_admin" ON device_checklist_items;
+DROP POLICY IF EXISTS "device_checklist_items_update_admin" ON device_checklist_items;
+DROP POLICY IF EXISTS "device_checklist_items_delete_admin" ON device_checklist_items;
 DROP POLICY IF EXISTS "work_orders_select_own_or_sucursal_or_admin" ON work_orders;
 DROP POLICY IF EXISTS "work_orders_insert_authenticated" ON work_orders;
 DROP POLICY IF EXISTS "work_orders_update_own_or_sucursal_or_admin" ON work_orders;
@@ -348,8 +351,14 @@ CREATE POLICY "services_select_all" ON services FOR SELECT USING (true);
 CREATE POLICY "services_insert_admin" ON services FOR INSERT 
   WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
 
--- Políticas para device_checklist_items (todos pueden leer)
+-- Políticas para device_checklist_items (todos pueden leer, solo admins pueden modificar)
 CREATE POLICY "device_checklist_items_select_all" ON device_checklist_items FOR SELECT USING (true);
+CREATE POLICY "device_checklist_items_insert_admin" ON device_checklist_items FOR INSERT 
+  WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "device_checklist_items_update_admin" ON device_checklist_items FOR UPDATE 
+  USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "device_checklist_items_delete_admin" ON device_checklist_items FOR DELETE 
+  USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
 
 -- Políticas para work_orders
 CREATE POLICY "work_orders_select_own_or_sucursal_or_admin" ON work_orders FOR SELECT
