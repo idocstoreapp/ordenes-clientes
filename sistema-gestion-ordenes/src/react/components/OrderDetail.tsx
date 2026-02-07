@@ -16,6 +16,15 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+  const [orderServices, setOrderServices] = useState<Array<{
+    id: string;
+    service_name: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
+    description?: string | null;
+  }>>([]);
+  const [loadingServices, setLoadingServices] = useState(true);
   const [pdfOrderData, setPdfOrderData] = useState<{
     order: WorkOrder;
     services: Service[];
@@ -54,7 +63,40 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
       setLoading(false);
     }
 
+    async function loadServices() {
+      try {
+        const { data: servicesData, error: servicesError } = await supabase
+          .from("order_services")
+          .select(`
+            *,
+            service:services(description)
+          `)
+          .eq("order_id", orderId)
+          .order("created_at", { ascending: true });
+
+        if (servicesError) {
+          console.error("Error cargando servicios:", servicesError);
+        } else {
+          // Agregar descripción a orderServices si está disponible
+          const servicesWithDescription = (servicesData || []).map((os: any) => ({
+            id: os.id,
+            service_name: os.service_name,
+            quantity: os.quantity || 1,
+            unit_price: os.unit_price || 0,
+            total_price: os.total_price || os.unit_price || 0,
+            description: os.service?.description || null
+          }));
+          setOrderServices(servicesWithDescription);
+        }
+      } catch (error) {
+        console.error("Error cargando servicios:", error);
+      } finally {
+        setLoadingServices(false);
+      }
+    }
+
     loadOrder();
+    loadServices();
   }, [orderId]);
 
   if (loading) {
@@ -145,6 +187,66 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
               <label className="text-sm font-medium text-slate-600">Fecha</label>
               <p className="text-lg text-slate-900">{formatDate(order.created_at)}</p>
             </div>
+          </div>
+
+          {/* Servicios de la orden */}
+          <div className="mt-6 pt-6 border-t border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Servicios</h3>
+            {loadingServices ? (
+              <p className="text-slate-600">Cargando servicios...</p>
+            ) : orderServices.length > 0 ? (
+              <div className="space-y-3">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="text-left py-2 px-3 text-sm font-semibold text-slate-700">Servicio</th>
+                        <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">Cantidad</th>
+                        <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">Precio Unit.</th>
+                        <th className="text-right py-2 px-3 text-sm font-semibold text-slate-700">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {orderServices.map((service) => (
+                        <tr key={service.id} className="border-b border-slate-100">
+                          <td className="py-2 px-3">
+                            <div>
+                              <p className="font-medium text-slate-900">{service.service_name}</p>
+                              {service.description && (
+                                <p className="text-xs text-slate-500 mt-1">{service.description}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-right py-2 px-3 text-slate-700">{service.quantity}</td>
+                          <td className="text-right py-2 px-3 text-slate-700">{formatCLP(service.unit_price)}</td>
+                          <td className="text-right py-2 px-3 font-semibold text-slate-900">{formatCLP(service.total_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-300">
+                        <td colSpan={3} className="text-right py-2 px-3 font-semibold text-slate-900">
+                          Total Servicios:
+                        </td>
+                        <td className="text-right py-2 px-3 font-bold text-lg text-brand">
+                          {formatCLP(orderServices.reduce((sum, s) => sum + s.total_price, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                {order.replacement_cost && order.replacement_cost > 0 && (
+                  <div className="mt-3 pt-3 border-t border-slate-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-slate-700">Costo de Repuestos:</span>
+                      <span className="text-sm font-semibold text-slate-900">{formatCLP(order.replacement_cost)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-slate-500 italic">No hay servicios registrados para esta orden.</p>
+            )}
           </div>
 
           {/* Notas de la orden */}

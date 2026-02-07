@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { WorkOrder, Service, Customer, User, Branch } from "@/types";
 import { formatCLP } from "@/lib/currency";
@@ -22,6 +22,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [orderNumberFilter, setOrderNumberFilter] = useState<string>("");
+  const [orderNumberInput, setOrderNumberInput] = useState<string>(""); // Estado local para el input
   const [dateFilter, setDateFilter] = useState<string>("");
   const [dateToFilter, setDateToFilter] = useState<string>("");
   const [branchFilter, setBranchFilter] = useState<string>("all");
@@ -51,6 +52,27 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     checklistData?: Record<string, 'ok' | 'damaged' | 'replaced'> | null;
     notes?: string[];
   } | null>(null);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce para el filtro de número de orden
+  useEffect(() => {
+    // Limpiar timeout anterior si existe
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Crear nuevo timeout para actualizar el filtro después de 500ms
+    debounceTimeoutRef.current = setTimeout(() => {
+      setOrderNumberFilter(orderNumberInput);
+    }, 500);
+
+    // Limpiar timeout al desmontar
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [orderNumberInput]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -757,8 +779,8 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
               type="text"
               className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               placeholder="Ej: 24900"
-              value={orderNumberFilter}
-              onChange={(e) => setOrderNumberFilter(e.target.value)}
+              value={orderNumberInput}
+              onChange={(e) => setOrderNumberInput(e.target.value)}
             />
           </div>
 
@@ -813,6 +835,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
           <div className="flex-shrink-0">
             <button
               onClick={() => {
+                setOrderNumberInput("");
                 setOrderNumberFilter("");
                 setDateFilter("");
                 setDateToFilter("");
