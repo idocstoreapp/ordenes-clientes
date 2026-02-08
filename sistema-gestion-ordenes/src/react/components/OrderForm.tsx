@@ -189,13 +189,26 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             setLoadingResponsibleUsers(true);
             
             // Primero, verificar todos los encargados para debug
-            const { data: allEncargados } = await supabase
+            console.log("[OrderForm] DEBUG - Iniciando carga de encargados para sucursal:", sucursalId);
+            console.log("[OrderForm] DEBUG - Verificando auth.uid():", (await supabase.auth.getUser()).data.user?.id || "NULL");
+            
+            const { data: allEncargados, error: allError } = await supabase
               .from("users")
               .select("id, name, role, sucursal_id")
               .eq("role", "encargado");
+            
+            console.log("[OrderForm] DEBUG - Consulta todos los encargados - Error:", allError);
             console.log("[OrderForm] DEBUG - Todos los encargados en el sistema:", allEncargados);
             console.log("[OrderForm] DEBUG - Buscando encargados con sucursal_id:", sucursalId);
             console.log("[OrderForm] DEBUG - Tipo de sucursalId:", typeof sucursalId);
+            
+            if (allError) {
+              console.error("[OrderForm] ERROR CRÍTICO - No se pueden leer encargados debido a RLS:", allError);
+              console.error("[OrderForm] Código de error:", allError.code);
+              console.error("[OrderForm] Mensaje:", allError.message);
+              console.error("[OrderForm] Detalles:", allError.details);
+              console.error("[OrderForm] Hint:", allError.hint);
+            }
             
             // Cargar usuarios encargados asignados a esta sucursal
             const { data, error } = await supabase
@@ -206,8 +219,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               .order("name");
 
             if (error) {
-              console.error("[OrderForm] Error cargando encargados:", error);
-              console.error("[OrderForm] Detalles del error:", JSON.stringify(error, null, 2));
+              console.error("[OrderForm] Error cargando encargados filtrados:", error);
+              console.error("[OrderForm] Código de error:", error.code);
+              console.error("[OrderForm] Mensaje:", error.message);
+              console.error("[OrderForm] Detalles:", error.details);
+              console.error("[OrderForm] Hint:", error.hint);
               setResponsibleUsers([]);
             } else {
               console.log("[OrderForm] Encargados encontrados para sucursal", sucursalId, ":", data?.length || 0);
@@ -223,8 +239,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 console.warn("[OrderForm] No se encontraron encargados para sucursal:", sucursalId);
                 if (allEncargados && allEncargados.length > 0) {
                   console.warn("[OrderForm] Pero hay encargados en el sistema con estos sucursal_id:", 
-                    allEncargados.map(u => ({ name: u.name, sucursal_id: u.sucursal_id, sucursal_id_type: typeof u.sucursal_id }))
+                    allEncargados.map(u => ({ 
+                      name: u.name, 
+                      sucursal_id: u.sucursal_id, 
+                      sucursal_id_type: typeof u.sucursal_id,
+                      sucursal_id_coincide: u.sucursal_id === sucursalId,
+                      sucursal_id_equals: u.sucursal_id == sucursalId
+                    }))
                   );
+                } else {
+                  console.error("[OrderForm] PROBLEMA: No se pueden leer encargados. Esto indica que las políticas RLS están bloqueando la consulta.");
+                  console.error("[OrderForm] SOLUCIÓN: Ejecuta el script fix_users_rls_complete.sql en Supabase SQL Editor");
                 }
               }
               setResponsibleUsers(data || []);
