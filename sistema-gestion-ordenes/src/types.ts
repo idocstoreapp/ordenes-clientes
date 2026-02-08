@@ -73,6 +73,7 @@ export interface WorkOrder {
   customer_id: string;
   technician_id?: string | null;
   sucursal_id?: string | null;
+  responsible_user_id?: string | null; // ID del encargado responsable de recibir el equipo
   device_type: string; // Ahora permite cualquier tipo de dispositivo
   device_model: string;
   device_serial_number?: string | null;
@@ -98,6 +99,7 @@ export interface WorkOrder {
   customer?: Customer;
   technician?: User;
   sucursal?: Branch;
+  responsible_user?: User; // Encargado responsable
 }
 
 export interface OrderService {

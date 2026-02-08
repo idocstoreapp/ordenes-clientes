@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { User, Branch } from "@/types";
 import { formatDate } from "@/lib/date";
 
@@ -67,9 +68,52 @@ export default function UsersList() {
         if (updateError) throw updateError;
         alert("Usuario actualizado exitosamente. Nota: Para cambiar la contraseña, hazlo desde Supabase Dashboard → Authentication → Users.");
       } else {
-        // Para crear usuarios nuevos, se debe hacer desde Supabase Dashboard
-        alert("Para crear usuarios nuevos:\n\n1. Ve a Supabase Dashboard → Authentication → Users → Add user\n2. Crea el usuario con email y contraseña\n3. Copia el User UID\n4. Ejecuta en SQL Editor:\n\nINSERT INTO users (id, email, name, role, sucursal_id)\nVALUES ('UID_AQUI', 'email@ejemplo.com', 'Nombre', 'role', 'sucursal_id');\n\nLuego recarga esta página.");
-        return;
+        // Crear usuario nuevo
+        if (!userData.password || userData.password.length < 6) {
+          alert("La contraseña es obligatoria y debe tener al menos 6 caracteres");
+          return;
+        }
+
+        if (!supabaseAdmin) {
+          alert("⚠️ Service Role Key no configurado. Obtén el 'service_role' key en Supabase Dashboard → Settings → API. Luego: (1) Para desarrollo local: agrega PUBLIC_SUPABASE_SERVICE_ROLE_KEY=tu_key en .env.local y reinicia el servidor. (2) Para Vercel: agrega la variable en Vercel Dashboard → Settings → Environment Variables y haz redeploy.");
+          return;
+        }
+
+        try {
+          // Crear usuario en auth usando supabaseAdmin
+          const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+            email: userData.email.trim(),
+            password: userData.password,
+            email_confirm: true,
+            user_metadata: {
+              name: userData.name.trim(),
+            },
+          });
+
+          if (authError) throw authError;
+          if (!authData.user) throw new Error("No se pudo crear el usuario");
+
+          // Crear usuario en tabla users
+          const { error: userError } = await supabase.from("users").insert({
+            id: authData.user.id,
+            role: userData.role,
+            name: userData.name.trim(),
+            email: userData.email.trim(),
+            sucursal_id: (userData.role === "encargado" || userData.role === "technician") && userData.sucursal_id ? userData.sucursal_id : null,
+          });
+
+          if (userError) {
+            // Si falla insertar en users, eliminar el usuario de auth
+            await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+            throw userError;
+          }
+
+          alert("Usuario creado exitosamente");
+        } catch (error: any) {
+          console.error("Error creando usuario:", error);
+          alert(`Error al crear usuario: ${error.message}`);
+          return;
+        }
       }
 
       await loadData();
@@ -198,6 +242,12 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
       return;
     }
 
+    // Validar que encargados tengan sucursal asignada
+    if (formData.role === "encargado" && !formData.sucursal_id) {
+      alert("Los encargados deben tener una sucursal asignada");
+      return;
+    }
+
     onSave({
       email: formData.email,
       password: formData.password || undefined,
@@ -237,9 +287,18 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
           </div>
           {!user && (
             <div className="md:col-span-2">
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
-                <strong>Nota:</strong> Para crear usuarios nuevos, primero créalos en Supabase Dashboard → Authentication → Users. 
-                Luego agrega el registro en la tabla users usando el SQL Editor con el User UID.
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña *</label>
+                <input
+                  type="password"
+                  className="w-full border border-slate-300 rounded-md px-3 py-2"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  minLength={6}
+                  placeholder="Mínimo 6 caracteres"
+                />
+                <p className="text-xs text-slate-500 mt-1">La contraseña debe tener al menos 6 caracteres</p>
               </div>
             </div>
           )}
@@ -257,21 +316,29 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
               <option value="recepcionista">Recepcionista</option>
             </select>
           </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Sucursal</label>
-            <select
-              className="w-full border border-slate-300 rounded-md px-3 py-2"
-              value={formData.sucursal_id}
-              onChange={(e) => setFormData({ ...formData, sucursal_id: e.target.value })}
-            >
-              <option value="">Sin asignar</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(formData.role === "encargado" || formData.role === "technician") && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Sucursal {formData.role === "encargado" ? "*" : ""}
+              </label>
+              <select
+                className="w-full border border-slate-300 rounded-md px-3 py-2"
+                value={formData.sucursal_id}
+                onChange={(e) => setFormData({ ...formData, sucursal_id: e.target.value })}
+                required={formData.role === "encargado"}
+              >
+                <option value="">{formData.role === "encargado" ? "Selecciona una sucursal..." : "Sin asignar"}</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
+              {formData.role === "encargado" && !formData.sucursal_id && (
+                <p className="text-xs text-red-600 mt-1">La sucursal es obligatoria para encargados</p>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2">
           <button

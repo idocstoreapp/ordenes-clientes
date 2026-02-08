@@ -2,7 +2,7 @@
 
 ## ⚠️ Problema
 
-Al intentar crear un nuevo servicio desde la configuración como administrador, aparece el error:
+Al intentar crear un nuevo servicio desde la configuración como administrador o desde una sucursal al crear una orden, aparece el error:
 
 ```
 Error al agregar servicio: new row violates row-level security policy for table "services"
@@ -14,6 +14,7 @@ El problema se debe a que:
 
 1. **La política RLS de INSERT** para la tabla `services` puede tener problemas de recursión al consultar la tabla `users` (que también tiene RLS habilitado)
 2. **Faltan políticas UPDATE y DELETE** para la tabla `services`, lo que puede causar problemas al editar o eliminar servicios
+3. **Las sucursales no pueden crear servicios** porque no tienen `auth.uid()` (es NULL) y la política solo permitía a admins
 
 ## ✅ Solución
 
@@ -42,23 +43,38 @@ SELECT * FROM pg_policies WHERE tablename = 'services';
 
 Deberías ver **4 políticas**:
 - ✅ `services_select_all` (SELECT - todos pueden leer)
-- ✅ `services_insert_admin` (INSERT - solo admins)
+- ✅ `services_insert_admin_or_branch` (INSERT - admins y sucursales)
 - ✅ `services_update_admin` (UPDATE - solo admins)
 - ✅ `services_delete_admin` (DELETE - solo admins)
 
 ### Paso 4: Probar en la Aplicación
 
+**Como Administrador:**
 1. Recarga la página de configuración en tu aplicación
-2. Intenta crear un nuevo servicio
+2. Intenta crear un nuevo servicio desde Configuración → Servicios
 3. Debería funcionar sin errores ✅
+
+**Como Sucursal:**
+1. Inicia sesión como sucursal
+2. Ve a crear una nueva orden
+3. Intenta agregar un servicio nuevo cuando no existe en la lista
+4. Debería permitir crear el servicio sin errores ✅
 
 ## 📋 ¿Qué hace el script?
 
 El script:
 
 1. **Crea una función `is_admin()`** con `SECURITY DEFINER` que evita problemas de recursión al leer la tabla `users`
-2. **Actualiza la política INSERT** para usar la función `is_admin()` en lugar de consultar directamente la tabla `users`
+2. **Actualiza la política INSERT** para permitir:
+   - **Admins**: usando la función `is_admin()`
+   - **Sucursales**: cuando `auth.uid() IS NULL` (las sucursales no usan `auth.users`)
 3. **Agrega políticas UPDATE y DELETE** que faltaban para permitir a los admins editar y eliminar servicios
+
+## ✅ Permisos después del script
+
+- **Admins**: Pueden crear, editar y eliminar servicios ✅
+- **Sucursales**: Pueden crear servicios (necesario al crear órdenes) ✅
+- **Otros usuarios**: Solo pueden leer servicios (SELECT) ✅
 
 ## 🔍 Verificar que Eres Admin
 

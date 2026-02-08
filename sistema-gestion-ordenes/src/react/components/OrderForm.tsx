@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
-import type { Customer, Service, DeviceChecklistItem, DeviceType } from "@/types";
+import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceType, getSmartSuggestions } from "@/lib/deviceDatabase";
 import DeviceChecklist from "./DeviceChecklist";
 import CustomerSearch from "./CustomerSearch";
@@ -59,6 +59,9 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [priority, setPriority] = useState<"baja" | "media" | "urgente">("media");
   const [commitmentDate, setCommitmentDate] = useState("");
   const [warrantyDays, setWarrantyDays] = useState(30);
+  const [responsibleUserId, setResponsibleUserId] = useState<string>(""); // Encargado responsable (obligatorio para sucursales)
+  const [responsibleUsers, setResponsibleUsers] = useState<User[]>([]); // Lista de encargados de la sucursal
+  const [loadingResponsibleUsers, setLoadingResponsibleUsers] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra múltiples submits
   const [showPDFPreview, setShowPDFPreview] = useState(false);
@@ -168,6 +171,76 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [devices.map(d => d.id).join(',')]);
 
+  // Cargar encargados de la sucursal cuando es una sucursal
+  useEffect(() => {
+    async function loadResponsibleUsers() {
+      // Verificar si es una sucursal
+      if (typeof window === 'undefined') return;
+      
+      const branchSessionStr = localStorage.getItem('branchSession');
+      if (branchSessionStr) {
+        try {
+          const branchSession = JSON.parse(branchSessionStr);
+          // Si hay sesión de sucursal, cargar encargados de esa sucursal
+          if (branchSession.type === 'branch' && branchSession.branchId) {
+            const sucursalId = branchSession.branchId;
+            console.log("[OrderForm] Cargando encargados para sucursal:", sucursalId);
+            
+            setLoadingResponsibleUsers(true);
+            
+            // Primero, verificar todos los encargados para debug
+            const { data: allEncargados } = await supabase
+              .from("users")
+              .select("id, name, role, sucursal_id")
+              .eq("role", "encargado");
+            console.log("[OrderForm] DEBUG - Todos los encargados en el sistema:", allEncargados);
+            console.log("[OrderForm] DEBUG - Buscando encargados con sucursal_id:", sucursalId);
+            console.log("[OrderForm] DEBUG - Tipo de sucursalId:", typeof sucursalId);
+            
+            // Cargar usuarios encargados asignados a esta sucursal
+            const { data, error } = await supabase
+              .from("users")
+              .select("*")
+              .eq("role", "encargado")
+              .eq("sucursal_id", sucursalId)
+              .order("name");
+
+            if (error) {
+              console.error("[OrderForm] Error cargando encargados:", error);
+              console.error("[OrderForm] Detalles del error:", JSON.stringify(error, null, 2));
+              setResponsibleUsers([]);
+            } else {
+              console.log("[OrderForm] Encargados encontrados para sucursal", sucursalId, ":", data?.length || 0);
+              if (data && data.length > 0) {
+                console.log("[OrderForm] Encargados encontrados:", data.map(u => ({ 
+                  id: u.id, 
+                  name: u.name, 
+                  sucursal_id: u.sucursal_id,
+                  sucursal_id_type: typeof u.sucursal_id
+                })));
+              } else {
+                // Si no hay encargados, mostrar información de debug
+                console.warn("[OrderForm] No se encontraron encargados para sucursal:", sucursalId);
+                if (allEncargados && allEncargados.length > 0) {
+                  console.warn("[OrderForm] Pero hay encargados en el sistema con estos sucursal_id:", 
+                    allEncargados.map(u => ({ name: u.name, sucursal_id: u.sucursal_id, sucursal_id_type: typeof u.sucursal_id }))
+                  );
+                }
+              }
+              setResponsibleUsers(data || []);
+            }
+            setLoadingResponsibleUsers(false);
+          }
+        } catch (error) {
+          console.error("[OrderForm] Error parseando sesión de sucursal:", error);
+          setLoadingResponsibleUsers(false);
+        }
+      }
+    }
+
+    loadResponsibleUsers();
+  }, [technicianId]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     
@@ -237,6 +310,25 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return;
     }
 
+    // Validar encargado responsable si es una sucursal
+    if (typeof window !== 'undefined') {
+      const branchSessionStr = localStorage.getItem('branchSession');
+      if (branchSessionStr) {
+        try {
+          const branchSession = JSON.parse(branchSessionStr);
+          if (branchSession.type === 'branch' && branchSession.branchId) {
+            // Es una sucursal - validar que se haya seleccionado un encargado
+            if (!responsibleUserId || responsibleUserId.trim() === "") {
+              alert("Por favor selecciona al responsable de recibir el equipo. Este campo es obligatorio.");
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error validando sesión de sucursal:", error);
+        }
+      }
+    }
+
     // Validar checklist para cada equipo (ANTES de establecer estados de carga)
     const invalidChecklists: string[] = [];
     devices.forEach((device, index) => {
@@ -278,7 +370,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         if (branchSessionStr) {
           try {
             const branchSession = JSON.parse(branchSessionStr);
-            if (branchSession.type === 'branch' && branchSession.branchId === technicianId) {
+            if (branchSession.type === 'branch' && branchSession.branchId) {
               // Es una sucursal - usar el branchId como sucursal_id
               isBranch = true;
               sucursalId = branchSession.branchId;
@@ -414,6 +506,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         // Nota: Si el campo devices_data no existe en la BD, simplemente no se guardará
         // pero el código seguirá funcionando con all_devices en memoria
         ...(additionalDevices.length > 0 ? { devices_data: additionalDevices } : {}),
+        // Agregar encargado responsable si está seleccionado (obligatorio para sucursales)
+        ...(responsibleUserId ? { responsible_user_id: responsibleUserId } : {}),
       };
 
       // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
@@ -1081,18 +1175,36 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   servicios_nuevos: services.length,
                   servicios: services,
                 });
+                
+                // Validar y eliminar duplicados por ID (protección adicional)
+                const uniqueServices: Service[] = [];
+                const seenIds = new Set<string>();
+                
+                for (const service of services) {
+                  if (!seenIds.has(service.id)) {
+                    seenIds.add(service.id);
+                    uniqueServices.push(service);
+                  } else {
+                    console.warn(`[OrderForm] Servicio duplicado detectado y eliminado: ${service.name} (${service.id})`);
+                  }
+                }
+                
+                if (uniqueServices.length !== services.length) {
+                  console.warn(`[OrderForm] Se eliminaron ${services.length - uniqueServices.length} servicios duplicados`);
+                }
+                
                 // Al cambiar servicios, limpiar precios de servicios eliminados
                 const currentPrices = device.servicePrices;
                 const newPrices: Record<string, number> = {};
-                services.forEach(service => {
+                uniqueServices.forEach(service => {
                   // Mantener precio existente si el servicio ya estaba, sino usar 0
                   newPrices[service.id] = currentPrices[service.id] || 0;
                 });
                 updateDevice(device.id, { 
-                  selectedServices: services,
+                  selectedServices: uniqueServices,
                   servicePrices: newPrices
                 });
-                console.log(`[OrderForm] Estado actualizado para equipo ${device.id}. Nuevos servicios:`, services.length);
+                console.log(`[OrderForm] Estado actualizado para equipo ${device.id}. Servicios únicos:`, uniqueServices.length);
               }}
             />
             
@@ -1173,6 +1285,64 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           ➕ Agregar Otro Equipo
         </button>
       </div>
+
+      {/* Selector de Encargado Responsable (solo para sucursales) */}
+      {(() => {
+        // Verificar si es una sucursal
+        if (typeof window === 'undefined') return null;
+        const branchSessionStr = localStorage.getItem('branchSession');
+        if (branchSessionStr) {
+          try {
+            const branchSession = JSON.parse(branchSessionStr);
+            if (branchSession.type === 'branch' && branchSession.branchId) {
+              return (
+                <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Responsable de Recibir el Equipo *
+                  </label>
+                  {loadingResponsibleUsers ? (
+                    <p className="text-slate-600">Cargando encargados...</p>
+                  ) : responsibleUsers.length === 0 ? (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                      <p className="text-sm text-red-800 mb-2">
+                        ⚠️ No hay encargados asignados a esta sucursal.
+                      </p>
+                      <p className="text-xs text-red-700">
+                        El administrador debe crear encargados desde la página de Usuarios y asignarlos a esta sucursal (ID: {branchSession.branchId}).
+                      </p>
+                      <p className="text-xs text-slate-600 mt-2">
+                        💡 Tip: Verifica en la página de Usuarios que los encargados tengan el campo "Sucursal" asignado correctamente.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      className="w-full border border-slate-300 rounded-md px-3 py-2"
+                      value={responsibleUserId}
+                      onChange={(e) => setResponsibleUserId(e.target.value)}
+                      required
+                    >
+                      <option value="">Selecciona un encargado...</option>
+                      {responsibleUsers.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {!responsibleUserId && responsibleUsers.length > 0 && (
+                    <p className="text-sm text-red-600 mt-1">
+                      Este campo es obligatorio para crear la orden
+                    </p>
+                  )}
+                </div>
+              );
+            }
+          } catch (error) {
+            // No es sucursal o error parseando
+          }
+        }
+        return null;
+      })()}
 
       {/* Prioridad y Fechas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -7,10 +7,11 @@
 -- PROBLEMA: 
 -- 1. La política INSERT puede tener problemas de recursión al consultar la tabla users
 -- 2. Faltan políticas UPDATE y DELETE para la tabla services
+-- 3. Las sucursales no pueden crear servicios porque no tienen auth.uid()
 --
 -- SOLUCIÓN: 
 -- 1. Crear función is_admin() con SECURITY DEFINER para evitar recursión
--- 2. Actualizar política INSERT para usar la función
+-- 2. Actualizar política INSERT para permitir admins Y sucursales (auth.uid() IS NULL)
 -- 3. Agregar políticas UPDATE y DELETE faltantes
 
 -- ============================================
@@ -33,6 +34,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 2. Eliminar políticas existentes
 -- ============================================
 DROP POLICY IF EXISTS "services_insert_admin" ON services;
+DROP POLICY IF EXISTS "services_insert_admin_or_branch" ON services;
 DROP POLICY IF EXISTS "services_update_admin" ON services;
 DROP POLICY IF EXISTS "services_delete_admin" ON services;
 
@@ -40,9 +42,14 @@ DROP POLICY IF EXISTS "services_delete_admin" ON services;
 -- 3. Crear nuevas políticas
 -- ============================================
 
--- Política INSERT: Solo admins pueden crear servicios
-CREATE POLICY "services_insert_admin" ON services FOR INSERT 
-  WITH CHECK (is_admin());
+-- Política INSERT: Admins y sucursales pueden crear servicios
+-- - Admins: usando is_admin()
+-- - Sucursales: cuando auth.uid() IS NULL (no usan auth.users)
+CREATE POLICY "services_insert_admin_or_branch" ON services FOR INSERT 
+  WITH CHECK (
+    is_admin() 
+    OR auth.uid() IS NULL  -- Permitir a sucursales (no tienen auth.uid())
+  );
 
 -- Política UPDATE: Solo admins pueden actualizar servicios
 CREATE POLICY "services_update_admin" ON services FOR UPDATE 
@@ -61,6 +68,6 @@ CREATE POLICY "services_delete_admin" ON services FOR DELETE
 --
 -- Deberías ver 4 políticas:
 -- 1. services_select_all (SELECT - todos pueden leer)
--- 2. services_insert_admin (INSERT - solo admins)
+-- 2. services_insert_admin_or_branch (INSERT - admins y sucursales)
 -- 3. services_update_admin (UPDATE - solo admins)
 -- 4. services_delete_admin (DELETE - solo admins)

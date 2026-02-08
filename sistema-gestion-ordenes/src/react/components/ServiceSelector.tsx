@@ -44,6 +44,16 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
   );
 
   function handleServiceSelect(service: Service) {
+    // Validar que el servicio no esté ya en la lista (protección contra duplicados)
+    if (selectedServices.find((s) => s.id === service.id)) {
+      console.warn(`[ServiceSelector] Servicio ${service.name} (${service.id}) ya está en la lista. Ignorando duplicado.`);
+      setSearchTerm("");
+      setShowResults(false);
+      if (inputRef.current) inputRef.current.focus();
+      return;
+    }
+
+    // Agregar el servicio solo si no está duplicado
     onServicesChange([...selectedServices, service]);
     setSearchTerm("");
     setShowResults(false);
@@ -58,6 +68,12 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
 
     if (!newServiceName.trim()) {
       alert("Por favor ingresa un nombre para el servicio");
+      return;
+    }
+
+    // Protección contra múltiples llamadas simultáneas
+    if (loading) {
+      console.warn("[ServiceSelector] handleCreateService ya está en ejecución. Ignorando llamada duplicada.");
       return;
     }
 
@@ -86,8 +102,15 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
       if (data) {
         // Recargar la lista de servicios disponibles
         await loadServices();
-        // Agregar el nuevo servicio a los servicios seleccionados
-        handleServiceSelect(data);
+        
+        // Validar que el servicio no esté ya en la lista antes de agregarlo
+        if (!selectedServices.find((s) => s.id === data.id)) {
+          // Agregar el nuevo servicio a los servicios seleccionados
+          handleServiceSelect(data);
+        } else {
+          console.warn(`[ServiceSelector] El servicio ${data.name} (${data.id}) ya está en la lista. No se agregará duplicado.`);
+        }
+        
         // Limpiar el formulario
         setNewServiceName("");
         setShowNewServiceForm(false);
@@ -130,19 +153,32 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
 
       {showResults && searchTerm && filteredServices.length > 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-          {filteredServices.map((service) => (
-            <button
-              key={service.id}
-              type="button"
-              className="w-full text-left px-4 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-              onClick={() => handleServiceSelect(service)}
-            >
-              <p className="font-medium text-slate-900">{service.name}</p>
-              {service.description && (
-                <p className="text-sm text-slate-600">{service.description}</p>
-              )}
-            </button>
-          ))}
+          {filteredServices.map((service) => {
+            // Verificar si el servicio ya está seleccionado (protección adicional)
+            const isAlreadySelected = selectedServices.some(s => s.id === service.id);
+            
+            return (
+              <button
+                key={service.id}
+                type="button"
+                className="w-full text-left px-4 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (!isAlreadySelected) {
+                    handleServiceSelect(service);
+                  }
+                }}
+                disabled={isAlreadySelected}
+              >
+                <p className="font-medium text-slate-900">{service.name}</p>
+                {service.description && (
+                  <p className="text-sm text-slate-600">{service.description}</p>
+                )}
+                {isAlreadySelected && (
+                  <p className="text-xs text-slate-400 italic">Ya agregado</p>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { WorkOrder, Service, Customer, User, Branch } from "@/types";
 import { formatCLP } from "@/lib/currency";
@@ -53,12 +53,19 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     notes?: string[];
   } | null>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const orderNumberInputRef = useRef<HTMLInputElement | null>(null);
 
   // Debounce para el filtro de número de orden
   useEffect(() => {
     // Limpiar timeout anterior si existe
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Si el input está vacío, actualizar inmediatamente para limpiar el filtro
+    if (orderNumberInput.trim() === "") {
+      setOrderNumberFilter("");
+      return;
     }
 
     // Crear nuevo timeout para actualizar el filtro después de 500ms
@@ -109,7 +116,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     }
   }, [openActionsMenu]);
 
-  async function loadOrders() {
+  const loadOrders = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -172,7 +179,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     } finally {
       setLoading(false);
     }
-  }
+  }, [isAdmin, user?.sucursal_id, technicianId, statusFilter, orderNumberFilter, dateFilter, dateToFilter, branchFilter]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -776,11 +783,23 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
               Número de Orden
             </label>
             <input
+              ref={orderNumberInputRef}
               type="text"
               className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
               placeholder="Ej: 24900"
               value={orderNumberInput}
               onChange={(e) => setOrderNumberInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Prevenir que Enter recargue la página
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  // Actualizar el filtro inmediatamente al presionar Enter
+                  if (debounceTimeoutRef.current) {
+                    clearTimeout(debounceTimeoutRef.current);
+                  }
+                  setOrderNumberFilter(orderNumberInput);
+                }
+              }}
             />
           </div>
 
