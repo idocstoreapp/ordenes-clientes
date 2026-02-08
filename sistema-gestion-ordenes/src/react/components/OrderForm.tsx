@@ -59,8 +59,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [priority, setPriority] = useState<"baja" | "media" | "urgente">("media");
   const [commitmentDate, setCommitmentDate] = useState("");
   const [warrantyDays, setWarrantyDays] = useState(30);
-  const [responsibleUserId, setResponsibleUserId] = useState<string>(""); // Encargado responsable (obligatorio para sucursales)
-  const [responsibleUsers, setResponsibleUsers] = useState<User[]>([]); // Lista de encargados de la sucursal
+  const [responsibleUserName, setResponsibleUserName] = useState<string>(""); // Nombre del responsable (obligatorio para sucursales, seleccionado de lista)
+  const [responsibleUsers, setResponsibleUsers] = useState<User[]>([]); // Lista de responsables de la sucursal
   const [loadingResponsibleUsers, setLoadingResponsibleUsers] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false); // Protección contra múltiples submits
@@ -172,6 +172,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   }, [devices.map(d => d.id).join(',')]);
 
   // Cargar encargados de la sucursal cuando es una sucursal
+  // Cargar responsables de la sucursal cuando es una sucursal
   useEffect(() => {
     async function loadResponsibleUsers() {
       // Verificar si es una sucursal
@@ -181,65 +182,64 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       if (branchSessionStr) {
         try {
           const branchSession = JSON.parse(branchSessionStr);
-          // Si hay sesión de sucursal, cargar encargados de esa sucursal
+          // Si hay sesión de sucursal, cargar responsables de esa sucursal
           if (branchSession.type === 'branch' && branchSession.branchId) {
             const sucursalId = branchSession.branchId;
-            console.log("[OrderForm] Cargando encargados para sucursal:", sucursalId);
+            console.log("[OrderForm] Cargando responsables para sucursal:", sucursalId);
             
             setLoadingResponsibleUsers(true);
             
-            // Primero, verificar todos los encargados para debug
-            console.log("[OrderForm] DEBUG - Iniciando carga de encargados para sucursal:", sucursalId);
+            // Primero, verificar todos los responsables para debug
             console.log("[OrderForm] DEBUG - Verificando auth.uid():", (await supabase.auth.getUser()).data.user?.id || "NULL");
             
-            const { data: allEncargados, error: allError } = await supabase
+            const { data: allResponsables, error: allError } = await supabase
               .from("users")
               .select("id, name, role, sucursal_id")
-              .eq("role", "encargado");
+              .eq("role", "responsable");
             
-            console.log("[OrderForm] DEBUG - Consulta todos los encargados - Error:", allError);
-            console.log("[OrderForm] DEBUG - Todos los encargados en el sistema:", allEncargados);
-            console.log("[OrderForm] DEBUG - Buscando encargados con sucursal_id:", sucursalId);
+            console.log("[OrderForm] DEBUG - Consulta todos los responsables - Error:", allError);
+            console.log("[OrderForm] DEBUG - Todos los responsables en el sistema:", allResponsables);
+            console.log("[OrderForm] DEBUG - Buscando responsables con sucursal_id:", sucursalId);
             console.log("[OrderForm] DEBUG - Tipo de sucursalId:", typeof sucursalId);
             
             if (allError) {
-              console.error("[OrderForm] ERROR CRÍTICO - No se pueden leer encargados debido a RLS:", allError);
+              console.error("[OrderForm] ERROR CRÍTICO - No se pueden leer responsables debido a RLS:", allError);
               console.error("[OrderForm] Código de error:", allError.code);
               console.error("[OrderForm] Mensaje:", allError.message);
               console.error("[OrderForm] Detalles:", allError.details);
               console.error("[OrderForm] Hint:", allError.hint);
             }
             
-            // Cargar usuarios encargados asignados a esta sucursal
+            // Cargar usuarios responsables asignados a esta sucursal
             const { data, error } = await supabase
               .from("users")
               .select("*")
-              .eq("role", "encargado")
+              .eq("role", "responsable")
               .eq("sucursal_id", sucursalId)
               .order("name");
 
             if (error) {
-              console.error("[OrderForm] Error cargando encargados filtrados:", error);
+              console.error("[OrderForm] Error cargando responsables filtrados:", error);
               console.error("[OrderForm] Código de error:", error.code);
               console.error("[OrderForm] Mensaje:", error.message);
               console.error("[OrderForm] Detalles:", error.details);
               console.error("[OrderForm] Hint:", error.hint);
               setResponsibleUsers([]);
             } else {
-              console.log("[OrderForm] Encargados encontrados para sucursal", sucursalId, ":", data?.length || 0);
+              console.log("[OrderForm] Responsables encontrados para sucursal", sucursalId, ":", data?.length || 0);
               if (data && data.length > 0) {
-                console.log("[OrderForm] Encargados encontrados:", data.map(u => ({ 
+                console.log("[OrderForm] Responsables encontrados:", data.map(u => ({ 
                   id: u.id, 
                   name: u.name, 
                   sucursal_id: u.sucursal_id,
                   sucursal_id_type: typeof u.sucursal_id
                 })));
               } else {
-                // Si no hay encargados, mostrar información de debug
-                console.warn("[OrderForm] No se encontraron encargados para sucursal:", sucursalId);
-                if (allEncargados && allEncargados.length > 0) {
-                  console.warn("[OrderForm] Pero hay encargados en el sistema con estos sucursal_id:", 
-                    allEncargados.map(u => ({ 
+                // Si no hay responsables, mostrar información de debug
+                console.warn("[OrderForm] No se encontraron responsables para sucursal:", sucursalId);
+                if (allResponsables && allResponsables.length > 0) {
+                  console.warn("[OrderForm] Pero hay responsables en el sistema con estos sucursal_id:", 
+                    allResponsables.map(u => ({ 
                       name: u.name, 
                       sucursal_id: u.sucursal_id, 
                       sucursal_id_type: typeof u.sucursal_id,
@@ -248,8 +248,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                     }))
                   );
                 } else {
-                  console.error("[OrderForm] PROBLEMA: No se pueden leer encargados. Esto indica que las políticas RLS están bloqueando la consulta.");
-                  console.error("[OrderForm] SOLUCIÓN: Ejecuta el script fix_users_rls_complete.sql en Supabase SQL Editor");
+                  console.error("[OrderForm] PROBLEMA: No se pueden leer responsables. Esto indica que las políticas RLS están bloqueando la consulta.");
+                  console.error("[OrderForm] SOLUCIÓN: Ejecuta el script fix_users_rls_simple.sql en Supabase SQL Editor");
                 }
               }
               setResponsibleUsers(data || []);
@@ -336,15 +336,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     }
 
     // Validar encargado responsable si es una sucursal
+    let isBranchSession = false;
     if (typeof window !== 'undefined') {
       const branchSessionStr = localStorage.getItem('branchSession');
       if (branchSessionStr) {
         try {
           const branchSession = JSON.parse(branchSessionStr);
           if (branchSession.type === 'branch' && branchSession.branchId) {
-            // Es una sucursal - validar que se haya seleccionado un encargado
-            if (!responsibleUserId || responsibleUserId.trim() === "") {
-              alert("Por favor selecciona al responsable de recibir el equipo. Este campo es obligatorio.");
+            isBranchSession = true;
+            // Es una sucursal - validar que se haya ingresado un nombre (puede ser de la lista o texto libre)
+            if (!responsibleUserName || responsibleUserName.trim() === "") {
+              alert("Por favor ingresa el nombre del responsable de recibir el equipo. Este campo es obligatorio para crear órdenes desde sucursales.");
               return;
             }
           }
@@ -531,9 +533,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         // Nota: Si el campo devices_data no existe en la BD, simplemente no se guardará
         // pero el código seguirá funcionando con all_devices en memoria
         ...(additionalDevices.length > 0 ? { devices_data: additionalDevices } : {}),
-        // Agregar encargado responsable si está seleccionado (obligatorio para sucursales)
-        ...(responsibleUserId ? { responsible_user_id: responsibleUserId } : {}),
+        // Agregar nombre del encargado responsable
+        // Si es sucursal, el campo debe estar presente (ya validado arriba)
+        // Si no es sucursal, el campo puede ser NULL (opcional, no se agrega)
+        ...(isBranchSession && responsibleUserName && responsibleUserName.trim() 
+          ? { responsible_user_name: responsibleUserName.trim() } 
+          : {}),
       };
+      
+      // Validación final de seguridad: si es sucursal, el campo debe estar en orderData
+      if (isBranchSession && !orderData.responsible_user_name) {
+        console.error("[OrderForm] ERROR CRÍTICO: Es sucursal pero responsible_user_name no está en orderData");
+        alert("Error: El nombre del encargado responsable es obligatorio. Por favor ingresa el nombre e intenta nuevamente.");
+        return;
+      }
 
       // Agregar device_unlock_pattern solo si existe la columna y hay un patrón
       if (firstDevice.unlockType === "pattern" && firstDevice.deviceUnlockPattern.length > 0) {
@@ -541,13 +554,29 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       }
 
       // Crear la orden única
+      console.log("[OrderForm] Creando orden con datos:", {
+        ...orderData,
+        responsible_user_name: orderData.responsible_user_name || "NULL (no es sucursal)",
+        isBranchSession
+      });
+      
       const { data: order, error: orderError } = await supabase
         .from("work_orders")
         .insert(orderData)
         .select()
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error("[OrderForm] Error al crear orden:", orderError);
+        console.error("[OrderForm] Datos enviados:", orderData);
+        throw orderError;
+      }
+      
+      console.log("[OrderForm] Orden creada exitosamente:", {
+        order_id: order.id,
+        order_number: order.order_number,
+        responsible_user_name: order.responsible_user_name || "NULL"
+      });
 
       // Crear servicios de la orden para TODOS los equipos
       // Servicios del primer equipo
@@ -1311,7 +1340,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </button>
       </div>
 
-      {/* Selector de Encargado Responsable (solo para sucursales) */}
+      {/* Campo de Responsable con Autocompletado (solo para sucursales) */}
       {(() => {
         // Verificar si es una sucursal
         if (typeof window === 'undefined') return null;
@@ -1325,36 +1354,36 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   <label className="block text-sm font-medium text-slate-700 mb-2">
                     Responsable de Recibir el Equipo *
                   </label>
-                  {loadingResponsibleUsers ? (
-                    <p className="text-slate-600">Cargando encargados...</p>
-                  ) : responsibleUsers.length === 0 ? (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                      <p className="text-sm text-red-800 mb-2">
-                        ⚠️ No hay encargados asignados a esta sucursal.
-                      </p>
-                      <p className="text-xs text-red-700">
-                        El administrador debe crear encargados desde la página de Usuarios y asignarlos a esta sucursal (ID: {branchSession.branchId}).
-                      </p>
-                      <p className="text-xs text-slate-600 mt-2">
-                        💡 Tip: Verifica en la página de Usuarios que los encargados tengan el campo "Sucursal" asignado correctamente.
-                      </p>
-                    </div>
-                  ) : (
-                    <select
-                      className="w-full border border-slate-300 rounded-md px-3 py-2"
-                      value={responsibleUserId}
-                      onChange={(e) => setResponsibleUserId(e.target.value)}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="responsible-users-list"
+                      className="w-full border border-slate-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-light"
+                      placeholder="Escribe o selecciona el nombre del responsable..."
+                      value={responsibleUserName}
+                      onChange={(e) => setResponsibleUserName(e.target.value)}
                       required
-                    >
-                      <option value="">Selecciona un encargado...</option>
-                      {responsibleUsers.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
+                    {responsibleUsers.length > 0 && (
+                      <datalist id="responsible-users-list">
+                        {responsibleUsers.map((user) => (
+                          <option key={user.id} value={user.name} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                  {loadingResponsibleUsers ? (
+                    <p className="text-xs text-slate-500 mt-1">Cargando responsables...</p>
+                  ) : responsibleUsers.length > 0 ? (
+                    <p className="text-xs text-slate-600 mt-1">
+                      💡 Puedes escribir el nombre o seleccionar de la lista. Si escribes un nombre que no está en la lista, se guardará igual.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600 mt-1">
+                      💡 Escribe el nombre del responsable. Este campo es obligatorio.
+                    </p>
                   )}
-                  {!responsibleUserId && responsibleUsers.length > 0 && (
+                  {!responsibleUserName && (
                     <p className="text-sm text-red-600 mt-1">
                       Este campo es obligatorio para crear la orden
                     </p>

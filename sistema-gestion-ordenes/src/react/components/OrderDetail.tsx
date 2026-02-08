@@ -129,6 +129,16 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
         </div>
 
         <div className="space-y-4">
+          {/* Mostrar responsable si existe */}
+          {order.responsible_user_name && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+              <p className="text-sm text-slate-700">
+                <span className="font-medium">Responsable de Recibir el Equipo:</span>{" "}
+                <span className="text-slate-900">{order.responsible_user_name}</span>
+              </p>
+            </div>
+          )}
+          
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-sm font-medium text-slate-600">N° de Orden</label>

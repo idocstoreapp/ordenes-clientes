@@ -99,7 +99,7 @@ export default function UsersList() {
             role: userData.role,
             name: userData.name.trim(),
             email: userData.email.trim(),
-            sucursal_id: (userData.role === "encargado" || userData.role === "technician") && userData.sucursal_id ? userData.sucursal_id : null,
+            sucursal_id: (userData.role === "responsable" || userData.role === "technician") && userData.sucursal_id ? userData.sucursal_id : null,
           });
 
           if (userError) {
@@ -242,9 +242,9 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
       return;
     }
 
-    // Validar que encargados tengan sucursal asignada
-    if (formData.role === "encargado" && !formData.sucursal_id) {
-      alert("Los encargados deben tener una sucursal asignada");
+    // Validar que responsables tengan sucursal asignada
+    if (formData.role === "responsable" && !formData.sucursal_id) {
+      alert("Los responsables deben tener una sucursal asignada");
       return;
     }
 
@@ -312,14 +312,14 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
             >
               <option value="admin">Administrador</option>
               <option value="technician">Técnico</option>
-              <option value="encargado">Encargado</option>
+              <option value="responsable">Responsable</option>
               <option value="recepcionista">Recepcionista</option>
             </select>
           </div>
-          {(formData.role === "encargado" || formData.role === "technician") && (
+          {(formData.role === "responsable" || formData.role === "technician") && (
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Sucursal {formData.role === "encargado" ? "*" : ""}
+                Sucursal {formData.role === "responsable" ? "*" : ""}
               </label>
               <select
                 className="w-full border border-slate-300 rounded-md px-3 py-2"
@@ -327,15 +327,15 @@ function UserForm({ user, branches, onSave, onCancel }: UserFormProps) {
                 onChange={(e) => setFormData({ ...formData, sucursal_id: e.target.value })}
                 required={formData.role === "encargado"}
               >
-                <option value="">{formData.role === "encargado" ? "Selecciona una sucursal..." : "Sin asignar"}</option>
+                <option value="">{formData.role === "responsable" ? "Selecciona una sucursal..." : "Sin asignar"}</option>
                 {branches.map((branch) => (
                   <option key={branch.id} value={branch.id}>
                     {branch.name}
                   </option>
                 ))}
               </select>
-              {formData.role === "encargado" && !formData.sucursal_id && (
-                <p className="text-xs text-red-600 mt-1">La sucursal es obligatoria para encargados</p>
+              {formData.role === "responsable" && !formData.sucursal_id && (
+                <p className="text-xs text-red-600 mt-1">La sucursal es obligatoria para responsables</p>
               )}
             </div>
           )}
