@@ -14,7 +14,6 @@ interface TechnicianDashboardProps {
 export default function TechnicianDashboard({ technicianId, isEncargado, user, onNewOrder }: TechnicianDashboardProps) {
   const [kpis, setKpis] = useState({
     daySales: 0,
-    monthSales: 0,
     inRepair: 0,
     readyToDeliver: 0,
     inWarranty: 0,
@@ -32,7 +31,6 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
         if (!sucursalId) {
           setKpis({
             daySales: 0,
-            monthSales: 0,
             inRepair: 0,
             readyToDeliver: 0,
             inWarranty: 0,
@@ -46,8 +44,6 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
         const todayEnd = new Date();
         todayEnd.setHours(23, 59, 59, 999);
 
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
         // Ventas del día (órdenes entregadas hoy de esta sucursal)
         const { data: dayOrders } = await supabase
@@ -59,17 +55,6 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
           .lte("created_at", todayEnd.toISOString());
 
         const daySales = (dayOrders || []).reduce((sum, o) => sum + (o.total_repair_cost || 0), 0);
-
-        // Ventas del mes (órdenes entregadas este mes de esta sucursal)
-        const { data: monthOrders } = await supabase
-          .from("work_orders")
-          .select("total_repair_cost")
-          .eq("status", "entregada")
-          .eq("sucursal_id", sucursalId)
-          .gte("created_at", monthStart.toISOString())
-          .lte("created_at", monthEnd.toISOString());
-
-        const monthSales = (monthOrders || []).reduce((sum, o) => sum + (o.total_repair_cost || 0), 0);
 
         // Equipos en reparación de esta sucursal
         const { count: inRepairCount } = await supabase
@@ -94,7 +79,6 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
 
         setKpis({
           daySales,
-          monthSales,
           inRepair: inRepairCount || 0,
           readyToDeliver: readyCount || 0,
           inWarranty: warrantyCount || 0,
@@ -135,16 +119,11 @@ export default function TechnicianDashboard({ technicianId, isEncargado, user, o
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Ventas del Día"
           value={formatCLP(kpis.daySales)}
           icon="💰"
-        />
-        <KpiCard
-          title="Ventas del Mes"
-          value={formatCLP(kpis.monthSales)}
-          icon="📊"
         />
         <KpiCard
           title="En Reparación"
