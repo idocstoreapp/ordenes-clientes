@@ -148,5 +148,32 @@ export function detectDeviceType(deviceName: string): 'iphone' | 'ipad' | 'macbo
   return null;
 }
 
+/**
+ * Detecta el tipo de dispositivo usando primero los tipos personalizados (ej. Samsung)
+ * configurados en Checklists por Dispositivo, y luego los tipos built-in (iPhone, iPad, etc.).
+ * Así, si el usuario escribe "SAMSUNG" o "Samsung Galaxy", se detecta la categoría "samsung".
+ */
+export function detectDeviceTypeWithCustom(
+  deviceName: string,
+  customTypes: string[]
+): string | null {
+  if (!deviceName || !deviceName.trim()) return null;
+  const lower = deviceName.trim().toLowerCase();
+
+  // Ordenar por longitud descendente para que "samsung_galaxy" gane sobre "samsung" si ambos existen
+  const sorted = [...customTypes].filter(Boolean).sort((a, b) => b.length - a.length);
+  for (const customType of sorted) {
+    const ct = customType.toLowerCase().trim();
+    if (!ct) continue;
+    // Que el nombre del equipo contenga el tipo (ej. "samsung galaxy" contiene "samsung")
+    // o que el tipo contenga el nombre (ej. nombre "samsung" y tipo "samsung")
+    if (lower.includes(ct) || ct.includes(lower)) {
+      return customType.trim();
+    }
+  }
+
+  return detectDeviceType(deviceName);
+}
+
 
 

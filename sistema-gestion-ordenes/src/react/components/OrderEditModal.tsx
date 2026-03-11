@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { WorkOrder, Customer, Service, DeviceType } from "@/types";
-import { detectDeviceType, getSmartSuggestions } from "@/lib/deviceDatabase";
+import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
 import DeviceChecklist from "./DeviceChecklist";
 import CustomerSearch from "./CustomerSearch";
 import PatternDrawer from "./PatternDrawer";
@@ -38,6 +38,21 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
   const [status, setStatus] = useState<string>("en_proceso");
   const [loading, setLoading] = useState(false);
   const [loadingOrder, setLoadingOrder] = useState(true);
+  const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
+
+  // Cargar tipos de dispositivo personalizados desde checklists
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data } = await supabase.from("device_checklist_items").select("device_type");
+      if (cancelled || !data) return;
+      const builtin = new Set(["iphone", "ipad", "macbook", "apple_watch"]);
+      const unique = [...new Set((data as { device_type: string }[]).map((r) => r.device_type))];
+      setCustomDeviceTypes(unique.filter((t) => !builtin.has(t)));
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   // Cargar datos de la orden
   useEffect(() => {
@@ -98,7 +113,7 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
 
   useEffect(() => {
     if (deviceModel) {
-      const detected = detectDeviceType(deviceModel);
+      const detected = detectDeviceTypeWithCustom(deviceModel, customDeviceTypes);
       setDeviceType(detected);
       const suggestions = getSmartSuggestions(deviceModel);
       setDeviceSuggestions(suggestions.slice(0, 5));
@@ -107,7 +122,7 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
       setDeviceSuggestions([]);
       setShowDeviceSuggestions(false);
     }
-  }, [deviceModel]);
+  }, [deviceModel, customDeviceTypes]);
 
   // Cerrar sugerencias al hacer click fuera
   useEffect(() => {

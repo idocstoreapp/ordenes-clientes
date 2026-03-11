@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
-import { detectDeviceType, getSmartSuggestions } from "@/lib/deviceDatabase";
+import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
 import DeviceChecklist from "./DeviceChecklist";
 import CustomerSearch from "./CustomerSearch";
 import PatternDrawer from "./PatternDrawer";
@@ -76,7 +76,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [deviceSuggestions, setDeviceSuggestions] = useState<Record<string, string[]>>({});
   const [showDeviceSuggestions, setShowDeviceSuggestions] = useState<Record<string, boolean>>({});
   const [showPatternDrawer, setShowPatternDrawer] = useState<{ deviceId: string } | null>(null);
-  
+  const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
+
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
   // Función helper para calcular el total de servicios de un equipo
@@ -123,11 +124,26 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setDevices(devices.filter(device => device.id !== deviceId));
   };
 
-  // Detectar tipo de dispositivo cuando cambia el modelo de un equipo específico
+  // Cargar tipos de dispositivo personalizados (ej. Samsung) desde la configuración de checklists
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const { data } = await supabase.from("device_checklist_items").select("device_type");
+      if (cancelled || !data) return;
+      const builtin = new Set(["iphone", "ipad", "macbook", "apple_watch"]);
+      const unique = [...new Set((data as { device_type: string }[]).map((r) => r.device_type))];
+      const custom = unique.filter((t) => !builtin.has(t));
+      setCustomDeviceTypes(custom);
+    }
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Detectar tipo de dispositivo cuando cambia el modelo de un equipo específico (incluye tipos personalizados)
   useEffect(() => {
     devices.forEach(device => {
       if (device.deviceModel) {
-        const detected = detectDeviceType(device.deviceModel);
+        const detected = detectDeviceTypeWithCustom(device.deviceModel, customDeviceTypes);
         if (detected && device.deviceType !== detected) {
           updateDevice(device.id, { deviceType: detected });
         }
@@ -151,7 +167,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }));
       }
     });
-  }, [devices.map(d => d.deviceModel).join(',')]);
+  }, [devices.map(d => d.deviceModel).join(','), customDeviceTypes.join(',')]);
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
