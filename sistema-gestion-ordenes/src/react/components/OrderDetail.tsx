@@ -12,6 +12,50 @@ interface OrderDetailProps {
   onClose: () => void;
 }
 
+interface AdditionalDeviceData {
+  device_type?: string;
+  device_model?: string;
+  device_serial_number?: string | null;
+  device_unlock_code?: string | null;
+  problem_description?: string;
+  replacement_cost?: number;
+  labor_cost?: number;
+  selected_services?: Array<{
+    id?: string;
+    name?: string;
+    service_name?: string;
+    quantity?: number;
+    unit_price?: number;
+    total_price?: number;
+  }> | string;
+  services?: Array<{
+    id?: string;
+    name?: string;
+    service_name?: string;
+    quantity?: number;
+    unit_price?: number;
+    total_price?: number;
+  }>;
+}
+
+function normalizeServiceName(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function parsePrice(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^\d.-]/g, "");
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -138,6 +182,145 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   }
 
   const hasUnlockPattern = patternArray.length > 0;
+  const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
+    ? ((order as any).devices_data as AdditionalDeviceData[])
+    : [];
+  const additionalServicesToDiscountByExactKey = new Map<string, number>();
+  const additionalServicesToDiscountByName = new Map<string, number>();
+
+  additionalDevices.forEach((device) => {
+    const rawAdditionalServices = (() => {
+      if (Array.isArray(device.selected_services)) return device.selected_services;
+      if (Array.isArray(device.services)) return device.services;
+      if (Array.isArray((device as any).selectedServices)) return (device as any).selectedServices;
+      if (typeof device.selected_services === "string") {
+        try {
+          const parsed = JSON.parse(device.selected_services);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    })();
+
+    rawAdditionalServices.forEach((service: any) => {
+      const serviceName = normalizeServiceName(service?.name || service?.service_name);
+      const quantity = Number(service?.quantity) || 1;
+      const unitPrice = parsePrice(
+        service?.unit_price ?? (service?.total_price && quantity > 0 ? Number(service.total_price) / quantity : 0)
+      );
+      const serviceKey = `${serviceName}__${unitPrice}`;
+      const currentExactCount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
+      const currentNameCount = additionalServicesToDiscountByName.get(serviceName) || 0;
+
+      additionalServicesToDiscountByExactKey.set(serviceKey, currentExactCount + quantity);
+      additionalServicesToDiscountByName.set(serviceName, currentNameCount + quantity);
+    });
+  });
+
+  let firstDeviceServices = orderServices.reduce<Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
+  }>>((acc, service) => {
+    const serviceName = normalizeServiceName(service.service_name);
+    const unitPrice = parsePrice(service.unit_price);
+    const serviceKey = `${serviceName}__${unitPrice}`;
+    const exactDiscount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
+    const nameDiscount = additionalServicesToDiscountByName.get(serviceName) || 0;
+    const pendingDiscount = exactDiscount > 0 ? exactDiscount : nameDiscount;
+    const originalQuantity = Number(service.quantity) || 1;
+    const remainingQuantity = Math.max(0, originalQuantity - pendingDiscount);
+
+    if (pendingDiscount > 0) {
+      const remainingDiscount = Math.max(0, pendingDiscount - originalQuantity);
+
+      if (exactDiscount > 0) {
+        additionalServicesToDiscountByExactKey.set(serviceKey, remainingDiscount);
+      }
+      additionalServicesToDiscountByName.set(serviceName, remainingDiscount);
+    }
+
+    if (remainingQuantity > 0) {
+      acc.push({
+        id: service.id,
+        name: service.service_name,
+        quantity: remainingQuantity,
+        unit_price: unitPrice,
+        total_price: unitPrice * remainingQuantity,
+      });
+    }
+
+    return acc;
+  }, []);
+
+  const additionalDevicesLaborTotal = additionalDevices.reduce((sum, device) => {
+    const deviceServices = (() => {
+      if (Array.isArray(device.selected_services)) return device.selected_services;
+      if (Array.isArray(device.services)) return device.services;
+      if (Array.isArray((device as any).selectedServices)) return (device as any).selectedServices;
+      return [];
+    })();
+
+    const servicesTotal = deviceServices.reduce((serviceSum: number, service: any) => {
+      const quantity = Number(service?.quantity) || 1;
+      const totalPrice = parsePrice(service?.total_price);
+      const unitPrice = parsePrice(service?.unit_price);
+      return serviceSum + (totalPrice > 0 ? totalPrice : unitPrice * quantity);
+    }, 0);
+
+    // Si el equipo tiene labor_cost guardado y es mayor, usarlo como respaldo
+    const deviceLaborCost = parsePrice(device.labor_cost);
+    return sum + Math.max(servicesTotal, deviceLaborCost);
+  }, 0);
+
+  const expectedFirstDeviceLabor = Math.max(0, parsePrice(order.labor_cost) - additionalDevicesLaborTotal);
+  const calculatedFirstDeviceLabor = firstDeviceServices.reduce((sum, s) => sum + parsePrice(s.total_price), 0);
+
+  // Fallback defensivo: si por diferencias de payload aún quedan servicios extras en equipo 1,
+  // ajustar por presupuesto esperado del primer equipo.
+  if (
+    additionalDevices.length > 0 &&
+    expectedFirstDeviceLabor >= 0 &&
+    calculatedFirstDeviceLabor > expectedFirstDeviceLabor
+  ) {
+    let accumulated = 0;
+    const budgetMatchedServices: typeof firstDeviceServices = [];
+
+    for (const service of firstDeviceServices) {
+      const serviceTotal = parsePrice(service.total_price);
+      if (accumulated + serviceTotal <= expectedFirstDeviceLabor) {
+        budgetMatchedServices.push(service);
+        accumulated += serviceTotal;
+      }
+    }
+
+    // Solo usar fallback si logró seleccionar al menos un subconjunto válido o el esperado es 0.
+    if (expectedFirstDeviceLabor === 0 || budgetMatchedServices.length > 0) {
+      firstDeviceServices = budgetMatchedServices;
+    }
+  }
+
+  const allDevices = [
+    {
+      label: "Equipo 1 (Principal)",
+      device_type: order.device_type,
+      device_model: order.device_model,
+      device_serial_number: order.device_serial_number,
+      device_unlock_code: order.device_unlock_code,
+      problem_description: order.problem_description,
+      replacement_cost: order.replacement_cost,
+      labor_cost: order.labor_cost,
+      selected_services: firstDeviceServices,
+    },
+    ...additionalDevices.map((device, idx) => ({
+      label: `Equipo ${idx + 2}`,
+      ...device,
+    })),
+  ];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -179,28 +362,67 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
             <p className="text-lg text-slate-900">{(order.customer as any)?.name}</p>
           </div>
 
-          <div>
-            <label className="text-sm font-medium text-slate-600">Dispositivo</label>
-            <p className="text-lg text-slate-900">{order.device_model}</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-600">Equipos en la Orden</label>
+              <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                {allDevices.length} {allDevices.length === 1 ? "equipo" : "equipos"}
+              </span>
+            </div>
+
+            {allDevices.map((device, idx) => (
+              <div key={`${device.device_model || "equipo"}-${idx}`} className="border border-slate-200 rounded-md p-4 bg-slate-50">
+                <h4 className="font-semibold text-slate-900 mb-3">{device.label}</h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-slate-500">Dispositivo</p>
+                    <p className="text-slate-900">{device.device_model || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Tipo</p>
+                    <p className="text-slate-900 capitalize">{device.device_type || "N/A"}</p>
+                  </div>
+                </div>
+
+                {device.device_serial_number && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-500">Número de Serie</p>
+                    <p className="text-slate-900">{device.device_serial_number}</p>
+                  </div>
+                )}
+
+                {device.device_unlock_code && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-500">Código de Desbloqueo</p>
+                    <p className="text-slate-900 font-mono">{device.device_unlock_code}</p>
+                  </div>
+                )}
+
+                <div className="mt-3">
+                  <p className="text-xs text-slate-500">Descripción del Problema</p>
+                  <p className="text-slate-900 whitespace-pre-wrap">{device.problem_description || "Sin descripción"}</p>
+                </div>
+
+                {Array.isArray(device.selected_services) && device.selected_services.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-500 mb-1">Servicios</p>
+                    <ul className="list-disc list-inside text-sm text-slate-700 space-y-1">
+                      {device.selected_services.map((service, serviceIdx) => (
+                        <li key={`${service.id || service.name || "servicio"}-${serviceIdx}`}>
+                          {service.name || "Servicio"} x{service.quantity || 1} ({formatCLP(service.total_price || 0)})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-
-          {order.device_serial_number && (
-            <div>
-              <label className="text-sm font-medium text-slate-600">Número de Serie</label>
-              <p className="text-lg text-slate-900">{order.device_serial_number}</p>
-            </div>
-          )}
-
-          {order.device_unlock_code && (
-            <div>
-              <label className="text-sm font-medium text-slate-600">Código de Desbloqueo</label>
-              <p className="text-lg text-slate-900 font-mono">{order.device_unlock_code}</p>
-            </div>
-          )}
 
           {hasUnlockPattern && (
             <div>
-              <label className="text-sm font-medium text-slate-600 mb-2 block">Patrón de Desbloqueo</label>
+              <label className="text-sm font-medium text-slate-600 mb-2 block">Patrón de Desbloqueo (Equipo 1)</label>
               <div className="space-y-3">
                 <button
                   type="button"
@@ -217,11 +439,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
               </div>
             </div>
           )}
-
-          <div>
-            <label className="text-sm font-medium text-slate-600">Descripción del Problema</label>
-            <p className="text-slate-900 whitespace-pre-wrap">{order.problem_description}</p>
-          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
