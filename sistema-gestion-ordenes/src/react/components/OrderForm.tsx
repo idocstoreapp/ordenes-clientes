@@ -1079,6 +1079,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               onChange={(e) => {
                 const type = e.target.value as "code" | "pattern" | "none";
                 if (type === "pattern") {
+                  updateDevice(device.id, {
+                    unlockType: "pattern",
+                    deviceUnlockCode: "",
+                  });
                   setShowPatternDrawer({ deviceId: device.id });
                 } else {
                   updateDevice(device.id, { 
@@ -1145,7 +1149,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         {showPatternDrawer?.deviceId === device.id && (
           <PatternDrawer
             onPatternComplete={(pattern) => {
-              updateDevice(device.id, { deviceUnlockPattern: pattern });
+              updateDevice(device.id, {
+                unlockType: "pattern",
+                deviceUnlockPattern: pattern,
+                deviceUnlockCode: "",
+              });
               setShowPatternDrawer(null);
             }}
             onClose={() => setShowPatternDrawer(null)}
