@@ -15,6 +15,19 @@ const DEFAULT_STATUS_OPTIONS = [
   { value: "no_probado", label: "✗ No probado" },
 ];
 
+function formatStatusLabel(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+const DEFAULT_STATUS_OPTIONS = [
+  { value: "ok", label: "✓ Funcionando" },
+  { value: "damaged", label: "⚠ Dañado" },
+  { value: "replaced", label: "♻ Reparado" },
+  { value: "no_probado", label: "✗ No probado" },
+];
+
 export default function DeviceChecklist({
   deviceType,
   checklistData,
@@ -155,6 +168,7 @@ export default function DeviceChecklist({
       const defaultOption = DEFAULT_STATUS_OPTIONS.find((option) => option.value === value);
       return {
         value,
+        label: defaultOption?.label || formatStatusLabel(value),
         label: defaultOption?.label || value,
       };
     });
@@ -201,6 +215,7 @@ export default function DeviceChecklist({
                   required
                 >
                   <option value="">Seleccionar</option>
+                  {getStatusOptionsForItem(itemName).map((statusOption) => (
                   {statusOptions.map((statusOption) => (
                     <option key={statusOption.value} value={statusOption.value}>
                       {statusOption.label}
