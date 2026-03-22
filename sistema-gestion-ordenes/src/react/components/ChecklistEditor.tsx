@@ -163,6 +163,10 @@ export default function ChecklistEditor() {
     setSaving(true);
     try {
       const parsedStatuses = parseStatusesFromInput(newItemStatuses);
+      const parsedStatuses = newItemStatuses
+        .split(",")
+        .map((status) => status.trim())
+        .filter(Boolean);
 
       if (parsedStatuses.length === 0) {
         alert("Debes definir al menos un estado para el item");
@@ -239,6 +243,10 @@ export default function ChecklistEditor() {
 
   async function handleUpdateItemStatuses(item: DeviceChecklistItem, statusesText: string) {
     const parsedStatuses = parseStatusesFromInput(statusesText);
+    const parsedStatuses = statusesText
+      .split(",")
+      .map((status) => status.trim())
+      .filter(Boolean);
 
     if (parsedStatuses.length === 0) {
       alert("Debes definir al menos un estado para el item");
@@ -413,6 +421,7 @@ export default function ChecklistEditor() {
                 <div className="flex items-center gap-2">
                   {editingItem === item.id ? (
                     <div className="flex items-center gap-2 w-full">
+                    <>
                       <input
                         type="text"
                         value={editingItemName}
@@ -444,6 +453,9 @@ export default function ChecklistEditor() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 w-full">
+                    </>
+                  ) : (
+                    <>
                       <div className="flex-1">
                         <p className="text-slate-700">{item.item_name}</p>
                         <p className="text-xs text-slate-500 mt-1">
@@ -483,6 +495,7 @@ export default function ChecklistEditor() {
                         Eliminar
                       </button>
                     </div>
+                    </>
                   )}
                 </div>
 
@@ -490,6 +503,7 @@ export default function ChecklistEditor() {
                   <div className="mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-md">
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       Editar estados de este checklist: <span className="font-semibold">{item.item_name}</span>
+                      Editar estados para: <span className="font-semibold">{item.item_name}</span>
                     </label>
                     <input
                       type="text"
@@ -523,10 +537,105 @@ export default function ChecklistEditor() {
                       </button>
                     </div>
                   </div>
+                    <button
+                      onClick={() => handleUpdateItem(item.id, editingItemName)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      disabled={saving}
+                      className="px-3 py-2 bg-slate-400 text-white rounded-md hover:bg-slate-500 disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex-1">
+                      <p className="text-slate-700">{item.item_name}</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Estados: {Array.isArray(item.status_options) && item.status_options.length > 0
+                          ? item.status_options.join(", ")
+                          : DEFAULT_STATUS_VALUES.join(", ")}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => startEditing(item)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark disabled:opacity-50 text-sm"
+                    >
+                      Editar Nombre
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingStatusesItemId(item.id);
+                        setEditingStatusesText(
+                          (Array.isArray(item.status_options) && item.status_options.length > 0
+                            ? item.status_options
+                            : DEFAULT_STATUS_VALUES
+                          ).join(", ")
+                        );
+                      }}
+                      disabled={saving}
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 text-sm"
+                    >
+                      Editar Estados
+                    </button>
+                    <button
+                      onClick={() => handleDeleteItem(item.id)}
+                      disabled={saving}
+                      className="px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 disabled:opacity-50 text-sm"
+                    >
+                      Eliminar
+                    </button>
+                  </>
                 )}
               </div>
             ))}
           </div>
+
+          {editingStatusesItemId && (
+            <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-md">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Estados del checklist (separados por coma)
+              </label>
+              <input
+                type="text"
+                value={editingStatusesText}
+                onChange={(e) => setEditingStatusesText(e.target.value)}
+                placeholder="ok, damaged, replaced, no_probado"
+                className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm mb-3"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    const item = (checklists[selectedDeviceType] || []).find((candidate) => candidate.id === editingStatusesItemId);
+                    if (!item) return;
+                    handleUpdateItemStatuses(item, editingStatusesText);
+                  }}
+                  className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 text-sm"
+                >
+                  Guardar Estados
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setEditingStatusesItemId(null);
+                    setEditingStatusesText("");
+                  }}
+                  className="px-3 py-2 bg-slate-400 text-white rounded-md hover:bg-slate-500 disabled:opacity-50 text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Agregar nuevo item */}
           <div className="flex gap-2">
@@ -543,6 +652,7 @@ export default function ChecklistEditor() {
                 value={newItemStatuses}
                 onChange={(e) => setNewItemStatuses(e.target.value)}
                 placeholder="Estados (coma separados). Ej: Entregado, No entregado"
+                placeholder="Estados (coma separados). Ej: entregado,no_entregado"
                 className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
