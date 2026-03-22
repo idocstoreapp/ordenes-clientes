@@ -65,6 +65,7 @@ export interface DeviceChecklistItem {
   device_type: string; // Ahora permite cualquier tipo de dispositivo
   item_name: string;
   item_order: number;
+  status_options?: string[] | null; // Estados permitidos para este item (si es null usa los estados por defecto)
 }
 
 export interface WorkOrder {
@@ -80,7 +81,7 @@ export interface WorkOrder {
   device_unlock_code?: string | null; // Código numérico
   device_unlock_pattern?: number[] | null; // Patrón como array [1,2,5,8,9]
   problem_description: string;
-  checklist_data?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
+  checklist_data?: Record<string, string> | null;
   total_repair_cost: number;
   replacement_cost: number;
   labor_cost: number;
@@ -128,4 +129,3 @@ export type DeviceType = string; // Ahora permite cualquier tipo de dispositivo
 export type OrderStatus = 'en_proceso' | 'por_entregar' | 'entregada' | 'rechazada' | 'sin_solucion' | 'garantia';
 export type Priority = 'baja' | 'media' | 'urgente';
 export type PaymentMethod = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA';
-
