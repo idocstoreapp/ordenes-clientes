@@ -23,15 +23,6 @@ interface AdditionalDeviceData {
   selected_services?: Array<{
     id?: string;
     name?: string;
-    service_name?: string;
-    quantity?: number;
-    unit_price?: number;
-    total_price?: number;
-  }> | string;
-  services?: Array<{
-    id?: string;
-    name?: string;
-    service_name?: string;
     quantity?: number;
     unit_price?: number;
     total_price?: number;
@@ -167,74 +158,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
     ? ((order as any).devices_data as AdditionalDeviceData[])
     : [];
-  const additionalServicesToDiscountByExactKey = new Map<string, number>();
-  const additionalServicesToDiscountByName = new Map<string, number>();
-
-  additionalDevices.forEach((device) => {
-    const rawAdditionalServices = (() => {
-      if (Array.isArray(device.selected_services)) return device.selected_services;
-      if (Array.isArray(device.services)) return device.services;
-      if (typeof device.selected_services === "string") {
-        try {
-          const parsed = JSON.parse(device.selected_services);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    })();
-
-    rawAdditionalServices.forEach((service: any) => {
-      const serviceName = service?.name || service?.service_name || "";
-      const unitPrice = service.unit_price || 0;
-      const quantity = service.quantity || 1;
-      const serviceKey = `${serviceName}__${unitPrice}`;
-      const currentExactCount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
-      const currentNameCount = additionalServicesToDiscountByName.get(serviceName) || 0;
-
-      additionalServicesToDiscountByExactKey.set(serviceKey, currentExactCount + quantity);
-      additionalServicesToDiscountByName.set(serviceName, currentNameCount + quantity);
-    });
-  });
-
-  const firstDeviceServices = orderServices.reduce<Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-  }>>((acc, service) => {
-    const serviceName = service.service_name || "";
-    const serviceKey = `${serviceName}__${service.unit_price || 0}`;
-    const exactDiscount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
-    const nameDiscount = additionalServicesToDiscountByName.get(serviceName) || 0;
-    const pendingDiscount = exactDiscount > 0 ? exactDiscount : nameDiscount;
-    const originalQuantity = service.quantity || 1;
-    const remainingQuantity = Math.max(0, originalQuantity - pendingDiscount);
-
-    if (pendingDiscount > 0) {
-      const remainingDiscount = Math.max(0, pendingDiscount - originalQuantity);
-
-      if (exactDiscount > 0) {
-        additionalServicesToDiscountByExactKey.set(serviceKey, remainingDiscount);
-      }
-      additionalServicesToDiscountByName.set(serviceName, remainingDiscount);
-    }
-
-    if (remainingQuantity > 0) {
-      acc.push({
-        id: service.id,
-        name: service.service_name,
-        quantity: remainingQuantity,
-        unit_price: service.unit_price || 0,
-        total_price: (service.unit_price || 0) * remainingQuantity,
-      });
-    }
-
-    return acc;
-  }, []);
-
   const allDevices = [
     {
       label: "Equipo 1 (Principal)",
@@ -245,7 +168,13 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
       problem_description: order.problem_description,
       replacement_cost: order.replacement_cost,
       labor_cost: order.labor_cost,
-      selected_services: firstDeviceServices,
+      selected_services: orderServices.map((service) => ({
+        id: service.id,
+        name: service.service_name,
+        quantity: service.quantity,
+        unit_price: service.unit_price,
+        total_price: service.total_price,
+      })),
     },
     ...additionalDevices.map((device, idx) => ({
       label: `Equipo ${idx + 2}`,
