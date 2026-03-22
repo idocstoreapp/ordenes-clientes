@@ -21,13 +21,6 @@ function formatStatusLabel(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-const DEFAULT_STATUS_OPTIONS = [
-  { value: "ok", label: "✓ Funcionando" },
-  { value: "damaged", label: "⚠ Dañado" },
-  { value: "replaced", label: "♻ Reparado" },
-  { value: "no_probado", label: "✗ No probado" },
-];
-
 export default function DeviceChecklist({
   deviceType,
   checklistData,
@@ -138,11 +131,6 @@ export default function DeviceChecklist({
     saveCustomStatuses(next);
   }
 
-  const statusOptions = [
-    ...DEFAULT_STATUS_OPTIONS,
-    ...customStatuses.map((status) => ({ value: status, label: status })),
-  ];
-
   // Combinar items de BD y items personalizados
   const allItems = [
     ...items.map(item => item.item_name),
@@ -169,7 +157,6 @@ export default function DeviceChecklist({
       return {
         value,
         label: defaultOption?.label || formatStatusLabel(value),
-        label: defaultOption?.label || value,
       };
     });
   }
@@ -216,7 +203,6 @@ export default function DeviceChecklist({
                 >
                   <option value="">Seleccionar</option>
                   {getStatusOptionsForItem(itemName).map((statusOption) => (
-                  {statusOptions.map((statusOption) => (
                     <option key={statusOption.value} value={statusOption.value}>
                       {statusOption.label}
                     </option>
@@ -309,5 +295,3 @@ export default function DeviceChecklist({
     </div>
   );
 }
-
-
