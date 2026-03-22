@@ -21,6 +21,13 @@ function formatStatusLabel(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const DEFAULT_STATUS_OPTIONS = [
+  { value: "ok", label: "✓ Funcionando" },
+  { value: "damaged", label: "⚠ Dañado" },
+  { value: "replaced", label: "♻ Reparado" },
+  { value: "no_probado", label: "✗ No probado" },
+];
+
 export default function DeviceChecklist({
   deviceType,
   checklistData,
@@ -30,6 +37,8 @@ export default function DeviceChecklist({
   const [loading, setLoading] = useState(true);
   const [customItems, setCustomItems] = useState<string[]>([]);
   const [newCustomItemName, setNewCustomItemName] = useState("");
+  const [customStatuses, setCustomStatuses] = useState<string[]>([]);
+  const [newCustomStatus, setNewCustomStatus] = useState("");
 
   useEffect(() => {
     async function loadChecklist() {
@@ -52,6 +61,28 @@ export default function DeviceChecklist({
 
     loadChecklist();
   }, [deviceType]);
+
+  useEffect(() => {
+    const key = `device-checklist-statuses:${deviceType}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      setCustomStatuses([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setCustomStatuses(parsed.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()));
+      }
+    } catch {
+      setCustomStatuses([]);
+    }
+  }, [deviceType]);
+
+  function saveCustomStatuses(statuses: string[]) {
+    const key = `device-checklist-statuses:${deviceType}`;
+    localStorage.setItem(key, JSON.stringify(statuses));
+  }
 
   function handleItemChange(itemName: string, value: string) {
     if (value === "") return; // No permitir valores vacíos
@@ -83,6 +114,35 @@ export default function DeviceChecklist({
     onChecklistChange(newChecklistData);
   }
 
+  function handleAddCustomStatus() {
+    const value = newCustomStatus.trim();
+    if (!value) {
+      alert("Ingresa un estado personalizado");
+      return;
+    }
+    const duplicated = [...DEFAULT_STATUS_OPTIONS.map((option) => option.value), ...customStatuses]
+      .some((option) => option.toLowerCase() === value.toLowerCase());
+    if (duplicated) {
+      alert("Ese estado ya existe");
+      return;
+    }
+    const next = [...customStatuses, value];
+    setCustomStatuses(next);
+    saveCustomStatuses(next);
+    setNewCustomStatus("");
+  }
+
+  function handleRemoveCustomStatus(statusValue: string) {
+    const next = customStatuses.filter((status) => status !== statusValue);
+    setCustomStatuses(next);
+    saveCustomStatuses(next);
+  }
+
+  const statusOptions = [
+    ...DEFAULT_STATUS_OPTIONS,
+    ...customStatuses.map((status) => ({ value: status, label: status })),
+  ];
+
   // Combinar items de BD y items personalizados
   const allItems = [
     ...items.map(item => item.item_name),
@@ -109,6 +169,7 @@ export default function DeviceChecklist({
       return {
         value,
         label: defaultOption?.label || formatStatusLabel(value),
+        label: defaultOption?.label || value,
       };
     });
   }
@@ -155,6 +216,7 @@ export default function DeviceChecklist({
                 >
                   <option value="">Seleccionar</option>
                   {getStatusOptionsForItem(itemName).map((statusOption) => (
+                  {statusOptions.map((statusOption) => (
                     <option key={statusOption.value} value={statusOption.value}>
                       {statusOption.label}
                     </option>
@@ -197,6 +259,55 @@ export default function DeviceChecklist({
           + Agregar Item
         </button>
       </div>
+
+      {/* Estados personalizados */}
+      <div className="mt-4 pt-4 border-t border-slate-200">
+        <p className="text-sm font-medium text-slate-700 mb-2">
+          Estados personalizados para checklist de <span className="font-semibold">{deviceType}</span>
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newCustomStatus}
+            onChange={(e) => setNewCustomStatus(e.target.value)}
+            placeholder="Ej: Chip entregado"
+            className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddCustomStatus();
+              }
+            }}
+          />
+          <button
+            onClick={handleAddCustomStatus}
+            type="button"
+            className="px-4 py-2 bg-slate-700 text-white rounded-md hover:bg-slate-800 text-sm"
+          >
+            + Agregar Estado
+          </button>
+        </div>
+
+        {customStatuses.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {customStatuses.map((status) => (
+              <span key={status} className="inline-flex items-center gap-2 bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs">
+                {status}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCustomStatus(status)}
+                  className="text-red-600 hover:text-red-700"
+                  title="Eliminar estado"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+
