@@ -28,7 +28,7 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
   const [deviceUnlockPattern, setDeviceUnlockPattern] = useState<number[]>([]);
   const [showPatternDrawer, setShowPatternDrawer] = useState(false);
   const [problemDescription, setProblemDescription] = useState("");
-  const [checklistData, setChecklistData] = useState<Record<string, "ok" | "damaged" | "replaced" | "no_probado">>({});
+  const [checklistData, setChecklistData] = useState<Record<string, string>>({});
   const [selectedServices, setSelectedServices] = useState<Service[]>([]);
   const [replacementCost, setReplacementCost] = useState(0);
   const [serviceValue, setServiceValue] = useState(0);
@@ -89,7 +89,7 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
         setDeviceModel(order.device_model);
         setDeviceSerial(order.device_serial_number || "");
         setProblemDescription(order.problem_description);
-        setChecklistData((order.checklist_data as Record<string, "ok" | "damaged" | "replaced" | "no_probado">) || {});
+        setChecklistData((order.checklist_data as Record<string, string>) || {});
         setSelectedServices(services);
         setInitialServicesSignature(getServicesSignature(services));
         setReplacementCost(order.replacement_cost || 0);
@@ -605,7 +605,6 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
     </div>
   );
 }
-
 
 
 
