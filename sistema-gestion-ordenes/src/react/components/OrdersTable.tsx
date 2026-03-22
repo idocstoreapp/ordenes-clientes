@@ -424,7 +424,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
       // Cargar notas de la orden
       const { data: orderNotes, error: notesError } = await supabase
-        .from("order_notes")
+        .from("work_order_notes")
         .select("note")
         .eq("order_id", order.id)
         .order("created_at", { ascending: false });
@@ -620,7 +620,7 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     try {
       // Primero eliminar las notas relacionadas (aunque deberían eliminarse automáticamente por CASCADE)
       await supabase
-        .from("order_notes")
+        .from("work_order_notes")
         .delete()
         .eq("order_id", orderId);
 

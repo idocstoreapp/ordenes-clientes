@@ -293,7 +293,7 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
 
                 // Cargar notas de la orden
                 const { data: orderNotes, error: notesError } = await supabase
-                  .from("order_notes")
+                  .from("work_order_notes")
                   .select("note")
                   .eq("order_id", order.id)
                   .order("created_at", { ascending: false });

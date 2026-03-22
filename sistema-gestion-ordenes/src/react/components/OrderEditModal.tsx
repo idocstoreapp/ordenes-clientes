@@ -39,6 +39,14 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
   const [loading, setLoading] = useState(false);
   const [loadingOrder, setLoadingOrder] = useState(true);
   const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
+  const [initialServicesSignature, setInitialServicesSignature] = useState<string>("");
+
+  function getServicesSignature(services: Service[]) {
+    return services
+      .map((service) => `${service.id}:${service.name}:${service.default_price || 0}`)
+      .sort()
+      .join("|");
+  }
 
   // Cargar tipos de dispositivo personalizados desde checklists
   useEffect(() => {
@@ -83,6 +91,7 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
         setProblemDescription(order.problem_description);
         setChecklistData((order.checklist_data as Record<string, "ok" | "damaged" | "replaced" | "no_probado">) || {});
         setSelectedServices(services);
+        setInitialServicesSignature(getServicesSignature(services));
         setReplacementCost(order.replacement_cost || 0);
         setServiceValue(order.labor_cost || 0);
         setPriority(order.priority as "baja" | "media" | "urgente");
@@ -201,22 +210,35 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
 
       if (orderError) throw orderError;
 
-      // Eliminar servicios antiguos
-      await supabase
-        .from("order_services")
-        .delete()
-        .eq("order_id", order.id);
+      const currentServicesSignature = getServicesSignature(selectedServices);
+      const servicesChanged = currentServicesSignature !== initialServicesSignature;
 
-      // Crear nuevos servicios
-      for (const service of selectedServices) {
-        await supabase.from("order_services").insert({
+      // Solo tocar order_services cuando realmente cambian.
+      // Esto evita duplicados al editar campos no relacionados (ej: descripción).
+      if (servicesChanged) {
+        const { error: deleteServicesError } = await supabase
+          .from("order_services")
+          .delete()
+          .eq("order_id", order.id);
+
+        if (deleteServicesError) throw deleteServicesError;
+
+        const servicesToInsert = selectedServices.map((service) => ({
           order_id: order.id,
           service_id: service.id,
           service_name: service.name,
           quantity: 1,
           unit_price: serviceValue,
           total_price: serviceValue,
-        });
+        }));
+
+        if (servicesToInsert.length > 0) {
+          const { error: insertServicesError } = await supabase
+            .from("order_services")
+            .insert(servicesToInsert);
+
+          if (insertServicesError) throw insertServicesError;
+        }
       }
 
       alert("Orden actualizada exitosamente");
@@ -583,7 +605,6 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
     </div>
   );
 }
-
 
 
 

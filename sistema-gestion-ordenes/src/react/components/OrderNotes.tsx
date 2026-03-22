@@ -26,7 +26,7 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     try {
       // Primero intentar cargar las notas con la relación a users
       let query = supabase
-        .from("order_notes")
+        .from("work_order_notes")
         .select(`
           *,
           user:users(id, name, email)
@@ -40,7 +40,7 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
         // Si falla la relación, intentar sin la relación
         console.warn("Error con relación a users, intentando sin relación:", error);
         const { data: notesData, error: notesError } = await supabase
-          .from("order_notes")
+          .from("work_order_notes")
           .select("*")
           .eq("order_id", orderId)
           .order("created_at", { ascending: false });
@@ -87,7 +87,7 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     setSaving(true);
     try {
       const { error } = await supabase
-        .from("order_notes")
+        .from("work_order_notes")
         .insert({
           order_id: orderId,
           user_id: currentUserId || null,
@@ -138,7 +138,7 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
 
     try {
       const { error } = await supabase
-        .from("order_notes")
+        .from("work_order_notes")
         .delete()
         .eq("id", noteId);
 
