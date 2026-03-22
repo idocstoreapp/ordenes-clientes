@@ -23,37 +23,10 @@ interface AdditionalDeviceData {
   selected_services?: Array<{
     id?: string;
     name?: string;
-    service_name?: string;
-    quantity?: number;
-    unit_price?: number;
-    total_price?: number;
-  }> | string;
-  services?: Array<{
-    id?: string;
-    name?: string;
-    service_name?: string;
     quantity?: number;
     unit_price?: number;
     total_price?: number;
   }>;
-}
-
-function normalizeServiceName(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function parsePrice(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const cleaned = value.replace(/[^\d.-]/g, "");
-    const parsed = Number(cleaned);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
 }
 
 export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
@@ -185,125 +158,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
     ? ((order as any).devices_data as AdditionalDeviceData[])
     : [];
-  const additionalServicesToDiscountByExactKey = new Map<string, number>();
-  const additionalServicesToDiscountByName = new Map<string, number>();
-
-  additionalDevices.forEach((device) => {
-    const rawAdditionalServices = (() => {
-      if (Array.isArray(device.selected_services)) return device.selected_services;
-      if (Array.isArray(device.services)) return device.services;
-      if (Array.isArray((device as any).selectedServices)) return (device as any).selectedServices;
-      if (typeof device.selected_services === "string") {
-        try {
-          const parsed = JSON.parse(device.selected_services);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    })();
-
-    rawAdditionalServices.forEach((service: any) => {
-      const serviceName = normalizeServiceName(service?.name || service?.service_name);
-      const quantity = Number(service?.quantity) || 1;
-      const unitPrice = parsePrice(
-        service?.unit_price ?? (service?.total_price && quantity > 0 ? Number(service.total_price) / quantity : 0)
-      );
-      const serviceKey = `${serviceName}__${unitPrice}`;
-      const currentExactCount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
-      const currentNameCount = additionalServicesToDiscountByName.get(serviceName) || 0;
-
-      additionalServicesToDiscountByExactKey.set(serviceKey, currentExactCount + quantity);
-      additionalServicesToDiscountByName.set(serviceName, currentNameCount + quantity);
-    });
-  });
-
-  let firstDeviceServices = orderServices.reduce<Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-  }>>((acc, service) => {
-    const serviceName = normalizeServiceName(service.service_name);
-    const unitPrice = parsePrice(service.unit_price);
-    const serviceKey = `${serviceName}__${unitPrice}`;
-    const exactDiscount = additionalServicesToDiscountByExactKey.get(serviceKey) || 0;
-    const nameDiscount = additionalServicesToDiscountByName.get(serviceName) || 0;
-    const pendingDiscount = exactDiscount > 0 ? exactDiscount : nameDiscount;
-    const originalQuantity = Number(service.quantity) || 1;
-    const remainingQuantity = Math.max(0, originalQuantity - pendingDiscount);
-
-    if (pendingDiscount > 0) {
-      const remainingDiscount = Math.max(0, pendingDiscount - originalQuantity);
-
-      if (exactDiscount > 0) {
-        additionalServicesToDiscountByExactKey.set(serviceKey, remainingDiscount);
-      }
-      additionalServicesToDiscountByName.set(serviceName, remainingDiscount);
-    }
-
-    if (remainingQuantity > 0) {
-      acc.push({
-        id: service.id,
-        name: service.service_name,
-        quantity: remainingQuantity,
-        unit_price: unitPrice,
-        total_price: unitPrice * remainingQuantity,
-      });
-    }
-
-    return acc;
-  }, []);
-
-  const additionalDevicesLaborTotal = additionalDevices.reduce((sum, device) => {
-    const deviceServices = (() => {
-      if (Array.isArray(device.selected_services)) return device.selected_services;
-      if (Array.isArray(device.services)) return device.services;
-      if (Array.isArray((device as any).selectedServices)) return (device as any).selectedServices;
-      return [];
-    })();
-
-    const servicesTotal = deviceServices.reduce((serviceSum: number, service: any) => {
-      const quantity = Number(service?.quantity) || 1;
-      const totalPrice = parsePrice(service?.total_price);
-      const unitPrice = parsePrice(service?.unit_price);
-      return serviceSum + (totalPrice > 0 ? totalPrice : unitPrice * quantity);
-    }, 0);
-
-    // Si el equipo tiene labor_cost guardado y es mayor, usarlo como respaldo
-    const deviceLaborCost = parsePrice(device.labor_cost);
-    return sum + Math.max(servicesTotal, deviceLaborCost);
-  }, 0);
-
-  const expectedFirstDeviceLabor = Math.max(0, parsePrice(order.labor_cost) - additionalDevicesLaborTotal);
-  const calculatedFirstDeviceLabor = firstDeviceServices.reduce((sum, s) => sum + parsePrice(s.total_price), 0);
-
-  // Fallback defensivo: si por diferencias de payload aún quedan servicios extras en equipo 1,
-  // ajustar por presupuesto esperado del primer equipo.
-  if (
-    additionalDevices.length > 0 &&
-    expectedFirstDeviceLabor >= 0 &&
-    calculatedFirstDeviceLabor > expectedFirstDeviceLabor
-  ) {
-    let accumulated = 0;
-    const budgetMatchedServices: typeof firstDeviceServices = [];
-
-    for (const service of firstDeviceServices) {
-      const serviceTotal = parsePrice(service.total_price);
-      if (accumulated + serviceTotal <= expectedFirstDeviceLabor) {
-        budgetMatchedServices.push(service);
-        accumulated += serviceTotal;
-      }
-    }
-
-    // Solo usar fallback si logró seleccionar al menos un subconjunto válido o el esperado es 0.
-    if (expectedFirstDeviceLabor === 0 || budgetMatchedServices.length > 0) {
-      firstDeviceServices = budgetMatchedServices;
-    }
-  }
-
   const allDevices = [
     {
       label: "Equipo 1 (Principal)",
@@ -314,7 +168,13 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
       problem_description: order.problem_description,
       replacement_cost: order.replacement_cost,
       labor_cost: order.labor_cost,
-      selected_services: firstDeviceServices,
+      selected_services: orderServices.map((service) => ({
+        id: service.id,
+        name: service.service_name,
+        quantity: service.quantity,
+        unit_price: service.unit_price,
+        total_price: service.total_price,
+      })),
     },
     ...additionalDevices.map((device, idx) => ({
       label: `Equipo ${idx + 2}`,
