@@ -12,7 +12,7 @@ export async function generatePDFBlob(
   serviceValue: number,
   replacementCost: number,
   warrantyDays: number,
-  checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null,
+  checklistData?: Record<string, string> | null,
   notes?: string[],
   orderServices?: Array<{ quantity: number; unit_price: number; total_price: number; service_name: string; description?: string | null }>
 ): Promise<Blob> {
@@ -344,7 +344,7 @@ export async function generatePDFBlob(
     device_unlock_code?: string | null;
     device_unlock_pattern?: number[] | null;
     problem_description: string;
-    checklist_data?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
+    checklist_data?: Record<string, string> | null;
     replacement_cost: number;
     labor_cost: number;
     selected_services?: Array<{ id?: string; name: string; description?: string | null; quantity: number; unit_price: number; total_price: number }>;
@@ -1369,4 +1369,3 @@ export async function generatePDFBlob(
   // Retornar blob
   return doc.output("blob");
 }
-
