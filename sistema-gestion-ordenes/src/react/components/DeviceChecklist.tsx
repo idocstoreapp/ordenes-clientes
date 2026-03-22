@@ -136,6 +136,30 @@ export default function DeviceChecklist({
     ...customItems.filter(item => !items.some(dbItem => dbItem.item_name === item))
   ];
 
+  function getStatusOptionsForItem(itemName: string) {
+    const itemFromDb = items.find((item) => item.item_name === itemName);
+    const statusOptionsFromDb = Array.isArray(itemFromDb?.status_options)
+      ? (itemFromDb?.status_options || []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
+      : [];
+
+    const optionValues = statusOptionsFromDb.length > 0
+      ? statusOptionsFromDb
+      : DEFAULT_STATUS_OPTIONS.map((option) => option.value);
+
+    const currentValue = checklistData[itemName];
+    if (currentValue && !optionValues.includes(currentValue)) {
+      optionValues.push(currentValue);
+    }
+
+    return optionValues.map((value) => {
+      const defaultOption = DEFAULT_STATUS_OPTIONS.find((option) => option.value === value);
+      return {
+        value,
+        label: defaultOption?.label || value,
+      };
+    });
+  }
+
   if (loading) {
     return (
       <div className="border border-slate-200 rounded-md p-4">
@@ -172,7 +196,7 @@ export default function DeviceChecklist({
                   className="border border-slate-300 rounded-md px-2 py-1 text-sm"
                   value={checklistData[itemName] || ""}
                   onChange={(e) =>
-                    handleItemChange(itemName, e.target.value as "ok" | "damaged" | "replaced" | "no_probado" | "")
+                    handleItemChange(itemName, e.target.value)
                   }
                   required
                 >

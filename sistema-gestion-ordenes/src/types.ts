@@ -65,6 +65,7 @@ export interface DeviceChecklistItem {
   device_type: string; // Ahora permite cualquier tipo de dispositivo
   item_name: string;
   item_order: number;
+  status_options?: string[] | null; // Estados permitidos para este item (si es null usa los estados por defecto)
 }
 
 export interface WorkOrder {
