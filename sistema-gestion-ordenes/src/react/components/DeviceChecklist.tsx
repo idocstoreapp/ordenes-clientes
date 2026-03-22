@@ -4,8 +4,23 @@ import type { DeviceChecklistItem as ChecklistItem, DeviceType } from "@/types";
 
 interface DeviceChecklistProps {
   deviceType: DeviceType;
-  checklistData: Record<string, "ok" | "damaged" | "replaced" | "no_probado">;
-  onChecklistChange: (data: Record<string, "ok" | "damaged" | "replaced" | "no_probado">) => void;
+  checklistData: Record<string, string>;
+  onChecklistChange: (data: Record<string, string>) => void;
+}
+
+function getDefaultStatusOptions() {
+  return [
+    { value: "ok", label: "✓ Funcionando" },
+    { value: "damaged", label: "⚠ Dañado" },
+    { value: "replaced", label: "♻ Reparado" },
+    { value: "no_probado", label: "✗ No probado" },
+  ];
+}
+
+function formatStatusLabel(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export default function DeviceChecklist({
@@ -40,11 +55,11 @@ export default function DeviceChecklist({
     loadChecklist();
   }, [deviceType]);
 
-  function handleItemChange(itemName: string, value: "ok" | "damaged" | "replaced" | "no_probado" | "") {
+  function handleItemChange(itemName: string, value: string) {
     if (value === "") return; // No permitir valores vacíos
     onChecklistChange({
       ...checklistData,
-      [itemName]: value as "ok" | "damaged" | "replaced" | "no_probado",
+      [itemName]: value,
     });
   }
 
@@ -75,6 +90,30 @@ export default function DeviceChecklist({
     ...items.map(item => item.item_name),
     ...customItems.filter(item => !items.some(dbItem => dbItem.item_name === item))
   ];
+
+  function getStatusOptionsForItem(itemName: string) {
+    const itemFromDb = items.find((item) => item.item_name === itemName);
+    const statusOptionsFromDb = Array.isArray(itemFromDb?.status_options)
+      ? (itemFromDb?.status_options || []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
+      : [];
+
+    const optionValues = statusOptionsFromDb.length > 0
+      ? statusOptionsFromDb
+      : getDefaultStatusOptions().map((option) => option.value);
+
+    const currentValue = checklistData[itemName];
+    if (currentValue && !optionValues.includes(currentValue)) {
+      optionValues.push(currentValue);
+    }
+
+    return optionValues.map((value) => {
+      const defaultOption = getDefaultStatusOptions().find((option) => option.value === value);
+      return {
+        value,
+        label: defaultOption?.label || formatStatusLabel(value),
+      };
+    });
+  }
 
   if (loading) {
     return (
@@ -112,15 +151,16 @@ export default function DeviceChecklist({
                   className="border border-slate-300 rounded-md px-2 py-1 text-sm"
                   value={checklistData[itemName] || ""}
                   onChange={(e) =>
-                    handleItemChange(itemName, e.target.value as "ok" | "damaged" | "replaced" | "no_probado" | "")
+                    handleItemChange(itemName, e.target.value)
                   }
                   required
                 >
                   <option value="">Seleccionar</option>
-                  <option value="ok">✓ OK</option>
-                  <option value="damaged">⚠ Dañado</option>
-                  <option value="replaced">♻ Reparado</option>
-                  <option value="no_probado">✗ No probado</option>
+                  {getStatusOptionsForItem(itemName).map((statusOption) => (
+                    <option key={statusOption.value} value={statusOption.value}>
+                      {statusOption.label}
+                    </option>
+                  ))}
                 </select>
                 {isCustom && (
                   <button
@@ -162,6 +202,3 @@ export default function DeviceChecklist({
     </div>
   );
 }
-
-
-

@@ -14,7 +14,7 @@ interface PDFPreviewProps {
   serviceValue: number;
   replacementCost: number;
   warrantyDays: number;
-  checklistData?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
+  checklistData?: Record<string, string> | null;
   notes?: string[];
   onClose: () => void;
   onDownload: (pdf: jsPDF) => void;
@@ -390,7 +390,7 @@ export default function PDFPreview({
         device_unlock_code?: string | null;
         device_unlock_pattern?: number[] | null;
         problem_description: string;
-        checklist_data?: Record<string, 'ok' | 'damaged' | 'replaced' | 'no_probado'> | null;
+        checklist_data?: Record<string, string> | null;
         replacement_cost: number;
         labor_cost: number;
         selected_services?: Array<{ id?: string; name: string; description?: string | null; quantity: number; unit_price: number; total_price: number }>;

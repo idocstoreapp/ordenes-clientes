@@ -15,6 +15,7 @@ interface OrderDetailProps {
 export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showUnlockPattern, setShowUnlockPattern] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const [orderServices, setOrderServices] = useState<Array<{
     id: string;
@@ -113,7 +114,30 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
     return null;
   }
 
-  const patternArray = order.device_unlock_pattern as number[] | null;
+  const rawPattern = order.device_unlock_pattern as unknown;
+  let patternArray: number[] = [];
+
+  if (Array.isArray(rawPattern)) {
+    patternArray = rawPattern
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item >= 1 && item <= 9);
+  } else if (typeof rawPattern === "string" && rawPattern.trim()) {
+    try {
+      const parsed = JSON.parse(rawPattern);
+      if (Array.isArray(parsed)) {
+        patternArray = parsed
+          .map((item) => Number(item))
+          .filter((item) => Number.isInteger(item) && item >= 1 && item <= 9);
+      }
+    } catch {
+      patternArray = rawPattern
+        .split("")
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item >= 1 && item <= 9);
+    }
+  }
+
+  const hasUnlockPattern = patternArray.length > 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -174,11 +198,22 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
             </div>
           )}
 
-          {patternArray && patternArray.length > 0 && (
+          {hasUnlockPattern && (
             <div>
               <label className="text-sm font-medium text-slate-600 mb-2 block">Patrón de Desbloqueo</label>
-              <div className="flex justify-center">
-                <PatternViewer pattern={patternArray} size={200} />
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowUnlockPattern((prev) => !prev)}
+                  className="px-4 py-2 bg-slate-800 text-white rounded-md hover:bg-slate-700 transition-colors"
+                >
+                  {showUnlockPattern ? "Ocultar patrón" : "Ver patrón"}
+                </button>
+                {showUnlockPattern && (
+                  <div className="flex justify-center">
+                    <PatternViewer pattern={patternArray} size={200} />
+                  </div>
+                )}
               </div>
             </div>
           )}

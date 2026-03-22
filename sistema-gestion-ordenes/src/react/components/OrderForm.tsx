@@ -26,7 +26,7 @@ interface DeviceItem {
   deviceUnlockCode: string;
   deviceUnlockPattern: number[];
   problemDescription: string;
-  checklistData: Record<string, "ok" | "damaged" | "replaced" | "no_probado">;
+  checklistData: Record<string, string>;
   selectedServices: Service[];
   replacementCost: number;
   serviceValue: number; // DEPRECADO: mantener por compatibilidad, usar servicePrices en su lugar
@@ -77,6 +77,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [showDeviceSuggestions, setShowDeviceSuggestions] = useState<Record<string, boolean>>({});
   const [showPatternDrawer, setShowPatternDrawer] = useState<{ deviceId: string } | null>(null);
   const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
+  const [recentDeviceModels, setRecentDeviceModels] = useState<string[]>([]);
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
@@ -139,15 +140,59 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     return () => { cancelled = true; };
   }, []);
 
-  // Detectar tipo de dispositivo cuando cambia el modelo de un equipo específico (incluye tipos personalizados)
+  // Cargar modelos recientes para autocompletar marcas/modelos personalizados (Samsung, Xiaomi, etc.)
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRecentModels() {
+      const { data } = await supabase
+        .from("work_orders")
+        .select("device_model")
+        .not("device_model", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(300);
+
+      if (cancelled || !data) return;
+      const unique = [...new Set(
+        (data as Array<{ device_model?: string | null }>)
+          .map((row) => row.device_model?.trim())
+          .filter((value): value is string => Boolean(value))
+      )];
+      setRecentDeviceModels(unique);
+    }
+    loadRecentModels();
+    return () => { cancelled = true; };
+  }, []);
+
+  const getCombinedSuggestions = (input: string): string[] => {
+    const normalizedInput = input.trim().toLowerCase();
+    if (!normalizedInput) return [];
+
+    const ordered = new Map<string, string>();
+    const addSuggestion = (value: string) => {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || ordered.has(normalized)) return;
+      ordered.set(normalized, value.trim());
+    };
+
+    getSmartSuggestions(input).forEach(addSuggestion);
+
+    customDeviceTypes
+      .filter((type) => type.toLowerCase().includes(normalizedInput))
+      .map((type) => type.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" "))
+      .forEach(addSuggestion);
+
+    recentDeviceModels
+      .filter((model) => model.toLowerCase().includes(normalizedInput))
+      .forEach(addSuggestion);
+
+    return Array.from(ordered.values()).slice(0, 8);
+  };
+
+  // Actualizar sugerencias cuando cambia el modelo escrito
   useEffect(() => {
     devices.forEach(device => {
       if (device.deviceModel) {
-        const detected = detectDeviceTypeWithCustom(device.deviceModel, customDeviceTypes);
-        if (detected && device.deviceType !== detected) {
-          updateDevice(device.id, { deviceType: detected });
-        }
-        const suggestions = getSmartSuggestions(device.deviceModel);
+        const suggestions = getCombinedSuggestions(device.deviceModel);
         setDeviceSuggestions(prev => ({
           ...prev,
           [device.id]: suggestions.slice(0, 5)
@@ -167,7 +212,15 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         }));
       }
     });
-  }, [devices.map(d => d.deviceModel).join(','), customDeviceTypes.join(',')]);
+  }, [devices.map(d => d.deviceModel).join(','), customDeviceTypes.join(','), recentDeviceModels.join(',')]);
+
+  const applySuggestedModel = (deviceId: string, model: string) => {
+    const detectedType = detectDeviceTypeWithCustom(model, customDeviceTypes);
+    updateDevice(deviceId, {
+      deviceModel: model,
+      deviceType: detectedType,
+    });
+  };
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -960,7 +1013,13 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             className="w-full border border-slate-300 rounded-md px-3 py-2"
             placeholder="Ej: iPhone 13 Pro Max"
             value={device.deviceModel}
-            onChange={(e) => updateDevice(device.id, { deviceModel: e.target.value })}
+            onChange={(e) =>
+              updateDevice(device.id, {
+                deviceModel: e.target.value,
+                // Evita cambios bruscos: no activar checklist automáticamente mientras escribe
+                deviceType: null,
+              })
+            }
             onFocus={() => {
               if (deviceSuggestions[device.id]?.length > 0) {
                 setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: true }));
@@ -985,7 +1044,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    updateDevice(device.id, { deviceModel: suggestion });
+                    applySuggestedModel(device.id, suggestion);
                     setDeviceSuggestions(prev => ({ ...prev, [device.id]: [] }));
                     setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
                   }}
@@ -1550,4 +1609,3 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     </Fragment>
   );
 }
-
