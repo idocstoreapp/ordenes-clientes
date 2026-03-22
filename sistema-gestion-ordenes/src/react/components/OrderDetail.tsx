@@ -23,29 +23,10 @@ interface AdditionalDeviceData {
   selected_services?: Array<{
     id?: string;
     name?: string;
-    service_name?: string;
-    quantity?: number;
-    unit_price?: number;
-    total_price?: number;
-  }> | string;
-  services?: Array<{
-    id?: string;
-    name?: string;
-    service_name?: string;
     quantity?: number;
     unit_price?: number;
     total_price?: number;
   }>;
-}
-
-function parsePrice(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const cleaned = value.replace(/[^\d.-]/g, "");
-    const parsed = Number(cleaned);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
 }
 
 export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
@@ -177,94 +158,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
     ? ((order as any).devices_data as AdditionalDeviceData[])
     : [];
-  const normalizedOrderServices = orderServices.map((service) => ({
-    id: service.id,
-    name: service.service_name,
-    quantity: Number(service.quantity) || 1,
-    unit_price: parsePrice(service.unit_price),
-    total_price: parsePrice(service.total_price) || parsePrice(service.unit_price) * (Number(service.quantity) || 1),
-  }));
-
-  let firstDeviceServices: Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-  }> = normalizedOrderServices;
-
-  const additionalDevicesLaborTargets = additionalDevices.map((device) => parsePrice(device.labor_cost));
-  const totalAdditionalLabor = additionalDevicesLaborTargets.reduce((sum, val) => sum + val, 0);
-  const firstDeviceLaborTarget = Math.max(0, parsePrice(order.labor_cost) - totalAdditionalLabor);
-
-  const allocateByLaborTarget = (services: typeof normalizedOrderServices, target: number) => {
-    const allocated: typeof normalizedOrderServices = [];
-    let allocatedTotal = 0;
-
-    while (services.length > 0) {
-      const nextService = services[0];
-      const nextTotal = parsePrice(nextService.total_price);
-
-      if (allocatedTotal + nextTotal <= target) {
-        allocated.push(services.shift()!);
-        allocatedTotal += nextTotal;
-      } else {
-        break;
-      }
-    }
-
-    return allocated;
-  };
-
-  const remainingServicesQueue = [...normalizedOrderServices];
-  const servicesForFirstDevice = allocateByLaborTarget(remainingServicesQueue, firstDeviceLaborTarget);
-
-  if (servicesForFirstDevice.length > 0 || firstDeviceLaborTarget === 0) {
-    firstDeviceServices = servicesForFirstDevice;
-  }
-
-  const additionalDevicesWithAllocatedServices = additionalDevices.map((device, idx) => {
-    const target = additionalDevicesLaborTargets[idx] || 0;
-    const allocatedServices = allocateByLaborTarget(remainingServicesQueue, target);
-
-    const existingServices = Array.isArray(device.selected_services)
-      ? device.selected_services
-      : Array.isArray(device.services)
-        ? device.services
-        : [];
-
-    return {
-      ...device,
-      selected_services: allocatedServices.length > 0
-        ? allocatedServices
-        : existingServices,
-    };
-  });
-
-  // Filtro final defensivo (caso validado en orden 27074):
-  // quitar del equipo 1 los servicios que ya están en equipos adicionales por nombre+precio+cantidad.
-  const additionalServiceSignatures = new Map<string, number>();
-  additionalDevicesWithAllocatedServices.forEach((device: any) => {
-    const services = Array.isArray(device.selected_services) ? device.selected_services : [];
-    services.forEach((service: any) => {
-      const name = String(service?.name || service?.service_name || "").trim().toLowerCase();
-      const unitPrice = parsePrice(service?.unit_price);
-      const quantity = Number(service?.quantity) || 1;
-      const signature = `${name}__${unitPrice}__${quantity}`;
-      additionalServiceSignatures.set(signature, (additionalServiceSignatures.get(signature) || 0) + 1);
-    });
-  });
-
-  firstDeviceServices = firstDeviceServices.filter((service) => {
-    const signature = `${String(service.name || "").trim().toLowerCase()}__${parsePrice(service.unit_price)}__${Number(service.quantity) || 1}`;
-    const count = additionalServiceSignatures.get(signature) || 0;
-    if (count > 0) {
-      additionalServiceSignatures.set(signature, count - 1);
-      return false;
-    }
-    return true;
-  });
-
   const allDevices = [
     {
       label: "Equipo 1 (Principal)",
@@ -275,9 +168,15 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
       problem_description: order.problem_description,
       replacement_cost: order.replacement_cost,
       labor_cost: order.labor_cost,
-      selected_services: firstDeviceServices,
+      selected_services: orderServices.map((service) => ({
+        id: service.id,
+        name: service.service_name,
+        quantity: service.quantity,
+        unit_price: service.unit_price,
+        total_price: service.total_price,
+      })),
     },
-    ...additionalDevicesWithAllocatedServices.map((device, idx) => ({
+    ...additionalDevices.map((device, idx) => ({
       label: `Equipo ${idx + 2}`,
       ...device,
     })),
