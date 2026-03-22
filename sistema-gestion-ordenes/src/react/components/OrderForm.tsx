@@ -188,14 +188,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     return Array.from(ordered.values()).slice(0, 8);
   };
 
-  // Detectar tipo de dispositivo cuando cambia el modelo de un equipo específico (incluye tipos personalizados)
+  // Actualizar sugerencias cuando cambia el modelo escrito
   useEffect(() => {
     devices.forEach(device => {
       if (device.deviceModel) {
-        const detected = detectDeviceTypeWithCustom(device.deviceModel, customDeviceTypes);
-        if (detected && device.deviceType !== detected) {
-          updateDevice(device.id, { deviceType: detected });
-        }
         const suggestions = getCombinedSuggestions(device.deviceModel);
         setDeviceSuggestions(prev => ({
           ...prev,
@@ -217,6 +213,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       }
     });
   }, [devices.map(d => d.deviceModel).join(','), customDeviceTypes.join(','), recentDeviceModels.join(',')]);
+
+  const applySuggestedModel = (deviceId: string, model: string) => {
+    const detectedType = detectDeviceTypeWithCustom(model, customDeviceTypes);
+    updateDevice(deviceId, {
+      deviceModel: model,
+      deviceType: detectedType,
+    });
+  };
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -1009,7 +1013,13 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             className="w-full border border-slate-300 rounded-md px-3 py-2"
             placeholder="Ej: iPhone 13 Pro Max"
             value={device.deviceModel}
-            onChange={(e) => updateDevice(device.id, { deviceModel: e.target.value })}
+            onChange={(e) =>
+              updateDevice(device.id, {
+                deviceModel: e.target.value,
+                // Evita cambios bruscos: no activar checklist automáticamente mientras escribe
+                deviceType: null,
+              })
+            }
             onFocus={() => {
               if (deviceSuggestions[device.id]?.length > 0) {
                 setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: true }));
@@ -1034,7 +1044,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    updateDevice(device.id, { deviceModel: suggestion });
+                    applySuggestedModel(device.id, suggestion);
                     setDeviceSuggestions(prev => ({ ...prev, [device.id]: [] }));
                     setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
                   }}
