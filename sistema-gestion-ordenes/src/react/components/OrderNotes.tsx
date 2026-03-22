@@ -21,54 +21,70 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     loadNotes();
   }, [orderId]);
 
+  function isMissingWorkOrderNotesTable(error: any) {
+    const message = String(error?.message || "").toLowerCase();
+    return message.includes("work_order_notes") && (
+      message.includes("could not find the table") ||
+      message.includes("schema cache") ||
+      message.includes("does not exist")
+    );
+  }
+
+  async function loadNotesFromTable(tableName: "work_order_notes" | "order_notes") {
+    // Primero intentar cargar las notas con la relación a users
+    const { data, error } = await supabase
+      .from(tableName)
+      .select(`
+        *,
+        user:users(id, name, email)
+      `)
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false });
+
+    if (!error) {
+      setNotes(data || []);
+      return;
+    }
+
+    // Si falla la relación, intentar sin la relación
+    const { data: notesData, error: notesError } = await supabase
+      .from(tableName)
+      .select("*")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false });
+
+    if (notesError) throw notesError;
+
+    // Cargar usuarios manualmente si es necesario
+    const notesWithUsers = await Promise.all(
+      (notesData || []).map(async (note: any) => {
+        if (note.user_id) {
+          try {
+            const { data: userData } = await supabase
+              .from("users")
+              .select("id, name, email")
+              .eq("id", note.user_id)
+              .single();
+            return { ...note, user: userData || null };
+          } catch {
+            return { ...note, user: null };
+          }
+        }
+        return { ...note, user: null };
+      })
+    );
+
+    setNotes(notesWithUsers);
+  }
+
   async function loadNotes() {
     setLoading(true);
     try {
-      // Primero intentar cargar las notas con la relación a users
-      let query = supabase
-        .from("order_notes")
-        .select(`
-          *,
-          user:users(id, name, email)
-        `)
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: false });
-
-      const { data, error } = await query;
-
-      if (error) {
-        // Si falla la relación, intentar sin la relación
-        console.warn("Error con relación a users, intentando sin relación:", error);
-        const { data: notesData, error: notesError } = await supabase
-          .from("order_notes")
-          .select("*")
-          .eq("order_id", orderId)
-          .order("created_at", { ascending: false });
-
-        if (notesError) throw notesError;
-
-        // Cargar usuarios manualmente si es necesario
-        const notesWithUsers = await Promise.all(
-          (notesData || []).map(async (note: any) => {
-            if (note.user_id) {
-              try {
-                const { data: userData } = await supabase
-                  .from("users")
-                  .select("id, name, email")
-                  .eq("id", note.user_id)
-                  .single();
-                return { ...note, user: userData || null };
-              } catch {
-                return { ...note, user: null };
-              }
-            }
-            return { ...note, user: null };
-          })
-        );
-
-        setNotes(notesWithUsers);
-      } else {
-        setNotes(data || []);
+      try {
+        await loadNotesFromTable("work_order_notes");
+      } catch (error: any) {
+        if (!isMissingWorkOrderNotesTable(error)) throw error;
+        await loadNotesFromTable("order_notes");
       }
     } catch (error: any) {
       console.error("Error cargando notas:", error);
@@ -86,14 +102,26 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("order_notes")
-        .insert({
-          order_id: orderId,
-          user_id: currentUserId || null,
-          note: newNote.trim(),
-          note_type: isPublic ? "publico" : "interno",
-        });
+      const payload = {
+        order_id: orderId,
+        user_id: currentUserId || null,
+        note: newNote.trim(),
+        note_type: isPublic ? "publico" : "interno",
+      };
+      let error: any = null;
+
+      const tryNewTable = await supabase
+        .from("work_order_notes")
+        .insert(payload);
+
+      error = tryNewTable.error;
+
+      if (error && isMissingWorkOrderNotesTable(error)) {
+        const fallback = await supabase
+          .from("order_notes")
+          .insert(payload);
+        error = fallback.error;
+      }
 
       if (error) throw error;
 
@@ -137,10 +165,18 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     if (!confirm("¿Estás seguro de eliminar esta nota?")) return;
 
     try {
-      const { error } = await supabase
-        .from("order_notes")
+      let { error } = await supabase
+        .from("work_order_notes")
         .delete()
         .eq("id", noteId);
+
+      if (error && isMissingWorkOrderNotesTable(error)) {
+        const fallback = await supabase
+          .from("order_notes")
+          .delete()
+          .eq("id", noteId);
+        error = fallback.error;
+      }
 
       if (error) throw error;
       await loadNotes();
@@ -256,4 +292,3 @@ export default function OrderNotes({ orderId, order, currentUserId }: OrderNotes
     </div>
   );
 }
-

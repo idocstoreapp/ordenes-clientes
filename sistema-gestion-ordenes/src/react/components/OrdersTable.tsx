@@ -423,11 +423,26 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
       }));
 
       // Cargar notas de la orden
-      const { data: orderNotes, error: notesError } = await supabase
-        .from("order_notes")
+      let { data: orderNotes, error: notesError } = await supabase
+        .from("work_order_notes")
         .select("note")
         .eq("order_id", order.id)
         .order("created_at", { ascending: false });
+
+      if (notesError) {
+        const message = String(notesError.message || "").toLowerCase();
+        const missingTable = message.includes("work_order_notes") &&
+          (message.includes("could not find the table") || message.includes("schema cache") || message.includes("does not exist"));
+        if (missingTable) {
+          const fallback = await supabase
+            .from("order_notes")
+            .select("note")
+            .eq("order_id", order.id)
+            .order("created_at", { ascending: false });
+          orderNotes = fallback.data;
+          notesError = fallback.error;
+        }
+      }
 
       if (notesError) throw notesError;
 
@@ -619,10 +634,25 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
 
     try {
       // Primero eliminar las notas relacionadas (aunque deberían eliminarse automáticamente por CASCADE)
-      await supabase
-        .from("order_notes")
+      let { error: notesDeleteError } = await supabase
+        .from("work_order_notes")
         .delete()
         .eq("order_id", orderId);
+
+      if (notesDeleteError) {
+        const message = String(notesDeleteError.message || "").toLowerCase();
+        const missingTable = message.includes("work_order_notes") &&
+          (message.includes("could not find the table") || message.includes("schema cache") || message.includes("does not exist"));
+        if (missingTable) {
+          const fallback = await supabase
+            .from("order_notes")
+            .delete()
+            .eq("order_id", orderId);
+          notesDeleteError = fallback.error;
+        }
+      }
+
+      if (notesDeleteError) throw notesDeleteError;
 
       // Eliminar los servicios relacionados (aunque deberían eliminarse automáticamente por CASCADE)
       await supabase
@@ -1184,4 +1214,3 @@ export default function OrdersTable({ technicianId, isAdmin = false, user, onNew
     </div>
   );
 }
-

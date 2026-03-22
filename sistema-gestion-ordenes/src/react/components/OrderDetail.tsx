@@ -292,11 +292,29 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
                 }));
 
                 // Cargar notas de la orden
-                const { data: orderNotes, error: notesError } = await supabase
-                  .from("order_notes")
+                let { data: orderNotes, error: notesError } = await supabase
+                  .from("work_order_notes")
                   .select("note")
                   .eq("order_id", order.id)
                   .order("created_at", { ascending: false });
+
+                if (notesError) {
+                  const missingTable = String(notesError.message || "").toLowerCase().includes("work_order_notes")
+                    && (
+                      String(notesError.message || "").toLowerCase().includes("could not find the table")
+                      || String(notesError.message || "").toLowerCase().includes("schema cache")
+                      || String(notesError.message || "").toLowerCase().includes("does not exist")
+                    );
+                  if (missingTable) {
+                    const fallback = await supabase
+                      .from("order_notes")
+                      .select("note")
+                      .eq("order_id", order.id)
+                      .order("created_at", { ascending: false });
+                    orderNotes = fallback.data;
+                    notesError = fallback.error;
+                  }
+                }
 
                 if (notesError) throw notesError;
 
@@ -392,4 +410,3 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
     </div>
   );
 }
-
