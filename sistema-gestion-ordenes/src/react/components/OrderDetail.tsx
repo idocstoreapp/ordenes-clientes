@@ -158,50 +158,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
     ? ((order as any).devices_data as AdditionalDeviceData[])
     : [];
-  const additionalServicesToDiscount = new Map<string, number>();
-
-  additionalDevices.forEach((device) => {
-    if (!Array.isArray(device.selected_services)) return;
-
-    device.selected_services.forEach((service) => {
-      const serviceName = service.name || "";
-      const unitPrice = service.unit_price || 0;
-      const quantity = service.quantity || 1;
-      const serviceKey = `${serviceName}__${unitPrice}`;
-      const currentCount = additionalServicesToDiscount.get(serviceKey) || 0;
-      additionalServicesToDiscount.set(serviceKey, currentCount + quantity);
-    });
-  });
-
-  const firstDeviceServices = orderServices.reduce<Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-  }>>((acc, service) => {
-    const serviceKey = `${service.service_name}__${service.unit_price || 0}`;
-    const pendingDiscount = additionalServicesToDiscount.get(serviceKey) || 0;
-    const originalQuantity = service.quantity || 1;
-    const remainingQuantity = Math.max(0, originalQuantity - pendingDiscount);
-
-    if (pendingDiscount > 0) {
-      additionalServicesToDiscount.set(serviceKey, Math.max(0, pendingDiscount - originalQuantity));
-    }
-
-    if (remainingQuantity > 0) {
-      acc.push({
-        id: service.id,
-        name: service.service_name,
-        quantity: remainingQuantity,
-        unit_price: service.unit_price || 0,
-        total_price: (service.unit_price || 0) * remainingQuantity,
-      });
-    }
-
-    return acc;
-  }, []);
-
   const allDevices = [
     {
       label: "Equipo 1 (Principal)",
@@ -212,7 +168,13 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
       problem_description: order.problem_description,
       replacement_cost: order.replacement_cost,
       labor_cost: order.labor_cost,
-      selected_services: firstDeviceServices,
+      selected_services: orderServices.map((service) => ({
+        id: service.id,
+        name: service.service_name,
+        quantity: service.quantity,
+        unit_price: service.unit_price,
+        total_price: service.total_price,
+      })),
     },
     ...additionalDevices.map((device, idx) => ({
       label: `Equipo ${idx + 2}`,
