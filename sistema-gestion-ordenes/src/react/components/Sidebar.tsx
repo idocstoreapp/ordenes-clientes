@@ -42,17 +42,17 @@ export default function Sidebar({
   const menuItems: Array<{
     id: DashboardSection;
     label: string;
-    icon: string;
+    
   }> = [
-    { id: "dashboard", label: "Dashboard", icon: "📊" },
-    { id: "new-order", label: "Nueva Orden", icon: "➕" },
-    { id: "orders", label: "Órdenes", icon: "📋" },
-    { id: "customers", label: "Clientes", icon: "👥" },
-    { id: "branches", label: "Sucursales", icon: "🏢" },
-    { id: "users", label: "Usuarios", icon: "👤" },
-    { id: "reports", label: "Reportes", icon: "📈" },
-    { id: "settings", label: "Configuración", icon: "⚙️" },
-    { id: "security", label: "Seguridad", icon: "🔒" },
+    { id: "dashboard", label: "Dashboard" },
+    { id: "new-order", label: "Nueva Orden" },
+    { id: "orders", label: "Órdenes"},
+    { id: "customers", label: "Clientes"},
+    { id: "branches", label: "Sucursales"},
+    { id: "users", label: "Usuarios"},
+    { id: "reports", label: "Reportes"},
+    { id: "settings", label: "Configuración" },
+    { id: "security", label: "Seguridad"},
   ];
 
   // Filtrar items según permisos del usuario
@@ -70,7 +70,7 @@ export default function Sidebar({
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-20 left-0 h-[calc(100vh-5rem)] w-64 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-20 left-0 h-[calc(100vh-5rem)] w-64 bg-blue-200 shadow-xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -85,10 +85,10 @@ export default function Sidebar({
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-md transition-colors ${
                 currentSection === item.id
                   ? "bg-brand-light text-white"
-                  : "text-slate-700 hover:bg-slate-100"
+                  : "text-slate-700 hover:bg-blue-100"
               }`}
             >
-              <span className="text-xl">{item.icon}</span>
+          
               <span className="font-medium">{item.label}</span>
             </button>
           ))}
