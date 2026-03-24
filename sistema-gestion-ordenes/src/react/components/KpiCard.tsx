@@ -1,20 +1,32 @@
 interface KpiCardProps {
   title: string;
   value: string | number;
-  icon: string;
+  
 }
 
-export default function KpiCard({ title, value, icon }: KpiCardProps) {
+export default function KpiCard({ title, value }: KpiCardProps) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-brand-light">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-600 mb-1">{title}</p>
-          <p className="text-2xl font-bold text-slate-900">{value}</p>
-        </div>
-        <div className="text-4xl">{icon}</div>
-      </div>
+   <div className="relative rounded-2xl p-5 sm:p-6 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 shadow-lg border border-white/10 overflow-hidden">
+  
+  <div className="flex items-center justify-between gap-3">
+    
+    {/* CONTENIDO */}
+    <div className="min-w-0 flex-1">
+      <p className="text-xs sm:text-sm font-medium text-blue-100 mb-1 truncate">
+        {title}
+      </p>
+
+      <p className="
+  font-semibold text-white leading-tight
+  text-[clamp(14px,2.5vw,24px)]
+  break-words
+">
+        {value}
+      </p>
     </div>
+
+  </div>
+</div>
   );
 }
 
