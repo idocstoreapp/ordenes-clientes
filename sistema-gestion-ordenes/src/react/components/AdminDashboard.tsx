@@ -162,18 +162,18 @@ export default function AdminDashboard({ user, onNewOrder }: AdminDashboardProps
             onClick={onNewOrder}
             className="px-6 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark transition-colors font-medium"
           >
-            ➕ Nueva Orden
+          Nueva Orden
           </button>
         )}
       </div>
 
       {/* Filtro de sucursal */}
-      <div className="bg-white rounded-lg shadow-md p-4">
-        <label className="block text-sm font-medium text-slate-700 mb-2">
+      <div className="bg-blue-200 rounded-lg shadow-md p-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
           Filtrar por Sucursal
         </label>
         <select
-          className="w-full md:w-auto min-w-[200px] border border-slate-300 rounded-md px-3 py-2"
+          className="w-full md:w-auto min-w-[200px] border border-slate-300 rounded-md px-3 py-2 bg-blue-100 font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-300"
           value={branchFilter}
           onChange={(e) => setBranchFilter(e.target.value)}
         >
@@ -190,27 +190,27 @@ export default function AdminDashboard({ user, onNewOrder }: AdminDashboardProps
         <KpiCard
           title="Ventas del Día"
           value={formatCLP(kpis.daySales)}
-          icon="💰"
+         
         />
         <KpiCard
           title="Ventas del Mes"
           value={formatCLP(kpis.monthSales)}
-          icon="📊"
+          
         />
         <KpiCard
           title="En Reparación"
           value={kpis.inRepair.toString()}
-          icon="🔧"
+          
         />
         <KpiCard
           title="Listos para Entregar"
           value={kpis.readyToDeliver.toString()}
-          icon="✅"
+          
         />
         <KpiCard
           title="En Garantía"
           value={kpis.inWarranty.toString()}
-          icon="🛡️"
+          
         />
       </div>
     </div>
