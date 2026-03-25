@@ -139,7 +139,7 @@ export default function PDFPreview({
 
       // Color de las franjas (gris claro para ahorrar tinta)
       const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
-      const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
+      const darkStripeColor: [number, number, number] = [245, 245, 245]; // Gris casi blanco
 
       // QR Code ELIMINADO según solicitud del usuario
       // No generar QR Code
@@ -2156,26 +2156,14 @@ export default function PDFPreview({
         // Servicios por equipo (forzar bloque en línea aparte para evitar superposición)
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += listLineHeight + 2;
-
+        yPosition += listLineHeight;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
-            const serviceText = `${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`.trim();
-            const serviceWords = serviceText.split(/\s+/).filter(Boolean);
-
-            if (serviceWords.length === 0) {
-              doc.text("Sin nombre de servicio", margin + 8, yPosition);
-              yPosition += listLineHeight + 2;
-              return;
-            }
-
-            serviceWords.forEach((word) => {
-              doc.text(word, margin + 8, yPosition);
-              yPosition += listLineHeight;
-            });
-
-            yPosition += 2;
+            const serviceText = `${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
+            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 16);
+            doc.text(serviceLines, margin + 8, yPosition);
+            yPosition += serviceLines.length * listLineHeight + 2;
           });
         } else {
           doc.text("Sin servicios registrados", margin + 8, yPosition);
