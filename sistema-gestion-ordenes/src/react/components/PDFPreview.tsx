@@ -2153,21 +2153,21 @@ export default function PDFPreview({
           renderLabelField("Problema:", device.problem_description, 62);
         }
 
-        // Servicios por equipo
+        // Servicios por equipo (forzar bloque en línea aparte para evitar superposición)
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
         yPosition += listLineHeight;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
-            const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
-            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
+            const serviceText = `${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
+            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 16);
             doc.text(serviceLines, margin + 8, yPosition);
-            yPosition += serviceLines.length * listLineHeight + 1;
+            yPosition += serviceLines.length * listLineHeight + 2;
           });
         } else {
-          doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += listLineHeight;
+          doc.text("Sin servicios registrados", margin + 8, yPosition);
+          yPosition += listLineHeight + 2;
         }
 
         // Borde completo del bloque usando la altura real consumida
