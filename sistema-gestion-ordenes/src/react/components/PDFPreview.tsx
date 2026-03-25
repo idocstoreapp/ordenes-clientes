@@ -2160,8 +2160,13 @@ export default function PDFPreview({
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
-            const serviceText = `${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
-            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 16);
+            const serviceWords = String(service.name || "Servicio")
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean);
+            const safeServiceWords = serviceWords.length > 0 ? serviceWords : ["Servicio"];
+            const quantitySuffix = service.quantity > 1 ? `x${service.quantity}` : "";
+            const serviceLines = quantitySuffix ? [...safeServiceWords, quantitySuffix] : safeServiceWords;
             doc.text(serviceLines, margin + 8, yPosition);
             yPosition += serviceLines.length * listLineHeight + 2;
           });
