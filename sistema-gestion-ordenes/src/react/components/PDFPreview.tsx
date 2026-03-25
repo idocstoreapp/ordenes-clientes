@@ -2156,7 +2156,7 @@ export default function PDFPreview({
         // Servicios por equipo
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += getLineHeight();
+        yPosition += listLineHeight;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
