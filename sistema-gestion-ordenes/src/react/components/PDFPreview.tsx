@@ -2107,8 +2107,9 @@ export default function PDFPreview({
         }
       }
 
+      const labelLineHeight = 7;
+      const listLineHeight = 7;
       const deviceBlockBottomPadding = 6;
-      const LINE_HEIGHT = 9.2; // 8pt * lineHeightFactor por defecto de jsPDF (1.15)
 
       // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
       const renderLabelField = (label: string, value: string, labelWidth = 60) => {
@@ -2118,7 +2119,7 @@ export default function PDFPreview({
         const safeValue = String(value || "-").trim() || "-";
         const lines = doc.splitTextToSize(safeValue, contentWidth - labelWidth - 10);
         doc.text(lines, margin + labelWidth, yPosition);
-        yPosition += lines.length * LINE_HEIGHT + 2;
+        yPosition += lines.length * labelLineHeight + 3;
       };
 
       normalizedDevices.forEach((device, idx) => {
@@ -2155,18 +2156,18 @@ export default function PDFPreview({
         // Servicios por equipo
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += LINE_HEIGHT;
+        yPosition += getLineHeight();
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
             const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
             const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
             doc.text(serviceLines, margin + 8, yPosition);
-            yPosition += serviceLines.length * LINE_HEIGHT;
+            yPosition += serviceLines.length * listLineHeight + 1;
           });
         } else {
           doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += LINE_HEIGHT;
+          yPosition += listLineHeight;
         }
 
         // Borde completo del bloque usando la altura real consumida
