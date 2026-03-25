@@ -2153,21 +2153,33 @@ export default function PDFPreview({
           renderLabelField("Problema:", device.problem_description, 62);
         }
 
-        // Servicios por equipo
+        // Servicios por equipo (forzar bloque en línea aparte para evitar superposición)
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += getLineHeight();
+        yPosition += listLineHeight + 2;
+
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
-            const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
-            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
-            doc.text(serviceLines, margin + 8, yPosition);
-            yPosition += serviceLines.length * listLineHeight + 1;
+            const serviceText = `${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`.trim();
+            const serviceWords = serviceText.split(/\s+/).filter(Boolean);
+
+            if (serviceWords.length === 0) {
+              doc.text("Sin nombre de servicio", margin + 8, yPosition);
+              yPosition += listLineHeight + 2;
+              return;
+            }
+
+            serviceWords.forEach((word) => {
+              doc.text(word, margin + 8, yPosition);
+              yPosition += listLineHeight;
+            });
+
+            yPosition += 2;
           });
         } else {
-          doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += listLineHeight;
+          doc.text("Sin servicios registrados", margin + 8, yPosition);
+          yPosition += listLineHeight + 2;
         }
 
         // Borde completo del bloque usando la altura real consumida
