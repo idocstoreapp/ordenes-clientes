@@ -139,7 +139,7 @@ export default function PDFPreview({
 
       // Color de las franjas (gris claro para ahorrar tinta)
       const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
-      const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
+      const darkStripeColor: [number, number, number] = [245, 245, 245]; // Gris casi blanco
 
       // QR Code ELIMINADO según solicitud del usuario
       // No generar QR Code
@@ -2156,8 +2156,7 @@ export default function PDFPreview({
         // Servicios por equipo (forzar bloque en línea aparte para evitar superposición)
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += listLineHeight + 2;
-
+        yPosition += listLineHeight;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
