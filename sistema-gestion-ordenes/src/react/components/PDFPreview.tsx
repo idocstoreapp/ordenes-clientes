@@ -2107,38 +2107,18 @@ export default function PDFPreview({
         }
       }
 
-      // Renderizar cada equipo en su propio bloque para evitar montajes de texto
-      const labelLineHeight = 4.4;
-      const fieldBottomSpacing = 2;
-      const blockInnerPadding = 4;
-      const fieldLabelX = margin + 4;
-
-      const asLines = (value: string | string[]) =>
-        Array.isArray(value) ? value : [value];
-
-      const drawLines = (lines: string[], startX: number, startY: number, lineHeight: number) => {
-        lines.forEach((line, lineIndex) => {
-          doc.text(line, startX, startY + lineIndex * lineHeight);
-        });
-      };
-
+      // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
       const renderLabelField = (label: string, value: string, labelWidth = 60) => {
-        const valueX = margin + labelWidth;
-        const valueWidth = Math.max(40, pageWidth - valueX - margin - 4);
-        const valueLines = asLines(doc.splitTextToSize(value || "-", valueWidth));
-        const rowTop = yPosition;
-
         doc.setFont("helvetica", "bold");
-        doc.text(label, fieldLabelX, rowTop + labelLineHeight);
-
+        doc.text(label, margin + 4, yPosition);
         doc.setFont("helvetica", "normal");
-        drawLines(valueLines, valueX, rowTop + labelLineHeight, labelLineHeight);
-
-        const consumedHeight = Math.max(1, valueLines.length) * labelLineHeight;
-        yPosition = rowTop + consumedHeight + fieldBottomSpacing;
+        const lines = doc.splitTextToSize(value || "-", contentWidth - labelWidth - 10);
+        doc.text(lines, margin + labelWidth, yPosition);
+        yPosition += lines.length * 6 + 3;
       };
 
       normalizedDevices.forEach((device, idx) => {
+        const boxPadding = 4;
         const boxStartY = yPosition;
 
         // Encabezado centrado del equipo
@@ -2151,48 +2131,42 @@ export default function PDFPreview({
         const deviceTitle = `DISPOSITIVO ${device.index}`;
         const deviceTitleWidth = doc.getTextWidth(deviceTitle);
         doc.text(deviceTitle, margin + (contentWidth - deviceTitleWidth) / 2, yPosition + 7);
-        yPosition += 14;
+        yPosition += 16;
 
         // Información principal del equipo
         doc.setFontSize(8);
-        renderLabelField("Modelo:", device.device_model || "Sin modelo", 58);
+        renderLabelField("Modelo:", device.device_model || "Sin modelo");
         if (device.device_serial_number) {
           renderLabelField("IMEI/Serie:", device.device_serial_number, 64);
         }
         if (device.device_unlock_code) {
-          renderLabelField("Passcode:", device.device_unlock_code, 60);
+          renderLabelField("Passcode:", device.device_unlock_code);
         } else if (device.device_unlock_pattern && Array.isArray(device.device_unlock_pattern)) {
-          renderLabelField("Patrón:", device.device_unlock_pattern.join(""), 58);
+          renderLabelField("Patrón:", device.device_unlock_pattern.join(""));
         }
-        renderLabelField("Problema:", device.problem_description || "Sin descripción", 62);
+        if (device.problem_description) {
+          renderLabelField("Problema:", device.problem_description, 62);
+        }
 
         // Servicios por equipo
-        const servicesTop = yPosition;
         doc.setFont("helvetica", "bold");
-        doc.text("Servicios:", fieldLabelX, servicesTop + labelLineHeight);
-
-        const servicesX = margin + 8;
-        const servicesWidth = Math.max(40, pageWidth - servicesX - margin - 4);
-        let servicesY = servicesTop + labelLineHeight + 1;
-
+        doc.text("Servicios:", margin + 4, yPosition);
+        yPosition += 6;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
             const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
-            const serviceLines = asLines(doc.splitTextToSize(serviceText, servicesWidth));
-            drawLines(serviceLines, servicesX, servicesY, labelLineHeight);
-            servicesY += serviceLines.length * labelLineHeight + 1;
+            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
+            doc.text(serviceLines, margin + 8, yPosition);
+            yPosition += serviceLines.length * 6;
           });
         } else {
-          const fallbackServiceLines = asLines(doc.splitTextToSize("• Sin servicios registrados", servicesWidth));
-          drawLines(fallbackServiceLines, servicesX, servicesY, labelLineHeight);
-          servicesY += fallbackServiceLines.length * labelLineHeight + 1;
+          doc.text("• Sin servicios registrados", margin + 8, yPosition);
+          yPosition += 6;
         }
 
-        yPosition = servicesY + fieldBottomSpacing;
-
         // Borde completo del bloque usando la altura real consumida
-        const blockHeight = Math.max(20, yPosition - boxStartY + blockInnerPadding);
+        const blockHeight = Math.max(18, yPosition - boxStartY + boxPadding);
         doc.setDrawColor(180, 180, 180);
         doc.rect(margin, boxStartY, contentWidth, blockHeight, "S");
         yPosition = boxStartY + blockHeight + 5;

@@ -888,11 +888,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             }
           }
 
-          // Solo enviar email si tenemos PDF
-          if (pdfUrl || pdfBase64) {
-            // Enviar email para la orden creada
-            console.log("[ORDER FORM] Enviando email de creación de orden:", createdOrder.order_number);
-            const emailResponse = await fetch('/api/send-order-email', {
+          // Evitar payloads demasiado grandes (Vercel devuelve 413 antes de ejecutar la función)
+          // 2.5M chars base64 ≈ 1.8MB binario, dejando margen para el resto del JSON
+          const MAX_BASE64_PAYLOAD_LENGTH = 2_500_000;
+          if (pdfBase64 && pdfBase64.length > MAX_BASE64_PAYLOAD_LENGTH) {
+            console.warn("[ORDER FORM] PDF en base64 demasiado grande para enviar en request, se enviará email sin adjunto", {
+              base64Length: pdfBase64.length,
+              maxAllowed: MAX_BASE64_PAYLOAD_LENGTH,
+            });
+            pdfBase64 = null;
+          }
+
+          // Enviar email incluso sin PDF para no perder la notificación al cliente
+          console.log("[ORDER FORM] Enviando email de creación de orden:", createdOrder.order_number);
+          const emailResponse = await fetch('/api/send-order-email', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -944,11 +953,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 successData = { message: 'Email enviado (sin respuesta del servidor)' };
               }
               console.log("[ORDER FORM] Email enviado exitosamente:", successData);
-            }
-          } else {
-            console.warn("[ORDER FORM] No se pudo generar PDF para enviar por email");
-          }
-        } catch (emailError: any) {
+            }        } catch (emailError: any) {
           console.error("[ORDER FORM] Excepción al enviar email:", emailError);
           // No mostrar error al usuario, solo loguear
         }
