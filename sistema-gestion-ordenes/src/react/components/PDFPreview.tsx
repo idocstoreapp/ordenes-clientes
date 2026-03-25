@@ -2107,12 +2107,9 @@ export default function PDFPreview({
         }
       }
 
+      const labelLineHeight = 7;
+      const listLineHeight = 7;
       const deviceBlockBottomPadding = 6;
-      const getLineHeight = () => {
-        const fontSize = doc.getFontSize();
-        const lineHeightFactor = doc.getLineHeightFactor();
-        return Math.max(8, fontSize * lineHeightFactor);
-      };
 
       // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
       const renderLabelField = (label: string, value: string, labelWidth = 60) => {
@@ -2122,7 +2119,7 @@ export default function PDFPreview({
         const safeValue = String(value || "-").trim() || "-";
         const lines = doc.splitTextToSize(safeValue, contentWidth - labelWidth - 10);
         doc.text(lines, margin + labelWidth, yPosition);
-        yPosition += lines.length * getLineHeight() + 2;
+        yPosition += lines.length * labelLineHeight + 3;
       };
 
       normalizedDevices.forEach((device, idx) => {
@@ -2166,11 +2163,11 @@ export default function PDFPreview({
             const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
             const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
             doc.text(serviceLines, margin + 8, yPosition);
-            yPosition += serviceLines.length * getLineHeight();
+            yPosition += serviceLines.length * listLineHeight + 1;
           });
         } else {
           doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += getLineHeight();
+          yPosition += listLineHeight;
         }
 
         // Borde completo del bloque usando la altura real consumida
