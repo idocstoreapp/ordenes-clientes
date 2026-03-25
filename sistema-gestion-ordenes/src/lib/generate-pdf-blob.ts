@@ -6,6 +6,18 @@ import { formatCLP } from "./currency";
 import { formatDate, formatDateTime } from "./date";
 import { getSystemSettings } from "./settings";
 
+function getChecklistStatusText(status: string): string {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  if (!normalizedStatus) return "";
+
+  if (normalizedStatus === "ok") return " (ok)";
+  if (normalizedStatus === "replaced") return " (reparado)";
+  if (normalizedStatus === "damaged") return " (dañado)";
+  if (normalizedStatus === "no_probado") return " (no probado)";
+
+  return ` (${normalizedStatus.replace(/_/g, " ")})`;
+}
+
 export async function generatePDFBlob(
   order: WorkOrder & { customer?: Customer; sucursal?: Branch | null },
   services: Service[],
@@ -779,16 +791,7 @@ export async function generatePDFBlob(
         deviceChecklistItems.forEach((item) => {
           const status = device.checklist_data?.[item.item_name];
           if (status) {
-            let statusText = "";
-            if (status === "ok") {
-              statusText = " (ok)";
-            } else if (status === "replaced") {
-              statusText = " (reparado)";
-            } else if (status === "damaged") {
-              statusText = " (dañado)";
-            } else if (status === "no_probado") {
-              statusText = " (no probado)";
-            }
+            const statusText = getChecklistStatusText(status);
             checklistItemsList.push(`${item.item_name}${statusText}`);
           }
         });
@@ -796,16 +799,7 @@ export async function generatePDFBlob(
         Object.keys(device.checklist_data).forEach((itemName) => {
           if (!deviceChecklistItems.some(item => item.item_name === itemName)) {
             const status = device.checklist_data?.[itemName];
-            let statusText = "";
-            if (status === "ok") {
-              statusText = " (ok)";
-            } else if (status === "replaced") {
-              statusText = " (reparado)";
-            } else if (status === "damaged") {
-              statusText = " (dañado)";
-            } else if (status === "no_probado") {
-              statusText = " (no probado)";
-            }
+            const statusText = getChecklistStatusText(status || "");
             checklistItemsList.push(`${itemName}${statusText}`);
           }
         });
@@ -876,16 +870,7 @@ export async function generatePDFBlob(
     checklistItems.forEach((item) => {
       const status = checklistData[item.item_name];
       if (status) {
-        let statusText = "";
-        if (status === "ok") {
-          statusText = " (ok)";
-        } else if (status === "replaced") {
-          statusText = " (reparado)";
-        } else if (status === "damaged") {
-          statusText = " (dañado)";
-        } else if (status === "no_probado") {
-          statusText = " (no probado)";
-        }
+        const statusText = getChecklistStatusText(status);
         checklistItemsList.push(`${item.item_name}${statusText}`);
       }
     });
