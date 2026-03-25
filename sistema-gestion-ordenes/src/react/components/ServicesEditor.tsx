@@ -75,6 +75,14 @@ export default function ServicesEditor() {
       }
     } catch (error: any) {
       console.error("Error agregando servicio:", error);
+      if (error?.message?.toLowerCase?.().includes("row-level security")) {
+        alert(
+          "Tu usuario no tiene permisos para crear servicios con la política RLS actual.\n\n" +
+          "Solución: ejecuta en Supabase SQL Editor el script:\n" +
+          "database/fix_services_insert_for_some_branch_users.sql"
+        );
+        return;
+      }
       alert(`Error al agregar servicio: ${error.message}`);
     } finally {
       setSaving(false);
