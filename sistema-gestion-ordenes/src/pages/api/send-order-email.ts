@@ -93,14 +93,6 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
 
-    // PDF (base64 o URL) es requerido para order_created
-    if (emailType === 'order_created' && !pdfBase64 && !pdfUrl) {
-      return new Response(
-        JSON.stringify({ error: "pdfBase64 o pdfUrl es requerido para order_created" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
     // Email de origen: SIEMPRE usar el email del admin (todas las sucursales usan el mismo)
     // IMPORTANTE: El email debe ser del dominio verificado en Resend
     // Todas las sucursales envían desde el mismo correo del admin
@@ -331,8 +323,10 @@ export const POST: APIRoute = async ({ request }) => {
                   <div style="text-align: center; margin: 20px 0;">
                     <a href="${pdfUrl}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">📄 Descargar PDF de la Orden</a>
                   </div>
-                ` : `
+                ` : pdfBase64 ? `
                   <p>En el archivo PDF adjunto encontrará todos los detalles de su orden, incluyendo:</p>
+                ` : `
+                  <p>Su orden ya fue registrada. Si necesita una copia del PDF, puede solicitarla directamente en la sucursal.</p>
                 `}
                 <ul>
                   <li>Información del equipo ingresado</li>
