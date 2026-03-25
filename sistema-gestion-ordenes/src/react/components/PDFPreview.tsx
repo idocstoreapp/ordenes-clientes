@@ -2108,25 +2108,13 @@ export default function PDFPreview({
       }
 
       // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
-      const labelLineHeight = 5;
-      const serviceLineHeight = 5;
-
-      const drawWrappedLines = (lines: string[], startX: number, startY: number, lineHeight: number) => {
-        let currentY = startY;
-        lines.forEach((line) => {
-          doc.text(line, startX, currentY);
-          currentY += lineHeight;
-        });
-        return currentY;
-      };
-
       const renderLabelField = (label: string, value: string, labelWidth = 60) => {
         doc.setFont("helvetica", "bold");
         doc.text(label, margin + 4, yPosition);
         doc.setFont("helvetica", "normal");
         const lines = doc.splitTextToSize(value || "-", contentWidth - labelWidth - 10);
-        const finalY = drawWrappedLines(lines, margin + labelWidth, yPosition, labelLineHeight);
-        yPosition = finalY + 2;
+        doc.text(lines, margin + labelWidth, yPosition);
+        yPosition += lines.length * 6 + 3;
       };
 
       normalizedDevices.forEach((device, idx) => {
@@ -2169,12 +2157,12 @@ export default function PDFPreview({
           device.selected_services.forEach((service) => {
             const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
             const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
-            const finalServiceY = drawWrappedLines(serviceLines, margin + 8, yPosition, serviceLineHeight);
-            yPosition = finalServiceY + 1;
+            doc.text(serviceLines, margin + 8, yPosition);
+            yPosition += serviceLines.length * 6;
           });
         } else {
           doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += serviceLineHeight + 1;
+          yPosition += 6;
         }
 
         // Borde completo del bloque usando la altura real consumida
