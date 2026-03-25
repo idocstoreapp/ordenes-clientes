@@ -1775,9 +1775,9 @@ export default function PDFPreview({
       const orderBoxWidth = 50;
       const orderBoxHeight = 7;
       const orderBoxX = (pageWidth - orderBoxWidth) / 2; // Centrado
-      doc.setFillColor(80, 80, 80); // Gris oscuro
+      doc.setFillColor(236, 236, 236); // Gris muy claro (ahorra tinta)
       doc.rect(orderBoxX, yPosition, orderBoxWidth, orderBoxHeight, "F");
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(60, 60, 60);
       const orderLabelText = "N° Orden:";
       const orderLabelWidth = doc.getTextWidth(orderLabelText);
       doc.text(orderLabelText, orderBoxX + (orderBoxWidth - orderLabelWidth) / 2, yPosition + 5);
@@ -2107,14 +2107,18 @@ export default function PDFPreview({
         }
       }
 
+      const deviceBlockBottomPadding = 6;
+      const LINE_HEIGHT = 9.2; // 8pt * lineHeightFactor por defecto de jsPDF (1.15)
+
       // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
       const renderLabelField = (label: string, value: string, labelWidth = 60) => {
         doc.setFont("helvetica", "bold");
         doc.text(label, margin + 4, yPosition);
         doc.setFont("helvetica", "normal");
-        const lines = doc.splitTextToSize(value || "-", contentWidth - labelWidth - 10);
+        const safeValue = String(value || "-").trim() || "-";
+        const lines = doc.splitTextToSize(safeValue, contentWidth - labelWidth - 10);
         doc.text(lines, margin + labelWidth, yPosition);
-        yPosition += lines.length * 6 + 3;
+        yPosition += lines.length * LINE_HEIGHT + 2;
       };
 
       normalizedDevices.forEach((device, idx) => {
@@ -2151,22 +2155,22 @@ export default function PDFPreview({
         // Servicios por equipo
         doc.setFont("helvetica", "bold");
         doc.text("Servicios:", margin + 4, yPosition);
-        yPosition += 6;
+        yPosition += LINE_HEIGHT;
         doc.setFont("helvetica", "normal");
         if (device.selected_services.length > 0) {
           device.selected_services.forEach((service) => {
             const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
             const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
             doc.text(serviceLines, margin + 8, yPosition);
-            yPosition += serviceLines.length * 6;
+            yPosition += serviceLines.length * LINE_HEIGHT;
           });
         } else {
           doc.text("• Sin servicios registrados", margin + 8, yPosition);
-          yPosition += 6;
+          yPosition += LINE_HEIGHT;
         }
 
         // Borde completo del bloque usando la altura real consumida
-        const blockHeight = Math.max(18, yPosition - boxStartY + boxPadding);
+        const blockHeight = Math.max(18, yPosition - boxStartY + boxPadding + deviceBlockBottomPadding);
         doc.setDrawColor(180, 180, 180);
         doc.rect(margin, boxStartY, contentWidth, blockHeight, "S");
         yPosition = boxStartY + blockHeight + 5;
