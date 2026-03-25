@@ -1999,7 +1999,6 @@ export default function PDFPreview({
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 15;
       const contentWidth = pageWidth - 2 * margin;
       let yPosition = margin;
@@ -2032,67 +2031,165 @@ export default function PDFPreview({
         yPosition += customerLines.length * 6 + 5;
       }
 
-      // Dispositivo
-      doc.setFont("helvetica", "bold");
-      doc.text("Dispositivo:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      const deviceLines = doc.splitTextToSize(order.device_model, contentWidth - 60);
-      doc.text(deviceLines, margin + 60, yPosition);
-      yPosition += deviceLines.length * 6 + 5;
+      type LabelDeviceService = {
+        name: string;
+        quantity: number;
+      };
+      type LabelDevice = {
+        index: number;
+        device_model: string;
+        device_serial_number?: string | null;
+        device_unlock_code?: string | null;
+        device_unlock_pattern?: number[] | null;
+        problem_description?: string | null;
+        selected_services: LabelDeviceService[];
+      };
 
-      // Passcode (movido encima de la descripción del problema)
-      if (order.device_unlock_code) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Passcode:", margin, yPosition);
-        doc.setFont("helvetica", "normal");
-        doc.text(order.device_unlock_code, margin + 60, yPosition);
-        yPosition += 10; // Más espacio abajo
-      }
+      const normalizedDevices: LabelDevice[] = [];
 
-      // === PROBLEMA O DESCRIPCIÓN - Layout Adaptativo ===
-      // Calcular espacio disponible para el resto del documento
-      const problemSectionStartY = yPosition;
-      const localInfoHeight = 30; // Estimado para local y fecha compromiso
-      const bottomMarginEtiqueta = margin;
-      const reservedSpaceEtiqueta = localInfoHeight + bottomMarginEtiqueta + 10; // Reducido de 15 a 10
-      
-      // NO truncar - permitir que la descripción use todo el espacio disponible
-      // El formato tiene altura de 2000mm, así que puede crecer dinámicamente
-      doc.setFont("helvetica", "bold");
-      doc.text("Problema:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      
-      // Dividir el texto en líneas sin truncar
-      let problemLines = doc.splitTextToSize(order.problem_description || "", contentWidth - 60);
-      
-      // Calcular espacio disponible dinámicamente
-      const availableProblemHeight = pageHeight - problemSectionStartY - reservedSpaceEtiqueta;
-      
-      // Calcular interlineado adaptativo para que TODO el texto quepa sin apretarse
-      // Aumentar el interlineado base para mejor legibilidad
-      let problemLineSpacing = 8; // Espaciado aumentado de 6 a 8 para mejor legibilidad
-      if (problemLines.length > 0) {
-        // Calcular el interlineado necesario para que todas las líneas quepan
-        const requiredHeight = problemLines.length * 8; // Altura necesaria con interlineado aumentado
-        if (requiredHeight > availableProblemHeight) {
-          // Ajustar interlineado para que quepa todo, pero mantener mínimo de 6 puntos
-          problemLineSpacing = Math.max(6, availableProblemHeight / problemLines.length);
-        } else {
-          // Hay espacio suficiente, usar interlineado aumentado
-          problemLineSpacing = 8;
+      // Priorizar all_devices si viene desde el formulario (contiene todos los datos correctamente separados por equipo)
+      if ((order as any).all_devices && Array.isArray((order as any).all_devices) && (order as any).all_devices.length > 0) {
+        ((order as any).all_devices as any[]).forEach((device: any, idx: number) => {
+          normalizedDevices.push({
+            index: idx + 1,
+            device_model: device.device_model || "",
+            device_serial_number: device.device_serial_number || null,
+            device_unlock_code: device.device_unlock_code || null,
+            device_unlock_pattern: device.device_unlock_pattern || null,
+            problem_description: device.problem_description || "",
+            selected_services: Array.isArray(device.selected_services)
+              ? device.selected_services.map((service: any) => ({
+                  name: service.name || service.service_name || "Servicio",
+                  quantity: service.quantity || 1,
+                }))
+              : [],
+          });
+        });
+      } else {
+        // Si no hay all_devices, construir desde la orden + devices_data
+        const mainDeviceServices = (orderServices && orderServices.length > 0)
+          ? orderServices.map((service: any) => ({
+              name: service.service_name || "Servicio",
+              quantity: service.quantity || 1,
+            }))
+          : (services || []).map((service: any) => ({
+              name: service.name || "Servicio",
+              quantity: 1,
+            }));
+
+        normalizedDevices.push({
+          index: 1,
+          device_model: order.device_model || "",
+          device_serial_number: order.device_serial_number || null,
+          device_unlock_code: order.device_unlock_code || null,
+          device_unlock_pattern: order.device_unlock_pattern || null,
+          problem_description: order.problem_description || "",
+          selected_services: mainDeviceServices,
+        });
+
+        if ((order as any).devices_data && Array.isArray((order as any).devices_data)) {
+          ((order as any).devices_data as any[]).forEach((device: any, idx: number) => {
+            normalizedDevices.push({
+              index: idx + 2,
+              device_model: device.device_model || "",
+              device_serial_number: device.device_serial_number || null,
+              device_unlock_code: device.device_unlock_code || null,
+              device_unlock_pattern: device.device_unlock_pattern || null,
+              problem_description: device.problem_description || "",
+              selected_services: Array.isArray(device.selected_services)
+                ? device.selected_services.map((service: any) => ({
+                    name: service.name || service.service_name || "Servicio",
+                    quantity: service.quantity || 1,
+                  }))
+                : [],
+            });
+          });
         }
       }
-      
-      // Dibujar TODAS las líneas con el interlineado adaptativo calculado
-      // No truncar, solo adaptar el espaciado
-      let currentProblemY = yPosition;
-      problemLines.forEach((line: string) => {
-        doc.text(line, margin + 60, currentProblemY);
-        currentProblemY += problemLineSpacing;
+
+      // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
+      const labelLineHeight = 5;
+      const serviceLineHeight = 5;
+
+      const drawWrappedLines = (lines: string[], startX: number, startY: number, lineHeight: number) => {
+        let currentY = startY;
+        lines.forEach((line) => {
+          doc.text(line, startX, currentY);
+          currentY += lineHeight;
+        });
+        return currentY;
+      };
+
+      const renderLabelField = (label: string, value: string, labelWidth = 60) => {
+        doc.setFont("helvetica", "bold");
+        doc.text(label, margin + 4, yPosition);
+        doc.setFont("helvetica", "normal");
+        const lines = doc.splitTextToSize(value || "-", contentWidth - labelWidth - 10);
+        const finalY = drawWrappedLines(lines, margin + labelWidth, yPosition, labelLineHeight);
+        yPosition = finalY + 2;
+      };
+
+      normalizedDevices.forEach((device, idx) => {
+        const boxPadding = 4;
+        const boxStartY = yPosition;
+
+        // Encabezado centrado del equipo
+        doc.setFillColor(242, 242, 242);
+        doc.rect(margin, yPosition, contentWidth, 11, "F");
+        doc.setDrawColor(180, 180, 180);
+        doc.rect(margin, yPosition, contentWidth, 11, "S");
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        const deviceTitle = `DISPOSITIVO ${device.index}`;
+        const deviceTitleWidth = doc.getTextWidth(deviceTitle);
+        doc.text(deviceTitle, margin + (contentWidth - deviceTitleWidth) / 2, yPosition + 7);
+        yPosition += 16;
+
+        // Información principal del equipo
+        doc.setFontSize(8);
+        renderLabelField("Modelo:", device.device_model || "Sin modelo");
+        if (device.device_serial_number) {
+          renderLabelField("IMEI/Serie:", device.device_serial_number, 64);
+        }
+        if (device.device_unlock_code) {
+          renderLabelField("Passcode:", device.device_unlock_code);
+        } else if (device.device_unlock_pattern && Array.isArray(device.device_unlock_pattern)) {
+          renderLabelField("Patrón:", device.device_unlock_pattern.join(""));
+        }
+        if (device.problem_description) {
+          renderLabelField("Problema:", device.problem_description, 62);
+        }
+
+        // Servicios por equipo
+        doc.setFont("helvetica", "bold");
+        doc.text("Servicios:", margin + 4, yPosition);
+        yPosition += 6;
+        doc.setFont("helvetica", "normal");
+        if (device.selected_services.length > 0) {
+          device.selected_services.forEach((service) => {
+            const serviceText = `• ${service.name}${service.quantity > 1 ? ` x${service.quantity}` : ""}`;
+            const serviceLines = doc.splitTextToSize(serviceText, contentWidth - 12);
+            const finalServiceY = drawWrappedLines(serviceLines, margin + 8, yPosition, serviceLineHeight);
+            yPosition = finalServiceY + 1;
+          });
+        } else {
+          doc.text("• Sin servicios registrados", margin + 8, yPosition);
+          yPosition += serviceLineHeight + 1;
+        }
+
+        // Borde completo del bloque usando la altura real consumida
+        const blockHeight = Math.max(18, yPosition - boxStartY + boxPadding);
+        doc.setDrawColor(180, 180, 180);
+        doc.rect(margin, boxStartY, contentWidth, blockHeight, "S");
+        yPosition = boxStartY + blockHeight + 5;
+
+        // Separación visual entre equipos
+        if (idx < normalizedDevices.length - 1) {
+          doc.setDrawColor(210, 210, 210);
+          doc.line(margin + 6, yPosition, pageWidth - margin - 6, yPosition);
+          yPosition += 5;
+        }
       });
-      
-      // Actualizar yPosition basándose en todas las líneas dibujadas
-      yPosition = currentProblemY + 8;
 
       // Local asignado
       if (orderForPDF.sucursal?.name) {
