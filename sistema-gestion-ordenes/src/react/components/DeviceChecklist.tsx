@@ -15,6 +15,27 @@ const DEFAULT_STATUS_OPTIONS = [
   { value: "no_probado", label: "✗ No probado" },
 ];
 
+const STATUS_STYLES: Record<string, string> = {
+  ok: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+  funcionando: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100",
+  damaged: "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
+  dañado: "border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100",
+  replaced: "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100",
+  reparado: "border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100",
+  entregado: "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100",
+  no_probado: "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+  "no probado": "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100",
+};
+
+function getStatusButtonClass(value: string, selected: boolean): string {
+  const normalized = value.toLowerCase();
+  const base =
+    "min-h-[48px] rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-brand-light/40";
+  const tone = STATUS_STYLES[normalized] || "border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
+  const active = selected ? "ring-2 ring-brand-light shadow-sm scale-[1.01]" : "";
+  return `${base} ${tone} ${active}`.trim();
+}
+
 function formatStatusLabel(value: string): string {
   return value
     .replace(/_/g, " ")
@@ -170,48 +191,66 @@ export default function DeviceChecklist({
   }
 
   return (
-    <div className="border border-slate-200 rounded-md p-4">
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">Checklist de Verificación *</h3>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <h3 className="mb-4 text-lg font-semibold text-slate-900 md:text-xl">Checklist de Verificación *</h3>
       
       {items.length === 0 && customItems.length === 0 && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-          <p className="text-sm text-yellow-800 mb-2">
+        <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3">
+          <p className="mb-2 text-sm text-yellow-800">
             No hay checklist configurado para este tipo de dispositivo. Puedes crear items personalizados abajo.
           </p>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2">
         {allItems.map((itemName) => {
           const isCustom = customItems.includes(itemName) && !items.some(item => item.item_name === itemName);
+          const selectedValue = checklistData[itemName] || "";
+          const statusOptions = getStatusOptionsForItem(itemName);
           return (
-            <div key={itemName} className="flex items-center justify-between p-3 bg-slate-50 rounded">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-sm font-medium text-slate-700">{itemName}</span>
+            <div
+              key={itemName}
+              className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+            >
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-base font-semibold text-slate-800">{itemName}</span>
+                  {selectedValue && (
+                    <span className="rounded-full border border-brand-light/30 bg-brand-light/10 px-2 py-0.5 text-[11px] font-semibold text-brand-dark">
+                      {formatStatusLabel(selectedValue)}
+                    </span>
+                  )}
+                </div>
                 {isCustom && (
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Personalizado</span>
+                  <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">Personalizado</span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  className="border border-slate-300 rounded-md px-2 py-1 text-sm"
-                  value={checklistData[itemName] || ""}
-                  onChange={(e) =>
-                    handleItemChange(itemName, e.target.value)
-                  }
-                  required
-                >
-                  <option value="">Seleccionar</option>
-                  {getStatusOptionsForItem(itemName).map((statusOption) => (
-                    <option key={statusOption.value} value={statusOption.value}>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                {statusOptions.map((statusOption) => {
+                  const isSelected = selectedValue === statusOption.value;
+                  return (
+                    <button
+                      key={statusOption.value}
+                      type="button"
+                      className={getStatusButtonClass(statusOption.value, isSelected)}
+                      aria-pressed={isSelected}
+                      onClick={() => handleItemChange(itemName, statusOption.value)}
+                    >
                       {statusOption.label}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-xs text-slate-500">
+                  {selectedValue ? "Toca otro estado para cambiar rápido." : "Selecciona un estado."}
+                </span>
                 {isCustom && (
                   <button
                     onClick={() => handleRemoveCustomItem(itemName)}
-                    className="px-2 py-1 bg-red-500 text-white rounded text-xs hover:bg-red-600"
+                    className="rounded-md bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600"
                     type="button"
                   >
                     ✕
@@ -224,13 +263,13 @@ export default function DeviceChecklist({
       </div>
 
       {/* Agregar item personalizado */}
-      <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200">
+      <div className="mt-4 flex gap-2 border-t border-slate-200 pt-4">
         <input
           type="text"
           value={newCustomItemName}
           onChange={(e) => setNewCustomItemName(e.target.value)}
           placeholder="Nombre del nuevo item..."
-          className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm"
+          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleAddCustomItem();
@@ -240,15 +279,15 @@ export default function DeviceChecklist({
         <button
           onClick={handleAddCustomItem}
           type="button"
-          className="px-4 py-2 bg-brand-light text-white rounded-md hover:bg-brand-dark text-sm"
+          className="rounded-xl bg-brand-light px-4 py-2 text-sm text-white hover:bg-brand-dark"
         >
           + Agregar Item
         </button>
       </div>
 
       {/* Estados personalizados */}
-      <div className="mt-4 pt-4 border-t border-slate-200">
-        <p className="text-sm font-medium text-slate-700 mb-2">
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        <p className="mb-2 text-sm font-medium text-slate-700">
           Estados personalizados para checklist de <span className="font-semibold">{deviceType}</span>
         </p>
         <div className="flex gap-2">
@@ -257,7 +296,7 @@ export default function DeviceChecklist({
             value={newCustomStatus}
             onChange={(e) => setNewCustomStatus(e.target.value)}
             placeholder="Ej: Chip entregado"
-            className="flex-1 border border-slate-300 rounded-md px-3 py-2 text-sm"
+            className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -268,7 +307,7 @@ export default function DeviceChecklist({
           <button
             onClick={handleAddCustomStatus}
             type="button"
-            className="px-4 py-2 bg-slate-700 text-white rounded-md hover:bg-slate-800 text-sm"
+            className="rounded-xl bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-800"
           >
             + Agregar Estado
           </button>
