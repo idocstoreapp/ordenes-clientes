@@ -8,6 +8,8 @@ interface ServiceQuickPickerProps {
 }
 
 const fallbackServices = [
+  "Cambio de mica",
+  "Soldadura",
   "Cambio de pantalla",
   "Cambio de batería",
   "Cambio de pin de carga",
@@ -84,9 +86,9 @@ export default function ServiceQuickPicker({ value, onChange, required = false }
   }, [servicePool, value]);
 
   return (
-    <div className="space-y-3" ref={wrapperRef}>
+    <div className="space-y-3 rounded-md border border-slate-200 p-3 bg-slate-50/60" ref={wrapperRef}>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Servicios más usados</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Servicios más usados (toque rápido)</p>
         <div className="flex flex-wrap gap-2">
           {quickButtons.map((service) => (
             <button
@@ -160,7 +162,14 @@ export default function ServiceQuickPicker({ value, onChange, required = false }
             ))}
           </div>
         )}
+
+
+        {value.trim().length >= 2 && filteredSuggestions.length === 0 && (
+          <p className="text-xs text-slate-500 mt-2">Sin coincidencias exactas. Puedes guardar el texto tal como lo escribiste.</p>
+        )}
       </div>
+
+      <p className="text-xs text-slate-500">Tip: con 2 letras aparecen coincidencias (ej: "pa" → pantalla).</p>
     </div>
   );
 }

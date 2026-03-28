@@ -269,7 +269,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           />
         </div>
         
-        <div>
+        <div className="col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">Equipo (Marca y Modelo) *</label>
           <DeviceWizardPicker
             value={device}
@@ -277,11 +277,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             required
           />
           <p className="text-xs text-slate-500 mt-1">
-            Flujo rápido: tipo → marca → modelo. También puedes escribir manualmente si no aparece en la lista.
+            Ahora sí: selecciona tipo, marca, modelo y versión con toques rápidos. Si no existe, puedes escribir manualmente.
           </p>
         </div>
         
-        <div>
+        <div className="col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">Servicio realizado *</label>
           <ServiceQuickPicker
             value={service}

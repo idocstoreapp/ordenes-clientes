@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { deviceDatabase, getSmartSuggestions, type DeviceCategory } from "@/lib/deviceDatabase";
+import { useMemo, useState } from "react";
+import { deviceDatabase } from "@/lib/deviceDatabase";
 
 type DeviceType = "Celular" | "Tablet" | "Notebook" | "Smartwatch" | "Otro";
 
@@ -20,38 +20,11 @@ const typeByBrand: Record<string, DeviceType> = {
   "Apple Watch": "Smartwatch",
 };
 
-const typeAliases: Record<DeviceType, string[]> = {
-  Celular: ["celular", "telefono", "phone", "movil"],
-  Tablet: ["tablet", "ipad"],
-  Notebook: ["notebook", "laptop", "macbook", "pc"],
-  Smartwatch: ["smartwatch", "watch", "reloj"],
-  Otro: ["otro"],
-};
-
-function normalize(text: string) {
-  return text.toLowerCase().trim();
+function dedupe(values: string[]) {
+  return [...new Set(values)];
 }
 
-function guessTypeFromValue(value: string): DeviceType | null {
-  const normalized = normalize(value);
-  if (!normalized) return null;
-
-  const matchedBrand = deviceDatabase.find((cat) =>
-    normalized.startsWith(cat.brand.toLowerCase())
-  );
-
-  if (matchedBrand && typeByBrand[matchedBrand.brand]) {
-    return typeByBrand[matchedBrand.brand];
-  }
-
-  const byAlias = typeOrder.find((type) =>
-    typeAliases[type].some((alias) => normalized.includes(alias))
-  );
-
-  return byAlias ?? null;
-}
-
-function getBrandsForType(type: DeviceType): DeviceCategory[] {
+function getBrandsForType(type: DeviceType) {
   if (type === "Otro") return deviceDatabase;
   return deviceDatabase.filter((category) => typeByBrand[category.brand] === type);
 }
@@ -59,16 +32,7 @@ function getBrandsForType(type: DeviceType): DeviceCategory[] {
 export default function DeviceWizardPicker({ value, onChange, required = false }: DeviceWizardPickerProps) {
   const [selectedType, setSelectedType] = useState<DeviceType | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
-
-  const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionBoxRef = useRef<HTMLDivElement>(null);
-
-  const suggestions = useMemo(() => {
-    if (value.trim().length < 1) return [];
-    return getSmartSuggestions(value);
-  }, [value]);
+  const [selectedBase, setSelectedBase] = useState<string | null>(null);
 
   const availableBrands = useMemo(() => {
     if (!selectedType) return [];
@@ -76,80 +40,57 @@ export default function DeviceWizardPicker({ value, onChange, required = false }
   }, [selectedType]);
 
   const selectedBrandData = useMemo(
-    () => deviceDatabase.find((category) => category.brand === selectedBrand) ?? null,
-    [selectedBrand]
+    () => availableBrands.find((brand) => brand.brand === selectedBrand) ?? null,
+    [availableBrands, selectedBrand]
   );
 
-  const quickModels = useMemo(() => {
+  const baseModels = useMemo(() => {
     if (!selectedBrandData) return [];
-
-    return selectedBrandData.models
-      .flatMap((model) => {
-        const base = `${selectedBrandData.brand} ${model.base}`.trim();
-        const variants = model.variants.filter(Boolean);
-        if (variants.length === 0) return [base];
-        return [base, ...variants.map((variant) => `${base} ${variant}`.trim())];
-      })
-      .slice(0, 24);
+    return dedupe(selectedBrandData.models.map((model) => model.base));
   }, [selectedBrandData]);
 
-  useEffect(() => {
-    const guessedType = guessTypeFromValue(value);
-    if (guessedType) {
-      setSelectedType(guessedType);
-    }
+  const variantsForBase = useMemo(() => {
+    if (!selectedBrandData || !selectedBase) return [];
+    const model = selectedBrandData.models.find((item) => item.base === selectedBase);
+    if (!model) return [];
 
-    const normalized = normalize(value);
-    const brand = deviceDatabase.find((category) => normalized.startsWith(category.brand.toLowerCase()));
-    setSelectedBrand(brand?.brand ?? null);
-  }, [value]);
+    const fullBase = `${selectedBrandData.brand} ${model.base}`.trim();
+    const variantValues = model.variants.filter((variant) => variant.trim().length > 0);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        suggestionBoxRef.current &&
-        !suggestionBoxRef.current.contains(event.target as Node) &&
-        inputRef.current &&
-        !inputRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
-      }
-    }
+    return [fullBase, ...variantValues.map((variant) => `${fullBase} ${variant}`.trim())];
+  }, [selectedBrandData, selectedBase]);
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleTypeClick = (type: DeviceType) => {
-    setSelectedType(type);
-    setSelectedBrand(null);
-    if (value.trim() === "") {
-      onChange(type === "Otro" ? "" : "");
-    }
-  };
-
-  const handleBrandClick = (brand: string) => {
-    setSelectedBrand(brand);
-    onChange(brand);
-    inputRef.current?.focus();
-  };
-
-  const handleModelClick = (model: string) => {
-    onChange(model);
-    setShowSuggestions(false);
-    inputRef.current?.focus();
-  };
+  const topQuickDevices = useMemo(
+    () => [
+      "iPhone 11",
+      "iPhone 12",
+      "iPhone 12 Pro",
+      "iPhone 13",
+      "iPhone 13 Pro Max",
+      "Samsung Galaxy A54",
+      "Samsung Galaxy S24 Ultra",
+      "Huawei P60 Pro",
+      "MacBook Air M2 13\"",
+      "iPad Air M2",
+      "Apple Watch Series 9 45mm",
+    ],
+    []
+  );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 rounded-md border border-slate-200 p-3 bg-slate-50/60">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">1) Tipo de equipo</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Wizard rápido</p>
         <div className="flex flex-wrap gap-2">
           {typeOrder.map((type) => (
             <button
               key={type}
               type="button"
-              onClick={() => handleTypeClick(type)}
+              onClick={() => {
+                setSelectedType(type);
+                setSelectedBrand(null);
+                setSelectedBase(null);
+              }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
                 selectedType === type
                   ? "bg-brand text-white border-brand"
@@ -164,96 +105,106 @@ export default function DeviceWizardPicker({ value, onChange, required = false }
 
       {selectedType && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">2) Marca</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Marca</p>
           <div className="flex flex-wrap gap-2">
-            {availableBrands.map((category) => (
+            {availableBrands.map((brand) => (
               <button
-                key={category.brand}
+                key={brand.brand}
                 type="button"
-                onClick={() => handleBrandClick(category.brand)}
+                onClick={() => {
+                  setSelectedBrand(brand.brand);
+                  setSelectedBase(null);
+                  onChange(brand.brand);
+                }}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                  selectedBrand === category.brand
+                  selectedBrand === brand.brand
                     ? "bg-brand text-white border-brand"
                     : "bg-white text-slate-700 border-slate-300 hover:border-brand hover:text-brand"
                 }`}
               >
-                {category.brand}
+                {brand.brand}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {selectedBrand && quickModels.length > 0 && (
+      {selectedBrand && baseModels.length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">3) Modelo sugerido</p>
-          <div className="flex flex-wrap gap-2 max-h-36 overflow-auto pr-1">
-            {quickModels.map((model) => (
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Modelo</p>
+          <div className="flex flex-wrap gap-2 max-h-32 overflow-auto pr-1">
+            {baseModels.map((base) => (
               <button
-                key={model}
+                key={base}
                 type="button"
-                onClick={() => handleModelClick(model)}
-                className="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-300 text-slate-700 bg-white hover:border-brand hover:text-brand"
+                onClick={() => {
+                  setSelectedBase(base);
+                  onChange(`${selectedBrand} ${base}`.trim());
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                  selectedBase === base
+                    ? "bg-brand text-white border-brand"
+                    : "bg-white text-slate-700 border-slate-300 hover:border-brand hover:text-brand"
+                }`}
               >
-                {model}
+                {base}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      <div className="relative">
+      {selectedBase && variantsForBase.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Versión</p>
+          <div className="flex flex-wrap gap-2 max-h-32 overflow-auto pr-1">
+            {variantsForBase.map((variant) => (
+              <button
+                key={variant}
+                type="button"
+                onClick={() => onChange(variant)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  value === variant
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-white text-slate-700 border-slate-300 hover:border-emerald-500 hover:text-emerald-700"
+                }`}
+              >
+                {variant.replace(`${selectedBrand} `, "")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Equipos rápidos</p>
+        <div className="flex flex-wrap gap-2">
+          {topQuickDevices.map((device) => (
+            <button
+              key={device}
+              type="button"
+              onClick={() => onChange(device)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:border-brand hover:text-brand"
+            >
+              {device}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+          O escribir manualmente
+        </label>
         <input
-          ref={inputRef}
           type="text"
           value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            setShowSuggestions(e.target.value.trim().length > 0);
-            setSelectedSuggestionIndex(-1);
-          }}
-          onFocus={() => setShowSuggestions(suggestions.length > 0)}
-          onKeyDown={(e) => {
-            if (!showSuggestions || suggestions.length === 0) return;
-            if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setSelectedSuggestionIndex((prev) => Math.min(prev + 1, suggestions.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setSelectedSuggestionIndex((prev) => Math.max(prev - 1, 0));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              const pick = selectedSuggestionIndex >= 0 ? suggestions[selectedSuggestionIndex] : suggestions[0];
-              handleModelClick(pick);
-            } else if (e.key === "Escape") {
-              setShowSuggestions(false);
-            }
-          }}
-          placeholder="Escribe o toca un modelo (ej: Samsung Galaxy A54)"
-          className="w-full border border-slate-300 rounded-md px-3 py-2"
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Ej: iPhone 12 Pro Max"
+          className="w-full border border-slate-300 rounded-md px-3 py-2 bg-white"
           required={required}
           autoComplete="off"
         />
-
-        {showSuggestions && suggestions.length > 0 && (
-          <div
-            ref={suggestionBoxRef}
-            className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-md shadow-lg max-h-56 overflow-auto"
-          >
-            {suggestions.map((suggestion, index) => (
-              <button
-                type="button"
-                key={suggestion}
-                onClick={() => handleModelClick(suggestion)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-brand/10 ${
-                  index === selectedSuggestionIndex ? "bg-brand/20" : ""
-                }`}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
