@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Service } from "@/types";
+import { getRecommendedServices } from "@/lib/deviceWizardData";
 
 interface ServiceSelectorProps {
   selectedServices: Service[];
   onServicesChange: (services: Service[]) => void;
+  deviceType?: string | null;
+  deviceModel?: string;
 }
 
-export default function ServiceSelector({ selectedServices, onServicesChange }: ServiceSelectorProps) {
+export default function ServiceSelector({ selectedServices, onServicesChange, deviceType = null, deviceModel = "" }: ServiceSelectorProps) {
   const [availableServices, setAvailableServices] = useState<Service[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showResults, setShowResults] = useState(false);
@@ -42,6 +45,11 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
       service.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
       !selectedServices.find((s) => s.id === service.id)
   );
+  const recommendedServices = getRecommendedServices(availableServices, {
+    deviceType,
+    deviceModel,
+    selectedServiceIds: selectedServices.map((service) => service.id),
+  });
 
   function handleServiceSelect(service: Service) {
     // Validar que el servicio no esté ya en la lista (protección contra duplicados)
@@ -151,6 +159,24 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
         </button>
       </div>
 
+      {recommendedServices.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-slate-600 mb-2">Sugeridos para este equipo</p>
+          <div className="flex flex-wrap gap-2">
+            {recommendedServices.map((service) => (
+              <button
+                key={`recommended-${service.id}`}
+                type="button"
+                onClick={() => handleServiceSelect(service)}
+                className="px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100"
+              >
+                + {service.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showResults && searchTerm && filteredServices.length > 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
           {filteredServices.map((service) => {
@@ -255,6 +281,5 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
     </div>
   );
 }
-
 
 
