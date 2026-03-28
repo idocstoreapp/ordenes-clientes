@@ -1051,70 +1051,102 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             </div>
 
             <p className="text-xs text-slate-600 mb-2">2) Marca más usada</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {getWizardOptionsForDevice(device).map((brand) => {
-                const isBrandSelected = selectedBrandByDevice[device.id] === brand.key;
-                return (
+            {!device.deviceType && (
+              <p className="text-xs text-slate-500 mb-4">Selecciona primero el tipo de dispositivo para mostrar marcas.</p>
+            )}
+            {device.deviceType && !selectedBrandByDevice[device.id] && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {getWizardOptionsForDevice(device).map((brand) => (
                   <button
                     key={`${device.id}-brand-${brand.key}`}
                     type="button"
                     onClick={() => applyBrand(device.id, brand.key)}
-                    className={`px-3 py-1.5 rounded-full border text-sm ${
-                      isBrandSelected
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
+                    className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                   >
                     {brand.icon} {brand.label} <span className="opacity-75">({brand.models.length})</span>
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
+            {device.deviceType && selectedBrandByDevice[device.id] && (
+              <div className="mb-4">
+                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-blue-50 border border-blue-200 text-blue-800 text-sm">
+                  <span>
+                    Marca: <strong>{getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.label}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="text-xs underline"
+                    onClick={() => {
+                      setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
+                      setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
+                    }}
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {selectedBrandByDevice[device.id] && (
               <>
                 <p className="text-xs text-slate-600 mb-2">3) Serie / Línea</p>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => {
-                    const isSeriesSelected = selectedSeriesByDevice[device.id] === series.key;
-                    return (
+                {!selectedSeriesByDevice[device.id] && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => (
                       <button
                         key={`${device.id}-series-${series.key}`}
                         type="button"
                         onClick={() => setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: series.key }))}
-                        className={`px-3 py-1.5 rounded-full border text-sm ${
-                          isSeriesSelected
-                            ? "bg-indigo-600 text-white border-indigo-600"
-                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                        }`}
+                        className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                       >
                         {series.label} <span className="opacity-75">({series.models.length})</span>
                       </button>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
+                {selectedSeriesByDevice[device.id] && (
+                  <div className="mb-4">
+                    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 text-sm">
+                      <span>
+                        Serie: <strong>{getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series.find((series) => series.key === selectedSeriesByDevice[device.id])?.label}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        className="text-xs underline"
+                        onClick={() => setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }))}
+                      >
+                        Cambiar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
-            <p className="text-xs text-slate-600 mb-2">4) Modelo exacto</p>
-            <div className="flex flex-wrap gap-2">
-              {(() => {
-                const brands = getWizardOptionsForDevice(device);
-                const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
-                if (!selectedBrand) return [];
-                const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
-                return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 20);
-              })().map((model) => (
-                <button
-                  key={`${device.id}-model-${model}`}
-                  type="button"
-                  onClick={() => applySuggestedModel(device.id, model)}
-                  className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm hover:bg-slate-100"
-                >
-                  {model}
-                </button>
-              ))}
-            </div>
+            {selectedBrandByDevice[device.id] && selectedSeriesByDevice[device.id] && (
+              <>
+                <p className="text-xs text-slate-600 mb-2">4) Modelo exacto</p>
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const brands = getWizardOptionsForDevice(device);
+                    const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
+                    if (!selectedBrand) return [];
+                    const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
+                    return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 30);
+                  })().map((model) => (
+                    <button
+                      key={`${device.id}-model-${model}`}
+                      type="button"
+                      onClick={() => applySuggestedModel(device.id, model)}
+                      className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                    >
+                      {model}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

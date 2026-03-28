@@ -60,8 +60,36 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeModelKey(value: string): string {
+  return normalizeWhitespace(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9+]/g, "");
+}
+
 function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, "es", { numeric: true, sensitivity: "base" });
+}
+
+function parseNumberInLabel(value: string): number | null {
+  const match = value.match(/(\d{1,3})/);
+  return match ? Number(match[1]) : null;
+}
+
+function sortSeriesByBrand(brandKey: string, a: DeviceSeriesOption, b: DeviceSeriesOption): number {
+  if (brandKey === "apple") {
+    const numA = parseNumberInLabel(a.label);
+    const numB = parseNumberInLabel(b.label);
+    if (numA !== null && numB !== null && numA !== numB) return numA - numB;
+  }
+
+  if (brandKey === "samsung") {
+    const order = ["SERIE S", "SERIE A", "SERIE NOTE", "SERIE Z"];
+    const idxA = order.findIndex((prefix) => a.label.toUpperCase().startsWith(prefix));
+    const idxB = order.findIndex((prefix) => b.label.toUpperCase().startsWith(prefix));
+    if (idxA !== -1 && idxB !== -1 && idxA !== idxB) return idxA - idxB;
+  }
+
+  return b.models.length - a.models.length || naturalSort(a.label, b.label);
 }
 
 function detectBrand(model: string): { key: string; label: string; icon: string } {
@@ -115,7 +143,16 @@ export function buildDeviceWizardOptions(
     ? recentModels.map(normalizeWhitespace)
     : (selectedType ? FALLBACK_MODELS_BY_TYPE[selectedType] ?? [] : Object.values(FALLBACK_MODELS_BY_TYPE).flat());
 
-  const uniqueModels = Array.from(new Set(sourceModels.filter(Boolean)));
+  const uniqueModelsMap = new Map<string, string>();
+  sourceModels.forEach((model) => {
+    const cleaned = normalizeWhitespace(model);
+    if (!cleaned) return;
+    const key = normalizeModelKey(cleaned);
+    if (!uniqueModelsMap.has(key)) {
+      uniqueModelsMap.set(key, cleaned);
+    }
+  });
+  const uniqueModels = Array.from(uniqueModelsMap.values());
   const filteredByType = selectedType
     ? uniqueModels.filter((model) => detectType(model) === selectedType)
     : uniqueModels;
@@ -165,7 +202,7 @@ export function buildDeviceWizardOptions(
       models: [...brand.models].sort(naturalSort),
       series: [...brand.series]
         .map((series) => ({ ...series, models: [...series.models].sort(naturalSort) }))
-        .sort((a, b) => b.models.length - a.models.length || naturalSort(a.label, b.label)),
+        .sort((a, b) => sortSeriesByBrand(brand.key, a, b)),
     }))
     .sort((a, b) => b.models.length - a.models.length || naturalSort(a.label, b.label));
 }
