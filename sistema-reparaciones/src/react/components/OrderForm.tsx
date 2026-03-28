@@ -7,7 +7,8 @@ import { processReceiptInput, isUrl } from "@/lib/receipt";
 // Bsale integration removed - now using manual receipt URL
 import type { PaymentMethod } from "@/lib/commission";
 import type { Supplier } from "@/types";
-import DeviceAutocomplete from "./DeviceAutocomplete";
+import DeviceWizardPicker from "./DeviceWizardPicker";
+import ServiceQuickPicker from "./ServiceQuickPicker";
 
 interface OrderFormProps {
   technicianId: string;
@@ -270,24 +271,21 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Equipo (Marca y Modelo) *</label>
-          <DeviceAutocomplete
+          <DeviceWizardPicker
             value={device}
             onChange={setDevice}
-            placeholder="Ej: iPhone 13 Pro"
             required
           />
           <p className="text-xs text-slate-500 mt-1">
-            Empieza a escribir la marca o modelo para ver sugerencias automáticas (iPhone, Samsung, Huawei, MacBook, iPad, Apple Watch)
+            Flujo rápido: tipo → marca → modelo. También puedes escribir manualmente si no aparece en la lista.
           </p>
         </div>
         
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-1">Servicio realizado *</label>
-          <input
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
-            placeholder="Ej: Cambio de pantalla"
+          <ServiceQuickPicker
             value={service}
-            onChange={(e) => setService(e.target.value)}
+            onChange={setService}
             required
           />
         </div>
