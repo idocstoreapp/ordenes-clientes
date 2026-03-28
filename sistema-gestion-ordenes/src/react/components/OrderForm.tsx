@@ -10,6 +10,7 @@ import ServiceSelector from "./ServiceSelector";
 import PDFPreview from "./PDFPreview";
 import { generatePDFBlob } from "@/lib/generate-pdf-blob";
 import { uploadPDFToStorage } from "@/lib/upload-pdf";
+import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions } from "@/lib/deviceWizardData";
 
 interface OrderFormProps {
   technicianId: string;
@@ -78,6 +79,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [showPatternDrawer, setShowPatternDrawer] = useState<{ deviceId: string } | null>(null);
   const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
   const [recentDeviceModels, setRecentDeviceModels] = useState<string[]>([]);
+  const [selectedBrandByDevice, setSelectedBrandByDevice] = useState<Record<string, string | null>>({});
+  const [selectedSeriesByDevice, setSelectedSeriesByDevice] = useState<Record<string, string | null>>({});
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
@@ -123,6 +126,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return;
     }
     setDevices(devices.filter(device => device.id !== deviceId));
+  };
+
+  const applyDeviceType = (deviceId: string, type: DeviceType) => {
+    updateDevice(deviceId, { deviceType: type });
+    setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+  };
+
+  const applyBrand = (deviceId: string, brandId: string) => {
+    setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
+    setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
   };
 
   // Cargar tipos de dispositivo personalizados (ej. Samsung) desde la configuración de checklists
@@ -220,6 +234,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       deviceModel: model,
       deviceType: detectedType,
     });
+  };
+
+  const getWizardOptionsForDevice = (device: DeviceItem) => {
+    const detectType = (model: string) => detectDeviceTypeWithCustom(model, customDeviceTypes);
+    return buildDeviceWizardOptions(recentDeviceModels, detectType, device.deviceType);
   };
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
@@ -1007,6 +1026,97 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           </div>
 
           {/* Información del Dispositivo */}
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
+            <p className="text-xs text-slate-600 mb-3">1) Tipo de dispositivo</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+              {DEVICE_TYPE_OPTIONS.map((option) => {
+                const isSelected = device.deviceType === option.id;
+                return (
+                  <button
+                    key={`${device.id}-${option.id}`}
+                    type="button"
+                    onClick={() => applyDeviceType(device.id, option.id)}
+                    className={`text-left rounded-md border p-3 transition-colors ${
+                      isSelected
+                        ? "border-brand-light bg-blue-50"
+                        : "border-slate-200 hover:border-brand-light hover:bg-slate-50"
+                    }`}
+                  >
+                    <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
+                    <p className="text-xs text-slate-600 mt-1">{option.description}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-xs text-slate-600 mb-2">2) Marca más usada</p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {getWizardOptionsForDevice(device).map((brand) => {
+                const isBrandSelected = selectedBrandByDevice[device.id] === brand.key;
+                return (
+                  <button
+                    key={`${device.id}-brand-${brand.key}`}
+                    type="button"
+                    onClick={() => applyBrand(device.id, brand.key)}
+                    className={`px-3 py-1.5 rounded-full border text-sm ${
+                      isBrandSelected
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {brand.icon} {brand.label} <span className="opacity-75">({brand.models.length})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedBrandByDevice[device.id] && (
+              <>
+                <p className="text-xs text-slate-600 mb-2">3) Serie / Línea</p>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => {
+                    const isSeriesSelected = selectedSeriesByDevice[device.id] === series.key;
+                    return (
+                      <button
+                        key={`${device.id}-series-${series.key}`}
+                        type="button"
+                        onClick={() => setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: series.key }))}
+                        className={`px-3 py-1.5 rounded-full border text-sm ${
+                          isSeriesSelected
+                            ? "bg-indigo-600 text-white border-indigo-600"
+                            : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {series.label} <span className="opacity-75">({series.models.length})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <p className="text-xs text-slate-600 mb-2">4) Modelo exacto</p>
+            <div className="flex flex-wrap gap-2">
+              {(() => {
+                const brands = getWizardOptionsForDevice(device);
+                const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
+                if (!selectedBrand) return [];
+                const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
+                return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 20);
+              })().map((model) => (
+                <button
+                  key={`${device.id}-model-${model}`}
+                  type="button"
+                  onClick={() => applySuggestedModel(device.id, model)}
+                  className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                >
+                  {model}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1019,11 +1129,15 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             placeholder="Ej: iPhone 13 Pro Max"
             value={device.deviceModel}
             onChange={(e) =>
-              updateDevice(device.id, {
-                deviceModel: e.target.value,
-                // Evita cambios bruscos: no activar checklist automáticamente mientras escribe
-                deviceType: null,
-              })
+              {
+                updateDevice(device.id, {
+                  deviceModel: e.target.value,
+                  // Evita cambios bruscos: no activar checklist automáticamente mientras escribe
+                  deviceType: null,
+                });
+                setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
+                setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
+              }
             }
             onFocus={() => {
               if (deviceSuggestions[device.id]?.length > 0) {
@@ -1311,6 +1425,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             </label>
             <ServiceSelector
               selectedServices={device.selectedServices}
+              deviceType={device.deviceType}
+              deviceModel={device.deviceModel}
               onServicesChange={(services) => {
                 console.log(`[OrderForm] onServicesChange llamado para equipo ${device.id}:`, {
                   servicios_anteriores: device.selectedServices.length,
