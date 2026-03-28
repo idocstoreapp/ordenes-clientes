@@ -81,6 +81,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 
+  const problemDescriptionTemplates = [
+    "No se pueden probar funciones; pantalla trizada; ingresa apagado; batería no carga.",
+    "Cambio de batería certificado; ingresa apagado; se prueban funciones al finalizar.",
+    "Pantalla rota en negro; no se prueban funciones; detalles de uso presentes.",
+    "Ingresa encendido, tiene virus; cliente paga en efectivo.",
+    "Cambio de pantalla, probaremos funciones al finalizar; 30 días de garantía por defectos.",
+  ];
+
   // Función helper para calcular el total de servicios de un equipo
   const getDeviceServiceTotal = (device: DeviceItem): number => {
     return device.selectedServices.reduce((sum, service) => {
@@ -1262,6 +1270,25 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
             />
           )}
+
+          {/* Plantillas de descripción rápidas */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Plantillas de Descripción (tocar para completar)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {problemDescriptionTemplates.map((template) => (
+                <button
+                  key={template}
+                  type="button"
+                  onClick={() => updateDevice(device.id, { problemDescription: template })}
+                  className="text-left text-xs border border-slate-300 rounded-md px-2 py-2 hover:bg-slate-100"
+                >
+                  {template}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Descripción del Problema */}
           <div>

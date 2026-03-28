@@ -134,6 +134,21 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   const rawPattern = order.device_unlock_pattern as unknown;
   let patternArray: number[] = [];
 
+  const parseDevicesData = (value: any): AdditionalDeviceData[] => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {
+        console.warn("[OrderDetail] devices_data no parseable:", value);
+      }
+    }
+    return [];
+  };
+
+  const additionalDevices: AdditionalDeviceData[] = parseDevicesData((order as any).devices_data);
+
   if (Array.isArray(rawPattern)) {
     patternArray = rawPattern
       .map((item) => Number(item))
@@ -155,9 +170,6 @@ export default function OrderDetail({ orderId, onClose }: OrderDetailProps) {
   }
 
   const hasUnlockPattern = patternArray.length > 0;
-  const additionalDevices: AdditionalDeviceData[] = Array.isArray((order as any).devices_data)
-    ? ((order as any).devices_data as AdditionalDeviceData[])
-    : [];
   const allDevices = [
     {
       label: "Equipo 1 (Principal)",

@@ -65,7 +65,7 @@ export async function generatePDFBlob(
   const settings = await getSystemSettings(true);
 
   // Color de las franjas (gris claro para ahorrar tinta)
-  const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
+  const stripeColor: [number, number, number] = [245, 245, 245]; // Gris claro
   const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
 
   // Generar QR Code
@@ -336,6 +336,22 @@ export async function generatePDFBlob(
   // === RECOPILAR TODOS LOS EQUIPOS ===
   // El primer equipo es el principal (orden principal)
   // Los equipos adicionales están en devices_data (JSONB) o all_devices (pasado desde OrderForm)
+  const parsePossibleJsonArray = (value: any) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_error) {
+        console.warn("[PDF] Valor no es JSON válido para devices_data/all_devices:", value);
+      }
+    }
+    return [];
+  };
+
+  const orderAllDevices = parsePossibleJsonArray((order as any).all_devices);
+  const devicesData = parsePossibleJsonArray((order as any).devices_data);
+
   const allDevices: Array<{
     index: number;
     device_type: string;
@@ -351,10 +367,10 @@ export async function generatePDFBlob(
   }> = [];
 
   // Agregar el primer equipo (equipo principal de la orden)
-  // Si all_devices ya incluye el primer equipo, usarlo directamente; sino construirlo
-  if ((order as any).all_devices && Array.isArray((order as any).all_devices) && (order as any).all_devices.length > 0) {
+  // Si orderAllDevices ya incluye el primer equipo, usarlo directamente; sino construirlo
+  if (orderAllDevices.length > 0) {
     // Si viene desde OrderForm o OrdersTable con all_devices, usar el primer elemento
-    const firstDeviceData = (order as any).all_devices[0];
+    const firstDeviceData = orderAllDevices[0];
     allDevices.push({
       index: 1,
       device_type: firstDeviceData.device_type || order.device_type || "iphone",
@@ -421,12 +437,11 @@ export async function generatePDFBlob(
   }
 
   // Agregar equipos adicionales si existen
-  // IMPORTANTE: Si ya usamos all_devices para el primer equipo, usar all_devices para los adicionales también
-  if ((order as any).all_devices && Array.isArray((order as any).all_devices) && (order as any).all_devices.length > 1) {
-    // Si viene desde OrderForm o OrdersTable con all_devices, usar los elementos adicionales
-    ((order as any).all_devices as any[]).slice(1).forEach((device: any, idx: number) => {
+  // IMPORTANTE: Si ya usamos orderAllDevices para el primer equipo, usar orderAllDevices para los adicionales también
+  if (orderAllDevices.length > 1) {
+    orderAllDevices.slice(1).forEach((device: any, idx: number) => {
       allDevices.push({
-        index: idx + 2,
+        index: device.index || idx + 2,
         device_type: device.device_type || "iphone",
         device_model: device.device_model || "",
         device_serial_number: device.device_serial_number || null,
@@ -439,9 +454,9 @@ export async function generatePDFBlob(
         selected_services: device.selected_services || [],
       });
     });
-  } else if ((order as any).devices_data && Array.isArray((order as any).devices_data)) {
-    // Si no hay all_devices pero sí devices_data (desde la base de datos con JSONB)
-    ((order as any).devices_data as any[]).forEach((device: any, idx: number) => {
+  } else if (devicesData.length > 0) {
+    // Si no hay orderAllDevices pero sí devicesData (desde la base de datos con JSONB o string JSON)
+    devicesData.forEach((device: any, idx: number) => {
       allDevices.push({
         index: idx + 2,
         device_type: device.device_type || "iphone",
@@ -496,8 +511,8 @@ export async function generatePDFBlob(
   // Reducir margen para dar más espacio a los equipos
   const maxEquipmentPanelHeight = Math.max(120, pageHeight - equipmentPanelStartY - totalSpaceNeeded - 3); // Reducido margen
   
-  // Altura estimada inicial del panel (será ajustada dinámicamente)
-  const estimatedPanelHeight = Math.min(300, maxEquipmentPanelHeight);
+  // Altura inicial del panel: permitir hasta el fin de la página para evitar recortes.
+  const estimatedPanelHeight = maxEquipmentPanelHeight;
   
   doc.setFillColor(250, 250, 250);
   doc.rect(margin, yPosition, contentWidth, estimatedPanelHeight, "F");
@@ -601,29 +616,13 @@ export async function generatePDFBlob(
     // Dividir el texto en líneas que quepan en el ancho de la columna
   const descriptionColWidth = colWidths[2] - 6;
   
-    // Calcular altura disponible para este equipo
-    const maxHeightForThisDevice = availableHeightPerDevice;
-    const maxDescriptionHeightForDevice = Math.max(10, maxHeightForThisDevice - (modelLines.length * 4));
-    
-    // Dividir la descripción en líneas con límite de altura
+    // Dividir la descripción en líneas que quepan en la columna, sin recortes arbitrarios
     doc.setFontSize(adaptiveFontSize);
-  let descriptionLines = doc.splitTextToSize(deviceDescription || "-", descriptionColWidth);
-  
-    // Calcular interlineado adaptativo
-    const baseLineSpacing = adaptiveFontSize * 0.45;
-    let descLineSpacing = baseLineSpacing;
-    
-  if (descriptionLines.length > 0) {
-      const requiredHeight = descriptionLines.length * descLineSpacing;
-      if (requiredHeight > maxDescriptionHeightForDevice) {
-        descLineSpacing = Math.max(adaptiveFontSize * 0.35, maxDescriptionHeightForDevice / descriptionLines.length);
-        const maxLines = Math.floor(maxDescriptionHeightForDevice / descLineSpacing);
-        if (descriptionLines.length > maxLines) {
-          descriptionLines = descriptionLines.slice(0, maxLines);
-          descriptionLines[descriptionLines.length - 1] += "...";
-        }
-      }
-    }
+    const descriptionLines = doc.splitTextToSize(deviceDescription || "-", descriptionColWidth);
+
+    // Interlineado robusto y consistente
+    const descLineSpacing = Math.max(adaptiveFontSize * 0.35, adaptiveFontSize * 0.45);
+
     
     // Dibujar modelo (izquierda)
     doc.setFontSize(adaptiveFontSize);
@@ -682,14 +681,14 @@ export async function generatePDFBlob(
     // SIEMPRE mostrar los servicios si existen, sin restricciones de espacio
     if (deviceServices.length > 0) {
       doc.setFontSize(adaptiveFontSize);
-      const serviceLineSpacing = adaptiveFontSize * 0.25; // Reducido de 0.5 a 0.25
+      const serviceLineSpacing = Math.max(4, adaptiveFontSize * 0.4); // Mantener línea legible y evitar solapamiento
       
       // Mostrar título "Servicios a realizar" antes de los servicios
       doc.setFontSize(6);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(0, 0, 0);
       doc.text(`Servicios a realizar - Equipo ${device.index}:`, margin + 3, yPosition);
-      yPosition += 3; // Reducido de 6 a 3
+      yPosition += 4; // Ajuste mínimo para separar del primer servicio
       
       deviceServices.forEach((serviceItem: any) => {
     colX = margin + 3;

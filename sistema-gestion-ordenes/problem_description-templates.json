@@ -1,0 +1,160 @@
+{
+  "generatedAt": "2026-03-28T15:52:40.401Z",
+  "totalUnique": 2074,
+  "totalRecords": 2223,
+  "top20MostFrequent": [
+    {
+      "problem_description": "equipo ingresa por cambio de pantalla, probaremos funciones al finalizar",
+      "count": 68
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de bateria, probaremos funciones al finalizar",
+      "count": 26
+    },
+    {
+      "problem_description": "equipo con detalles de uso, ingresa para cambio de bateria, no se pudieron probar funciones, 30 dias de garantia solo por defecto de fabrica",
+      "count": 9
+    },
+    {
+      "problem_description": "equipo con detalles de uso, ingresa para cambio de bateria, se probaron las funciones, 30 dias de garantia solo por defecto de fabrica",
+      "count": 6
+    },
+    {
+      "problem_description": "equipo con detalles de uso, ingresa para cambio de pantalla, no se pudieron probar funciones, 30 dias de garantia solo por defecto de fabrica",
+      "count": 5
+    },
+    {
+      "problem_description": "prueba",
+      "count": 4
+    },
+    {
+      "problem_description": "equipo ingresa por limpieza de virus",
+      "count": 4
+    },
+    {
+      "problem_description": "cambio de bateria",
+      "count": 4
+    },
+    {
+      "problem_description": "no se pueden probar funciones pantalla en negro.",
+      "count": 3
+    },
+    {
+      "problem_description": "revision",
+      "count": 3
+    },
+    {
+      "problem_description": "equipo con detalles de uso, ingresa para cambio de pantalla incell, no se pudieron probar funciones, no tiene garantia",
+      "count": 3
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de pantalla incell, probaremos funciones al finalizar",
+      "count": 3
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de pantalla, probaremos funciones al finalizar, pagos en efectivo",
+      "count": 3
+    },
+    {
+      "problem_description": "no se pueden probar funciones, ingresa con pantalla rota y suelta. detalles de uso en el marco pago en efectivo",
+      "count": 2
+    },
+    {
+      "problem_description": "el equipo ingresa con detalle de uso ,no se le prueban funciones , la pantalla original cuenta con garantia de 30 dias por defectos de fabrica",
+      "count": 2
+    },
+    {
+      "problem_description": "equipo con detalles de uso, ingresa para cambio de pantalla oled, no se pudieron probar funciones, 30 dias de garantia solo por defecto de fabrica",
+      "count": 2
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de bateria; probaremos funciones al finalizar",
+      "count": 2
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de cristal de camara",
+      "count": 2
+    },
+    {
+      "problem_description": "cambio de pantalla incell",
+      "count": 2
+    },
+    {
+      "problem_description": "equipo ingresa por cambio de pantalla, no se pueden probar funciones",
+      "count": 2
+    }
+  ],
+  "commonKeywords": [
+    {
+      "pattern": "detalles de uso",
+      "count": 672
+    },
+    {
+      "pattern": "garantia",
+      "count": 449
+    },
+    {
+      "pattern": "carga",
+      "count": 438
+    },
+    {
+      "pattern": "cambio de pantalla",
+      "count": 402
+    },
+    {
+      "pattern": "cambio de bateria",
+      "count": 384
+    },
+    {
+      "pattern": "ingresa apagad",
+      "count": 229
+    },
+    {
+      "pattern": "pantalla (rota|trizada|en negro|despegada)",
+      "count": 209
+    },
+    {
+      "pattern": "no se pueden probar funciones",
+      "count": 189
+    },
+    {
+      "pattern": "estetica",
+      "count": 124
+    },
+    {
+      "pattern": "no funciona",
+      "count": 85
+    },
+    {
+      "pattern": "ingresa encendid",
+      "count": 81
+    },
+    {
+      "pattern": "bateria inflada",
+      "count": 41
+    },
+    {
+      "pattern": "virus",
+      "count": 26
+    },
+    {
+      "pattern": "frp",
+      "count": 11
+    }
+  ],
+  "recommendedTemplateFields": [
+    "estado_inicio: \"entraga/apagado/encendido\"",
+    "daño_fisico: \"pantalla rota/tapa trizada\"",
+    "servicio_requerido: \"cambio batería/cambio pantalla\"",
+    "probada_funciones: \"si/no\"",
+    "garantia: \"30 días por defecto de fábrica\"",
+    "observaciones: \"texto libre corto\""
+  ],
+  "suggestedProblemTemplates": [
+    "No se pueden probar funciones; pantalla trizada; ingresa apagado; batería no carga.",
+    "Cambio de batería certificado; ingresa apagado; se prueban funciones al finalizar.",
+    "Pantalla rota en negro; no se prueban funciones; detalles de uso presentes.",
+    "Ingresa enciende, tiene virus; cliente paga en efectivo.",
+    "Cambio de pantalla, probaremos funciones al finalizar; 30 días de garantía por defectos."
+  ]
+}
