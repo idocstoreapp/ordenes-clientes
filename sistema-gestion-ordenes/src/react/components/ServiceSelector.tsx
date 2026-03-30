@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type MouseEvent } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Service } from "@/types";
 import { getRecommendedServices } from "@/lib/deviceWizardData";
@@ -92,7 +92,7 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
     if (inputRef.current) inputRef.current.focus();
   }
 
-  async function handleCreateService(e?: React.MouseEvent) {
+  async function handleCreateService(e?: MouseEvent<HTMLButtonElement>) {
     if (e) {
       e.preventDefault();
       e.stopPropagation();

@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment, type FormEvent } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
+import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions } from "@/lib/deviceWizardData";
+import { getProblemDescriptionSuggestions, getQuickProblemClauses } from "@/lib/problemDescriptionAutocomplete";
+
 import DeviceChecklist from "./DeviceChecklist";
 import CustomerSearch from "./CustomerSearch";
 import PatternDrawer from "./PatternDrawer";
@@ -10,7 +13,6 @@ import ServiceSelector from "./ServiceSelector";
 import PDFPreview from "./PDFPreview";
 import { generatePDFBlob } from "@/lib/generate-pdf-blob";
 import { uploadPDFToStorage } from "@/lib/upload-pdf";
-import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions } from "@/lib/deviceWizardData";
 
 interface OrderFormProps {
   technicianId: string;
@@ -85,7 +87,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
+const appendProblemText = (currentText: string, textToAdd: string): string => {
+    const current = currentText.trim();
+    const addition = textToAdd.trim();
 
+    if (!addition) return currentText;
+    if (current.toLowerCase().includes(addition.toLowerCase())) return currentText;
+
+    if (!current) return addition;
+    const separator = current.endsWith(".") ? " " : "; ";
+    return `${current}${separator}${addition}`;
+  };
   // Función helper para calcular el total de servicios de un equipo
   const getDeviceServiceTotal = (device: DeviceItem): number => {
     return device.selectedServices.reduce((sum, service) => {
@@ -365,7 +377,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     loadResponsibleUsers();
   }, [technicianId]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     
     // Protección contra múltiples submits
@@ -1417,6 +1429,54 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               maxLength={MAX_DESCRIPTION_LENGTH}
               required
             />
+                        <div className="mt-3 space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-slate-600 mb-2">
+                  Sugerencias inteligentes según equipo/servicios
+                </p>
+                <div className="flex flex-col gap-2">
+                  {getProblemDescriptionSuggestions({
+                    deviceType: device.deviceType,
+                    selectedServiceNames: device.selectedServices.map((service) => service.name),
+                    currentText: device.problemDescription,
+                    limit: 3,
+                  }).map((suggestion) => (
+                    <button
+                      key={`${device.id}-${suggestion.slice(0, 40)}`}
+                      type="button"
+                      className="text-left text-xs px-3 py-2 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 transition-colors"
+                      onClick={() => {
+                        updateDevice(device.id, { problemDescription: suggestion.slice(0, MAX_DESCRIPTION_LENGTH) });
+                      }}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-600 mb-2">
+                  Bloques rápidos de redacción
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {getQuickProblemClauses(device.deviceType, 7).map((clause) => (
+                    <button
+                      key={`${device.id}-clause-${clause.slice(0, 30)}`}
+                      type="button"
+                      className="text-xs px-2.5 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 transition-colors"
+                      onClick={() => {
+                        const nextValue = appendProblemText(device.problemDescription, clause);
+                        updateDevice(device.id, {
+                          problemDescription: nextValue.slice(0, MAX_DESCRIPTION_LENGTH),
+                        });
+                      }}
+                    >
+                      + {clause}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
             <div className="mt-1 flex justify-between items-center">
               <span className={`text-xs ${
                 device.problemDescription.length > MAX_DESCRIPTION_LENGTH

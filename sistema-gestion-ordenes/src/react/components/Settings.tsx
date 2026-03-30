@@ -80,8 +80,9 @@ export default function Settings() {
     }
   }
 
-  async function uploadLogo(file: File): Promise<string> {
+  async function uploadLogo(file: File, type?: "header" | "pdf"): Promise<string> {
     // Guardar como data URL directamente en la configuración
+    // El parámetro type se mantiene para compatibilidad futura (puede usarse para nombres de archivo)
     const reader = new FileReader();
     return new Promise((resolve, reject) => {
       reader.onloadend = () => {
