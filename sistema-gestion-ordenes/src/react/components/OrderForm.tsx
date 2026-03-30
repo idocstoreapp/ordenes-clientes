@@ -32,6 +32,27 @@ interface DeviceCatalogCard {
   is_active: boolean;
 }
 
+function AdaptiveWizardCardImage({ src, alt }: { src: string; alt: string }) {
+  const [isVertical, setIsVertical] = useState(false);
+
+  return (
+    <div className="h-32 md:h-40 w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200">
+      <img
+        src={src}
+        alt={alt}
+        onLoad={(event) => {
+          const img = event.currentTarget;
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            setIsVertical(img.naturalHeight > img.naturalWidth);
+          }
+        }}
+        className={`h-full w-full ${isVertical ? "object-contain p-1" : "object-cover"}`}
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
 // Interfaz para un equipo individual
 interface DeviceItem {
   id: string; // ID único para cada equipo
@@ -1279,9 +1300,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: String(series.id) }));
                         setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
                       }}
-                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left"
+                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
                     >
-                      <img src={series.image_url || "https://dummyimage.com/320x120/e2e8f0/475569&text=L%C3%ADnea"} alt={series.name} className="h-14 w-full rounded-lg object-cover mb-2" loading="lazy" />
+                      <AdaptiveWizardCardImage
+                        src={series.image_url || "https://dummyimage.com/320x520/e2e8f0/475569&text=L%C3%ADnea"}
+                        alt={series.name}
+                      />
                       <p className="font-semibold text-xs">{series.name}</p>
                     </button>
                   ))}
@@ -1320,13 +1344,11 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         key={`${device.id}-model-${model.id}`}
                         type="button"
                         onClick={() => applySuggestedModel(device.id, displayName)}
-                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left"
+                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
                       >
-                        <img
+                        <AdaptiveWizardCardImage
                           src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
                           alt={displayName}
-                          className="h-14 w-full rounded-lg object-cover mb-2"
-                          loading="lazy"
                         />
                         <span>{displayName}</span>
                       </button>
