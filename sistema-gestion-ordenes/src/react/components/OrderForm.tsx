@@ -1263,7 +1263,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       key={`${device.id}-brand-${brand.id}`}
                       type="button"
                       onClick={() => applyBrand(device.id, String(brand.id))}
-                      className="rounded-xl border text-sm bg-white text-slate-700 border-slate-200 hover:bg-slate-50 p-2 text-left"
+                      className="r text-sm bg-white text-slate-700 border-slate-200 hover:bg-slate-10 p-2 text-left"
                     >
                       <div className="h-16 rounded-lg bg-slate-50 overflow-hidden mb-2">
                         <img src={brand.logo_url || "https://dummyimage.com/128x128/e2e8f0/475569&text=Logo"} alt={brand.name} className="h-full w-full object-contain bg-white" loading="lazy" />
