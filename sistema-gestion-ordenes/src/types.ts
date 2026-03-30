@@ -57,6 +57,9 @@ export interface Service {
   name: string;
   description?: string | null;
   default_price: number;
+  category?: string | null;
+  image_url?: string | null;
+  category_image_url?: string | null;
   created_at: string;
 }
 

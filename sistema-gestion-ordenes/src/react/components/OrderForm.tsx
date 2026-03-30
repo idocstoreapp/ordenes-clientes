@@ -20,6 +20,18 @@ interface OrderFormProps {
   onSaved: () => void;
 }
 
+interface DeviceCatalogCard {
+  id: number;
+  device_type_id: number;
+  brand_id: number;
+  product_line_id: number;
+  model_id: number;
+  variant_id: number | null;
+  display_name: string;
+  image_url: string | null;
+  is_active: boolean;
+}
+
 // Interfaz para un equipo individual
 interface DeviceItem {
   id: string; // ID único para cada equipo
@@ -92,6 +104,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     models: [],
     variants: [],
   });
+  const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
   const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
   const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -184,8 +197,14 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     let cancelled = false;
     async function loadCatalog() {
       try {
-        const snapshot = await fetchCatalogSnapshot();
-        if (!cancelled) setCatalog(snapshot);
+        const [snapshot, cardsRes] = await Promise.all([
+          fetchCatalogSnapshot(),
+          supabase.from("device_catalog_items").select("*").eq("is_active", true),
+        ]);
+        if (!cancelled) {
+          setCatalog(snapshot);
+          setCatalogCards((cardsRes.data as DeviceCatalogCard[] | null) ?? []);
+        }
       } catch (error: any) {
         console.error("[OrderForm] Error cargando catálogo normalizado:", error);
       }
@@ -327,7 +346,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
 
       applySuggestedModel(device.id, displayName);
       setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { model: "", variant: "" } }));
-      setCatalog(await fetchCatalogSnapshot());
+      const [snapshot, cardsRes] = await Promise.all([
+        fetchCatalogSnapshot(),
+        supabase.from("device_catalog_items").select("*").eq("is_active", true),
+      ]);
+      setCatalog(snapshot);
+      setCatalogCards((cardsRes.data as DeviceCatalogCard[] | null) ?? []);
     } catch (error: any) {
       console.error("[OrderForm] Error creando modelo en catálogo:", error);
       alert(`No se pudo crear el modelo en catálogo: ${error.message}`);
@@ -355,6 +379,23 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     return catalog.models.filter((model) => model.product_line_id === lineId && model.is_active);
   };
   const getVariantsForModel = (modelId: number) => catalog.variants.filter((variant) => variant.model_id === modelId && variant.is_active);
+  const getCardImage = (params: {
+    typeId: number | null;
+    brandId: number | null;
+    lineId: number | null;
+    modelId: number;
+    variantId?: number | null;
+  }): string | null => {
+    if (!params.typeId || !params.brandId || !params.lineId) return null;
+    const exact = catalogCards.find((card) =>
+      card.device_type_id === params.typeId &&
+      card.brand_id === params.brandId &&
+      card.product_line_id === params.lineId &&
+      card.model_id === params.modelId &&
+      (params.variantId ? card.variant_id === params.variantId : true)
+    );
+    return exact?.image_url ?? null;
+  };
   const mapCatalogCodeToDeviceType = (code: string): DeviceType => {
     const map: Record<string, DeviceType> = {
       phone: "iphone",
@@ -1264,12 +1305,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   {getModelsForDevice(device).slice(0, 50).map((model) => {
                     const variants = getVariantsForModel(model.id);
                     const firstVariant = variants[0]?.name ?? "";
+                    const typeId = getTypeIdForDevice(device);
+                    const brandId = Number(selectedBrandByDevice[device.id]) || null;
+                    const lineId = Number(selectedSeriesByDevice[device.id]) || null;
                     const displayName = buildDeviceDisplayName({
                       brandName: catalog.brands.find((b) => b.id === Number(selectedBrandByDevice[device.id]))?.name ?? "",
                       lineName: catalog.productLines.find((l) => l.id === Number(selectedSeriesByDevice[device.id]))?.name ?? "",
                       modelName: model.name,
                       variantName: firstVariant,
                     });
+                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: variants[0]?.id ?? null });
                     return (
                       <button
                         key={`${device.id}-model-${model.id}`}
@@ -1277,6 +1322,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         onClick={() => applySuggestedModel(device.id, displayName)}
                         className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left"
                       >
+                        <img
+                          src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
+                          alt={displayName}
+                          className="h-14 w-full rounded-lg object-cover mb-2"
+                          loading="lazy"
+                        />
                         <span>{displayName}</span>
                       </button>
                     );

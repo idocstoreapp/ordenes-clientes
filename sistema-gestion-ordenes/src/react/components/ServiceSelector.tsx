@@ -57,7 +57,7 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
   });
 
   const hasSelectedDevice = Boolean(deviceType && deviceModel.trim());
-  const serviceCategories = [
+  const fallbackServiceCategories = [
     { key: "pantalla", label: "Pantalla", icon: "🖥️", pattern: /pantalla|glass|tactil/i },
     { key: "bateria", label: "Batería", icon: "🔋", pattern: /bateria|batería/i },
     { key: "camara", label: "Cámara", icon: "📷", pattern: /camara|cámara|face id/i },
@@ -68,10 +68,34 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
     { key: "otros", label: "Otros", icon: "⚙️", pattern: /.*/i },
   ];
 
-  const servicesByCategory = serviceCategories.map((category) => ({
-    ...category,
-    services: availableServices.filter((service) => category.pattern.test(service.name) && !selectedServices.some((s) => s.id === service.id)),
-  }));
+  const categorizedByDb = availableServices.reduce<Record<string, { key: string; label: string; icon: string; imageUrl: string | null; services: Service[] }>>((acc, service) => {
+    const key = (service.category || "").trim().toLowerCase();
+    if (!key) return acc;
+    if (!acc[key]) {
+      acc[key] = {
+        key,
+        label: service.category as string,
+        icon: "🛠️",
+        imageUrl: service.category_image_url || null,
+        services: [],
+      };
+    }
+    if (!selectedServices.some((s) => s.id === service.id)) {
+      acc[key].services.push(service);
+    }
+    if (!acc[key].imageUrl && service.category_image_url) {
+      acc[key].imageUrl = service.category_image_url;
+    }
+    return acc;
+  }, {});
+
+  const servicesByCategory = Object.values(categorizedByDb).length > 0
+    ? Object.values(categorizedByDb)
+    : fallbackServiceCategories.map((category) => ({
+      ...category,
+      imageUrl: null,
+      services: availableServices.filter((service) => category.pattern.test(service.name) && !selectedServices.some((s) => s.id === service.id)),
+    }));
 
   const selectedCategoryData = servicesByCategory.find((category) => category.key === selectedCategory);
 
@@ -204,6 +228,9 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
                       onClick={() => setSelectedCategory(category.key)}
                       className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100 text-left"
                     >
+                      {category.imageUrl ? (
+                        <img src={category.imageUrl} alt={category.label} className="h-10 w-full object-cover rounded-md mb-1" loading="lazy" />
+                      ) : null}
                       <p className="font-semibold">{category.icon} {category.label}</p>
                       <p className="text-[11px] opacity-80">{category.services.length} opciones</p>
                     </button>
@@ -234,6 +261,7 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
                     onClick={() => handleServiceSelect(service)}
                     className="px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs hover:bg-emerald-100"
                   >
+                    {service.image_url ? <img src={service.image_url} alt={service.name} className="inline-block h-4 w-4 rounded-full object-cover mr-1" loading="lazy" /> : null}
                     + {service.name}
                   </button>
                 ))}
