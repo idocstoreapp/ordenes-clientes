@@ -1233,7 +1233,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       key={`${device.id}-${option.id}`}
                       type="button"
                       onClick={() => applyDeviceType(device.id, option.id)}
-                      className="text-left rounded-xl border p-2 transition-colors border-slate-200 hover:border-brand-light hover:bg-slate-50 overflow-hidden"
+                      className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
                     >
                       <img
                         src={option.imageUrl}
