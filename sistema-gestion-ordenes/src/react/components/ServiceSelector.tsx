@@ -7,6 +7,49 @@ interface ServiceSelectorProps {
   onServicesChange: (services: Service[]) => void;
 }
 
+type ServiceVisual = {
+  title: string;
+  subtitle: string;
+  emoji: string;
+  gradient: string;
+};
+
+function getServiceVisual(serviceName: string): ServiceVisual {
+  const normalized = serviceName.toLowerCase();
+
+  if (normalized.includes("bater")) {
+    return {
+      title: "Batería",
+      subtitle: "Energía y autonomía",
+      emoji: "🔋",
+      gradient: "from-emerald-100 via-emerald-50 to-white",
+    };
+  }
+  if (normalized.includes("pantalla") || normalized.includes("display")) {
+    return {
+      title: "Pantalla",
+      subtitle: "Visual y táctil",
+      emoji: "🖥️",
+      gradient: "from-sky-100 via-sky-50 to-white",
+    };
+  }
+  if (normalized.includes("iphone") || normalized.includes("apple")) {
+    return {
+      title: "Apple",
+      subtitle: "Servicio especializado",
+      emoji: "🍎",
+      gradient: "from-slate-200 via-slate-50 to-white",
+    };
+  }
+
+  return {
+    title: "Servicio técnico",
+    subtitle: "Revisión y reparación",
+    emoji: "🛠️",
+    gradient: "from-violet-100 via-violet-50 to-white",
+  };
+}
+
 export default function ServiceSelector({ selectedServices, onServicesChange }: ServiceSelectorProps) {
   const [availableServices, setAvailableServices] = useState<Service[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -152,16 +195,17 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
       </div>
 
       {showResults && searchTerm && filteredServices.length > 0 && (
-        <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-20 w-full mt-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl max-h-72 overflow-y-auto">
           {filteredServices.map((service) => {
             // Verificar si el servicio ya está seleccionado (protección adicional)
             const isAlreadySelected = selectedServices.some(s => s.id === service.id);
+            const visual = getServiceVisual(service.name);
             
             return (
               <button
                 key={service.id}
                 type="button"
-                className="w-full text-left px-4 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="mb-2 w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md last:mb-0 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => {
                   if (!isAlreadySelected) {
                     handleServiceSelect(service);
@@ -169,7 +213,14 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
                 }}
                 disabled={isAlreadySelected}
               >
-                <p className="font-medium text-slate-900">{service.name}</p>
+                <div className={`mb-2 flex items-center justify-between rounded-lg bg-gradient-to-r ${visual.gradient} px-3 py-2`}>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{visual.title}</p>
+                    <p className="text-xs text-slate-600">{visual.subtitle}</p>
+                  </div>
+                  <span className="text-xl" aria-hidden="true">{visual.emoji}</span>
+                </div>
+                <p className="font-semibold text-slate-900">{service.name}</p>
                 {service.description && (
                   <p className="text-sm text-slate-600">{service.description}</p>
                 )}
@@ -240,8 +291,11 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
 
       <div className="space-y-2">
         {selectedServices.map((service) => (
-          <div key={service.id} className="flex items-center justify-between bg-slate-50 p-3 rounded border border-slate-200">
-            <span className="font-medium text-slate-900">{service.name}</span>
+          <div key={service.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/90 p-3 shadow-sm">
+            <div className="min-w-0">
+              <span className="block truncate font-semibold text-slate-900">{service.name}</span>
+              <span className="text-xs text-slate-500">{getServiceVisual(service.name).subtitle}</span>
+            </div>
             <button
               type="button"
               onClick={() => onServicesChange(selectedServices.filter((s) => s.id !== service.id))}
@@ -255,6 +309,5 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
     </div>
   );
 }
-
 
 

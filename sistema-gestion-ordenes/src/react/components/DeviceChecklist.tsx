@@ -161,6 +161,17 @@ export default function DeviceChecklist({
     });
   }
 
+  function getStatusButtonClass(value: string, isSelected: boolean): string {
+    const base = "rounded-lg border px-2 py-1.5 text-xs font-semibold transition";
+    if (!isSelected) {
+      return `${base} border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50`;
+    }
+    if (value === "ok") return `${base} border-emerald-200 bg-emerald-50 text-emerald-700`;
+    if (value === "damaged") return `${base} border-rose-200 bg-rose-50 text-rose-700`;
+    if (value === "replaced") return `${base} border-blue-200 bg-blue-50 text-blue-700`;
+    return `${base} border-amber-200 bg-amber-50 text-amber-700`;
+  }
+
   if (loading) {
     return (
       <div className="border border-slate-200 rounded-md p-4">
@@ -170,8 +181,8 @@ export default function DeviceChecklist({
   }
 
   return (
-    <div className="border border-slate-200 rounded-md p-4">
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">Checklist de Verificación *</h3>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <h3 className="mb-3 text-lg font-semibold text-slate-900">Checklist de Verificación *</h3>
       
       {items.length === 0 && customItems.length === 0 && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
@@ -181,33 +192,39 @@ export default function DeviceChecklist({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
         {allItems.map((itemName) => {
           const isCustom = customItems.includes(itemName) && !items.some(item => item.item_name === itemName);
+          const selectedValue = checklistData[itemName] || "";
+          const statusOptions = getStatusOptionsForItem(itemName);
           return (
-            <div key={itemName} className="flex items-center justify-between p-3 bg-slate-50 rounded">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-sm font-medium text-slate-700">{itemName}</span>
+            <div key={itemName} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold text-slate-700">{itemName}</span>
                 {isCustom && (
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Personalizado</span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <select
-                  className="border border-slate-300 rounded-md px-2 py-1 text-sm"
-                  value={checklistData[itemName] || ""}
-                  onChange={(e) =>
-                    handleItemChange(itemName, e.target.value)
-                  }
-                  required
-                >
-                  <option value="">Seleccionar</option>
-                  {getStatusOptionsForItem(itemName).map((statusOption) => (
-                    <option key={statusOption.value} value={statusOption.value}>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {statusOptions.map((statusOption) => {
+                  const isSelected = selectedValue === statusOption.value;
+                  return (
+                    <button
+                      key={statusOption.value}
+                      type="button"
+                      className={getStatusButtonClass(statusOption.value, isSelected)}
+                      aria-pressed={isSelected}
+                      onClick={() => handleItemChange(itemName, statusOption.value)}
+                    >
                       {statusOption.label}
-                    </option>
-                  ))}
-                </select>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-[11px] text-slate-500">
+                  {selectedValue ? formatStatusLabel(selectedValue) : "Selecciona un estado"}
+                </span>
                 {isCustom && (
                   <button
                     onClick={() => handleRemoveCustomItem(itemName)}

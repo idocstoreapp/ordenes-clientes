@@ -80,6 +80,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [recentDeviceModels, setRecentDeviceModels] = useState<string[]>([]);
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
+  const APPLE_DEVICE_PHOTOS: Record<string, string> = {
+    "iphone 16": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=240&q=60",
+    "iphone 15": "https://images.unsplash.com/photo-1591337676887-a217a6970a8a?auto=format&fit=crop&w=240&q=60",
+    "iphone 14": "https://images.unsplash.com/photo-1603899123252-71922f7e4fac?auto=format&fit=crop&w=240&q=60",
+    "iphone 13": "https://images.unsplash.com/photo-1632661674596-df8be070a5c5?auto=format&fit=crop&w=240&q=60",
+  };
+
+  const getSuggestionImage = (model: string): string | null => {
+    const normalized = model.toLowerCase();
+    const matchedKey = Object.keys(APPLE_DEVICE_PHOTOS).find((key) => normalized.includes(key));
+    if (matchedKey) return APPLE_DEVICE_PHOTOS[matchedKey];
+    if (normalized.includes("iphone")) return APPLE_DEVICE_PHOTOS["iphone 15"];
+    return null;
+  };
 
   // Función helper para calcular el total de servicios de un equipo
   const getDeviceServiceTotal = (device: DeviceItem): number => {
@@ -1046,7 +1060,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 <button
                   key={suggestion}
                   type="button"
-                  className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
+                  className="block w-full border-b border-slate-100 px-3 py-2 text-left text-sm text-slate-600 transition hover:bg-slate-50 last:border-b-0"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     applySuggestedModel(device.id, suggestion);
@@ -1054,7 +1068,26 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                     setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
                   }}
                 >
-                  {suggestion}
+                  <div className="flex items-center gap-3">
+                    {getSuggestionImage(suggestion) ? (
+                      <img
+                        src={getSuggestionImage(suggestion) || ""}
+                        alt={suggestion}
+                        className="h-10 w-10 rounded-lg object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-base">
+                        📱
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">{suggestion}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {suggestion.toLowerCase().includes("iphone") ? "Variante detectada automáticamente" : "Modelo sugerido"}
+                      </p>
+                    </div>
+                  </div>
                 </button>
               ))}
             </div>
