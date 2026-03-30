@@ -3,8 +3,9 @@ import { supabase } from "@/lib/supabase";
 import { getSystemSettings, clearSettingsCache, type SystemSettings } from "@/lib/settings";
 import ChecklistEditor from "./ChecklistEditor";
 import ServicesEditor from "./ServicesEditor";
+import DeviceCatalogSettings from "./DeviceCatalogSettings";
 
-type TabType = "logos" | "checklists" | "services" | "warranties";
+type TabType = "logos" | "checklists" | "services" | "warranties" | "devices";
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabType>("logos");
@@ -205,6 +206,7 @@ export default function Settings() {
 
   const tabs: Array<{ id: TabType; label: string; icon: string }> = [
     { id: "logos", label: "Logos", icon: "🖼️" },
+    { id: "devices", label: "Dispositivos", icon: "📱" },
     { id: "checklists", label: "Checklists", icon: "✓" },
     { id: "services", label: "Servicios", icon: "🔧" },
     { id: "warranties", label: "Garantías", icon: "🛡️" },
@@ -403,6 +405,13 @@ export default function Settings() {
         )}
 
         {/* Pestaña: Checklists */}
+        {activeTab === "devices" && (
+          <div>
+            <DeviceCatalogSettings />
+          </div>
+        )}
+
+        {/* Pestaña: Checklists */}
         {activeTab === "checklists" && (
           <div>
             <ChecklistEditor />
@@ -471,4 +480,3 @@ export default function Settings() {
     </div>
   );
 }
-
