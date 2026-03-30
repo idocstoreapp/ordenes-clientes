@@ -57,3 +57,19 @@ Y cada nivel con campos de imagen:
 - `is_active`
 
 Así dejas de mantener URLs en código y puedes editar todo desde panel admin.
+
+## Seed automático desde historial real
+
+Si ya tienes muchos modelos guardados en `work_orders.device_model`, ejecuta:
+
+- `database/seed_device_catalog_from_work_orders.sql`
+
+Este script crea/actualiza jerarquía base:
+
+- tipo
+- marca
+- línea
+- modelo
+- variante
+
+y luego podrás corregir textos/fotos exactas desde la pestaña **Dispositivos**.
