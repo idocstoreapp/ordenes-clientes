@@ -7,6 +7,18 @@ import { formatCLP } from "@/lib/currency";
 import { formatDate, formatDateTime } from "@/lib/date";
 import { getSystemSettings } from "@/lib/settings";
 
+function getChecklistStatusText(status: string): string {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  if (!normalizedStatus) return "";
+
+  if (normalizedStatus === "ok") return " (ok)";
+  if (normalizedStatus === "replaced") return " (reparado)";
+  if (normalizedStatus === "damaged") return " (dañado)";
+  if (normalizedStatus === "no_probado") return " (no probado)";
+
+  return ` (${normalizedStatus.replace(/_/g, " ")})`;
+}
+
 interface PDFPreviewProps {
   order: WorkOrder & { customer?: Customer; sucursal?: Branch | null };
   services: Service[];
@@ -127,7 +139,7 @@ export default function PDFPreview({
 
       // Color de las franjas (gris claro para ahorrar tinta)
       const stripeColor: [number, number, number] = [220, 220, 220]; // Gris claro
-      const darkStripeColor: [number, number, number] = [200, 200, 200]; // Gris medio claro
+      const darkStripeColor: [number, number, number] = [245, 245, 245]; // Gris casi blanco
 
       // QR Code ELIMINADO según solicitud del usuario
       // No generar QR Code
@@ -1059,16 +1071,7 @@ export default function PDFPreview({
             deviceChecklistItems.forEach((item) => {
               const status = device.checklist_data?.[item.item_name];
               if (status) {
-                let statusText = "";
-                if (status === "ok") {
-                  statusText = " (ok)";
-                } else if (status === "replaced") {
-                  statusText = " (reparado)";
-                } else if (status === "damaged") {
-                  statusText = " (dañado)";
-                } else if (status === "no_probado") {
-                  statusText = " (no probado)";
-                }
+                const statusText = getChecklistStatusText(status);
                 checklistItemsList.push(`${item.item_name}${statusText}`);
               }
             });
@@ -1076,16 +1079,7 @@ export default function PDFPreview({
             Object.keys(device.checklist_data).forEach((itemName) => {
               if (!deviceChecklistItems.some(item => item.item_name === itemName)) {
                 const status = device.checklist_data?.[itemName];
-                let statusText = "";
-                if (status === "ok") {
-                  statusText = " (ok)";
-                } else if (status === "replaced") {
-                  statusText = " (reparado)";
-                } else if (status === "damaged") {
-                  statusText = " (dañado)";
-                } else if (status === "no_probado") {
-                  statusText = " (no probado)";
-                }
+                const statusText = getChecklistStatusText(status || "");
                 checklistItemsList.push(`${itemName}${statusText}`);
               }
             });
@@ -1781,9 +1775,9 @@ export default function PDFPreview({
       const orderBoxWidth = 50;
       const orderBoxHeight = 7;
       const orderBoxX = (pageWidth - orderBoxWidth) / 2; // Centrado
-      doc.setFillColor(80, 80, 80); // Gris oscuro
+      doc.setFillColor(236, 236, 236); // Gris muy claro (ahorra tinta)
       doc.rect(orderBoxX, yPosition, orderBoxWidth, orderBoxHeight, "F");
-      doc.setTextColor(255, 255, 255);
+      doc.setTextColor(60, 60, 60);
       const orderLabelText = "N° Orden:";
       const orderLabelWidth = doc.getTextWidth(orderLabelText);
       doc.text(orderLabelText, orderBoxX + (orderBoxWidth - orderLabelWidth) / 2, yPosition + 5);
@@ -2005,7 +1999,6 @@ export default function PDFPreview({
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 15;
       const contentWidth = pageWidth - 2 * margin;
       let yPosition = margin;
@@ -2038,67 +2031,163 @@ export default function PDFPreview({
         yPosition += customerLines.length * 6 + 5;
       }
 
-      // Dispositivo
-      doc.setFont("helvetica", "bold");
-      doc.text("Dispositivo:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      const deviceLines = doc.splitTextToSize(order.device_model, contentWidth - 60);
-      doc.text(deviceLines, margin + 60, yPosition);
-      yPosition += deviceLines.length * 6 + 5;
+      type LabelDeviceService = {
+        name: string;
+        quantity: number;
+      };
+      type LabelDevice = {
+        index: number;
+        device_model: string;
+        device_serial_number?: string | null;
+        device_unlock_code?: string | null;
+        device_unlock_pattern?: number[] | null;
+        problem_description?: string | null;
+        selected_services: LabelDeviceService[];
+      };
 
-      // Passcode (movido encima de la descripción del problema)
-      if (order.device_unlock_code) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Passcode:", margin, yPosition);
-        doc.setFont("helvetica", "normal");
-        doc.text(order.device_unlock_code, margin + 60, yPosition);
-        yPosition += 10; // Más espacio abajo
-      }
+      const normalizedDevices: LabelDevice[] = [];
 
-      // === PROBLEMA O DESCRIPCIÓN - Layout Adaptativo ===
-      // Calcular espacio disponible para el resto del documento
-      const problemSectionStartY = yPosition;
-      const localInfoHeight = 30; // Estimado para local y fecha compromiso
-      const bottomMarginEtiqueta = margin;
-      const reservedSpaceEtiqueta = localInfoHeight + bottomMarginEtiqueta + 10; // Reducido de 15 a 10
-      
-      // NO truncar - permitir que la descripción use todo el espacio disponible
-      // El formato tiene altura de 2000mm, así que puede crecer dinámicamente
-      doc.setFont("helvetica", "bold");
-      doc.text("Problema:", margin, yPosition);
-      doc.setFont("helvetica", "normal");
-      
-      // Dividir el texto en líneas sin truncar
-      let problemLines = doc.splitTextToSize(order.problem_description || "", contentWidth - 60);
-      
-      // Calcular espacio disponible dinámicamente
-      const availableProblemHeight = pageHeight - problemSectionStartY - reservedSpaceEtiqueta;
-      
-      // Calcular interlineado adaptativo para que TODO el texto quepa sin apretarse
-      // Aumentar el interlineado base para mejor legibilidad
-      let problemLineSpacing = 8; // Espaciado aumentado de 6 a 8 para mejor legibilidad
-      if (problemLines.length > 0) {
-        // Calcular el interlineado necesario para que todas las líneas quepan
-        const requiredHeight = problemLines.length * 8; // Altura necesaria con interlineado aumentado
-        if (requiredHeight > availableProblemHeight) {
-          // Ajustar interlineado para que quepa todo, pero mantener mínimo de 6 puntos
-          problemLineSpacing = Math.max(6, availableProblemHeight / problemLines.length);
-        } else {
-          // Hay espacio suficiente, usar interlineado aumentado
-          problemLineSpacing = 8;
+      // Priorizar all_devices si viene desde el formulario (contiene todos los datos correctamente separados por equipo)
+      if ((order as any).all_devices && Array.isArray((order as any).all_devices) && (order as any).all_devices.length > 0) {
+        ((order as any).all_devices as any[]).forEach((device: any, idx: number) => {
+          normalizedDevices.push({
+            index: idx + 1,
+            device_model: device.device_model || "",
+            device_serial_number: device.device_serial_number || null,
+            device_unlock_code: device.device_unlock_code || null,
+            device_unlock_pattern: device.device_unlock_pattern || null,
+            problem_description: device.problem_description || "",
+            selected_services: Array.isArray(device.selected_services)
+              ? device.selected_services.map((service: any) => ({
+                  name: service.name || service.service_name || "Servicio",
+                  quantity: service.quantity || 1,
+                }))
+              : [],
+          });
+        });
+      } else {
+        // Si no hay all_devices, construir desde la orden + devices_data
+        const mainDeviceServices = (orderServices && orderServices.length > 0)
+          ? orderServices.map((service: any) => ({
+              name: service.service_name || "Servicio",
+              quantity: service.quantity || 1,
+            }))
+          : (services || []).map((service: any) => ({
+              name: service.name || "Servicio",
+              quantity: 1,
+            }));
+
+        normalizedDevices.push({
+          index: 1,
+          device_model: order.device_model || "",
+          device_serial_number: order.device_serial_number || null,
+          device_unlock_code: order.device_unlock_code || null,
+          device_unlock_pattern: order.device_unlock_pattern || null,
+          problem_description: order.problem_description || "",
+          selected_services: mainDeviceServices,
+        });
+
+        if ((order as any).devices_data && Array.isArray((order as any).devices_data)) {
+          ((order as any).devices_data as any[]).forEach((device: any, idx: number) => {
+            normalizedDevices.push({
+              index: idx + 2,
+              device_model: device.device_model || "",
+              device_serial_number: device.device_serial_number || null,
+              device_unlock_code: device.device_unlock_code || null,
+              device_unlock_pattern: device.device_unlock_pattern || null,
+              problem_description: device.problem_description || "",
+              selected_services: Array.isArray(device.selected_services)
+                ? device.selected_services.map((service: any) => ({
+                    name: service.name || service.service_name || "Servicio",
+                    quantity: service.quantity || 1,
+                  }))
+                : [],
+            });
+          });
         }
       }
-      
-      // Dibujar TODAS las líneas con el interlineado adaptativo calculado
-      // No truncar, solo adaptar el espaciado
-      let currentProblemY = yPosition;
-      problemLines.forEach((line: string) => {
-        doc.text(line, margin + 60, currentProblemY);
-        currentProblemY += problemLineSpacing;
+
+      const labelLineHeight = 7;
+      const listLineHeight = 7;
+      const deviceBlockBottomPadding = 6;
+
+      // Renderizar cada equipo en su propio bloque para evitar cortes y mantener el formato limpio
+      const renderLabelField = (label: string, value: string, labelWidth = 60) => {
+        doc.setFont("helvetica", "bold");
+        doc.text(label, margin + 4, yPosition);
+        doc.setFont("helvetica", "normal");
+        const safeValue = String(value || "-").trim() || "-";
+        const lines = doc.splitTextToSize(safeValue, contentWidth - labelWidth - 10);
+        doc.text(lines, margin + labelWidth, yPosition);
+        yPosition += lines.length * labelLineHeight + 3;
+      };
+
+      normalizedDevices.forEach((device, idx) => {
+        const boxPadding = 4;
+        const boxStartY = yPosition;
+
+        // Encabezado centrado del equipo
+        doc.setFillColor(242, 242, 242);
+        doc.rect(margin, yPosition, contentWidth, 11, "F");
+        doc.setDrawColor(180, 180, 180);
+        doc.rect(margin, yPosition, contentWidth, 11, "S");
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        const deviceTitle = `DISPOSITIVO ${device.index}`;
+        const deviceTitleWidth = doc.getTextWidth(deviceTitle);
+        doc.text(deviceTitle, margin + (contentWidth - deviceTitleWidth) / 2, yPosition + 7);
+        yPosition += 16;
+
+        // Información principal del equipo
+        doc.setFontSize(8);
+        renderLabelField("Modelo:", device.device_model || "Sin modelo");
+        if (device.device_serial_number) {
+          renderLabelField("IMEI/Serie:", device.device_serial_number, 64);
+        }
+        if (device.device_unlock_code) {
+          renderLabelField("Passcode:", device.device_unlock_code);
+        } else if (device.device_unlock_pattern && Array.isArray(device.device_unlock_pattern)) {
+          renderLabelField("Patrón:", device.device_unlock_pattern.join(""));
+        }
+        if (device.problem_description) {
+          renderLabelField("Problema:", device.problem_description, 62);
+        }
+
+        // Servicios por equipo (forzar bloque en línea aparte para evitar superposición)
+        doc.setFont("helvetica", "bold");
+        doc.text("Servicios:", margin + 4, yPosition);
+        yPosition += listLineHeight;
+        doc.setFont("helvetica", "normal");
+        if (device.selected_services.length > 0) {
+          device.selected_services.forEach((service) => {
+            const serviceWords = String(service.name || "Servicio")
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean);
+            const safeServiceWords = serviceWords.length > 0 ? serviceWords : ["Servicio"];
+            const quantitySuffix = service.quantity > 1 ? `x${service.quantity}` : "";
+            const serviceLines = quantitySuffix ? [...safeServiceWords, quantitySuffix] : safeServiceWords;
+            doc.text(serviceLines, margin + 8, yPosition);
+            yPosition += serviceLines.length * listLineHeight + 2;
+          });
+        } else {
+          doc.text("Sin servicios registrados", margin + 8, yPosition);
+          yPosition += listLineHeight + 2;
+        }
+
+        // Borde completo del bloque usando la altura real consumida
+        const blockHeight = Math.max(18, yPosition - boxStartY + boxPadding + deviceBlockBottomPadding);
+        doc.setDrawColor(180, 180, 180);
+        doc.rect(margin, boxStartY, contentWidth, blockHeight, "S");
+        yPosition = boxStartY + blockHeight + 5;
+
+        // Separación visual entre equipos
+        if (idx < normalizedDevices.length - 1) {
+          doc.setDrawColor(210, 210, 210);
+          doc.line(margin + 6, yPosition, pageWidth - margin - 6, yPosition);
+          yPosition += 5;
+        }
       });
-      
-      // Actualizar yPosition basándose en todas las líneas dibujadas
-      yPosition = currentProblemY + 8;
 
       // Local asignado
       if (orderForPDF.sucursal?.name) {

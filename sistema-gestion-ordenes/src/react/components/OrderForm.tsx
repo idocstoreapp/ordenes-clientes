@@ -10,6 +10,7 @@ import ServiceSelector from "./ServiceSelector";
 import PDFPreview from "./PDFPreview";
 import { generatePDFBlob } from "@/lib/generate-pdf-blob";
 import { uploadPDFToStorage } from "@/lib/upload-pdf";
+import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions } from "@/lib/deviceWizardData";
 
 interface OrderFormProps {
   technicianId: string;
@@ -78,16 +79,12 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [showPatternDrawer, setShowPatternDrawer] = useState<{ deviceId: string } | null>(null);
   const [customDeviceTypes, setCustomDeviceTypes] = useState<string[]>([]);
   const [recentDeviceModels, setRecentDeviceModels] = useState<string[]>([]);
+  const [selectedBrandByDevice, setSelectedBrandByDevice] = useState<Record<string, string | null>>({});
+  const [selectedSeriesByDevice, setSelectedSeriesByDevice] = useState<Record<string, string | null>>({});
+  const [wizardStepByDevice, setWizardStepByDevice] = useState<Record<string, number>>({});
+  const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
-
-  const problemDescriptionTemplates = [
-    "No se pueden probar funciones; pantalla trizada; ingresa apagado; batería no carga.",
-    "Cambio de batería certificado; ingresa apagado; se prueban funciones al finalizar.",
-    "Pantalla rota en negro; no se prueban funciones; detalles de uso presentes.",
-    "Ingresa encendido, tiene virus; cliente paga en efectivo.",
-    "Cambio de pantalla, probaremos funciones al finalizar; 30 días de garantía por defectos.",
-  ];
 
   // Función helper para calcular el total de servicios de un equipo
   const getDeviceServiceTotal = (device: DeviceItem): number => {
@@ -123,6 +120,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       servicePrices: {}, // Mapa de precios por servicio
     };
     setDevices([...devices, newDevice]);
+    setWizardStepByDevice((prev) => ({ ...prev, [newDevice.id]: 1 }));
   };
 
   const removeDevice = (deviceId: string) => {
@@ -131,6 +129,19 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return;
     }
     setDevices(devices.filter(device => device.id !== deviceId));
+  };
+
+  const applyDeviceType = (deviceId: string, type: DeviceType) => {
+    updateDevice(deviceId, { deviceType: type });
+    setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 2 }));
+  };
+
+  const applyBrand = (deviceId: string, brandId: string) => {
+    setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
+    setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
   };
 
   // Cargar tipos de dispositivo personalizados (ej. Samsung) desde la configuración de checklists
@@ -228,7 +239,18 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       deviceModel: model,
       deviceType: detectedType,
     });
+    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 5 }));
+    setTimeout(() => {
+      checklistSectionRefs.current[deviceId]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
   };
+
+  const getWizardOptionsForDevice = (device: DeviceItem) => {
+    const detectType = (model: string) => detectDeviceTypeWithCustom(model, customDeviceTypes);
+    return buildDeviceWizardOptions(recentDeviceModels, detectType, device.deviceType);
+  };
+
+  const getWizardStep = (deviceId: string): number => wizardStepByDevice[deviceId] ?? 1;
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -896,11 +918,20 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             }
           }
 
-          // Solo enviar email si tenemos PDF
-          if (pdfUrl || pdfBase64) {
-            // Enviar email para la orden creada
-            console.log("[ORDER FORM] Enviando email de creación de orden:", createdOrder.order_number);
-            const emailResponse = await fetch('/api/send-order-email', {
+          // Evitar payloads demasiado grandes (Vercel devuelve 413 antes de ejecutar la función)
+          // 2.5M chars base64 ≈ 1.8MB binario, dejando margen para el resto del JSON
+          const MAX_BASE64_PAYLOAD_LENGTH = 2_500_000;
+          if (pdfBase64 && pdfBase64.length > MAX_BASE64_PAYLOAD_LENGTH) {
+            console.warn("[ORDER FORM] PDF en base64 demasiado grande para enviar en request, se enviará email sin adjunto", {
+              base64Length: pdfBase64.length,
+              maxAllowed: MAX_BASE64_PAYLOAD_LENGTH,
+            });
+            pdfBase64 = null;
+          }
+
+          // Enviar email incluso sin PDF para no perder la notificación al cliente
+          console.log("[ORDER FORM] Enviando email de creación de orden:", createdOrder.order_number);
+          const emailResponse = await fetch('/api/send-order-email', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -952,11 +983,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 successData = { message: 'Email enviado (sin respuesta del servidor)' };
               }
               console.log("[ORDER FORM] Email enviado exitosamente:", successData);
-            }
-          } else {
-            console.warn("[ORDER FORM] No se pudo generar PDF para enviar por email");
-          }
-        } catch (emailError: any) {
+            }        } catch (emailError: any) {
           console.error("[ORDER FORM] Excepción al enviar email:", emailError);
           // No mostrar error al usuario, solo loguear
         }
@@ -1010,56 +1037,152 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           </div>
 
           {/* Información del Dispositivo */}
+          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+            <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
+            {getWizardStep(device.id) === 1 && (
+              <>
+                <p className="text-xs text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                  {DEVICE_TYPE_OPTIONS.map((option) => (
+                    <button
+                      key={`${device.id}-${option.id}`}
+                      type="button"
+                      onClick={() => applyDeviceType(device.id, option.id)}
+                      className="text-left rounded-md border p-3 transition-colors border-slate-200 hover:border-brand-light hover:bg-slate-50"
+                    >
+                      <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
+                      <p className="text-xs text-slate-600 mt-1">{option.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {getWizardStep(device.id) === 2 && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-600">2) ¿Qué marca de {DEVICE_TYPE_OPTIONS.find((option) => option.id === device.deviceType)?.label.toLowerCase()}?</p>
+                  <button type="button" className="text-xs underline text-slate-600" onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 1 }))}>
+                    Volver
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {getWizardOptionsForDevice(device).map((brand) => (
+                    <button
+                      key={`${device.id}-brand-${brand.key}`}
+                      type="button"
+                      onClick={() => applyBrand(device.id, brand.key)}
+                      className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    >
+                      {brand.icon} {brand.label} <span className="opacity-75">({brand.models.length})</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {getWizardStep(device.id) === 3 && selectedBrandByDevice[device.id] && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-600">3) Selecciona serie / línea</p>
+                  <button
+                    type="button"
+                    className="text-xs underline text-slate-600"
+                    onClick={() => {
+                      setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
+                      setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
+                      setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }));
+                    }}
+                  >
+                    Volver
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => (
+                    <button
+                      key={`${device.id}-series-${series.key}`}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: series.key }));
+                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
+                      }}
+                      className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    >
+                      {series.label} <span className="opacity-75">({series.models.length})</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {getWizardStep(device.id) === 4 && selectedBrandByDevice[device.id] && selectedSeriesByDevice[device.id] && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-600">4) Modelo exacto</p>
+                  <button
+                    type="button"
+                    className="text-xs underline text-slate-600"
+                    onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 3 }))}
+                  >
+                    Volver
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const brands = getWizardOptionsForDevice(device);
+                    const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
+                    if (!selectedBrand) return [];
+                    const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
+                    return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 30);
+                  })().map((model) => (
+                    <button
+                      key={`${device.id}-model-${model}`}
+                      type="button"
+                      onClick={() => applySuggestedModel(device.id, model)}
+                      className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm hover:bg-slate-100"
+                    >
+                      {model}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {getWizardStep(device.id) === 5 && (
+              <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
+                <p className="text-sm">
+                  Dispositivo seleccionado: <strong>{device.deviceModel}</strong>
+                </p>
+                <button
+                  type="button"
+                  className="text-xs underline mt-1"
+                  onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                >
+                  Cambiar modelo
+                </button>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
           <label className="block text-sm font-medium text-slate-700 mb-2">
-            Dispositivo (Marca y Modelo) *
+            Dispositivo seleccionado *
           </label>
-          <input
-            ref={(el) => deviceInputRefs.current[device.id] = el}
-            type="text"
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
-            placeholder="Ej: iPhone 13 Pro Max"
-            value={device.deviceModel}
-            onChange={(e) =>
-              updateDevice(device.id, {
-                deviceModel: e.target.value,
-                // Evita cambios bruscos: no activar checklist automáticamente mientras escribe
-                deviceType: null,
-              })
-            }
-            onFocus={() => {
-              if (deviceSuggestions[device.id]?.length > 0) {
-                setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: true }));
-              }
-            }}
-            onBlur={() => {
-              setTimeout(() => {
-                setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
-              }, 200);
-            }}
-            required
-          />
-          {showDeviceSuggestions[device.id] && deviceSuggestions[device.id]?.length > 0 && (
-            <div 
-              ref={(el) => deviceSuggestionsRefs.current[device.id] = el}
-              className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
-            >
-              {deviceSuggestions[device.id].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  className="block w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 border-b border-slate-100 last:border-b-0"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    applySuggestedModel(device.id, suggestion);
-                    setDeviceSuggestions(prev => ({ ...prev, [device.id]: [] }));
-                    setShowDeviceSuggestions(prev => ({ ...prev, [device.id]: false }));
-                  }}
-                >
-                  {suggestion}
-                </button>
-              ))}
+          {device.deviceModel ? (
+            <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50">
+              <p className="font-medium text-emerald-900">{device.deviceModel}</p>
+              <button
+                type="button"
+                className="text-xs underline text-emerald-800 mt-1"
+                onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+              >
+                Cambiar dispositivo
+              </button>
+            </div>
+          ) : (
+            <div className="p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+              Completa el asistente rápido para seleccionar el dispositivo.
             </div>
           )}
         </div>
@@ -1264,31 +1387,14 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
 
           {/* Checklist Dinámico */}
           {device.deviceType && (
-            <DeviceChecklist
-              deviceType={device.deviceType}
-              checklistData={device.checklistData}
-              onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
-            />
-          )}
-
-          {/* Plantillas de descripción rápidas */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Plantillas de Descripción (tocar para completar)
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {problemDescriptionTemplates.map((template) => (
-                <button
-                  key={template}
-                  type="button"
-                  onClick={() => updateDevice(device.id, { problemDescription: template })}
-                  className="text-left text-xs border border-slate-300 rounded-md px-2 py-2 hover:bg-slate-100"
-                >
-                  {template}
-                </button>
-              ))}
+            <div ref={(el) => { checklistSectionRefs.current[device.id] = el; }}>
+              <DeviceChecklist
+                deviceType={device.deviceType}
+                checklistData={device.checklistData}
+                onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
+              />
             </div>
-          </div>
+          )}
 
           {/* Descripción del Problema */}
           <div>
@@ -1333,6 +1439,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             </label>
             <ServiceSelector
               selectedServices={device.selectedServices}
+              deviceType={device.deviceType}
+              deviceModel={device.deviceModel}
               onServicesChange={(services) => {
                 console.log(`[OrderForm] onServicesChange llamado para equipo ${device.id}:`, {
                   servicios_anteriores: device.selectedServices.length,

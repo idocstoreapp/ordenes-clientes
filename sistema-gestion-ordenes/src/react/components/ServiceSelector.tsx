@@ -1,19 +1,23 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Service } from "@/types";
+import { getRecommendedServices } from "@/lib/deviceWizardData";
 
 interface ServiceSelectorProps {
   selectedServices: Service[];
   onServicesChange: (services: Service[]) => void;
+  deviceType?: string | null;
+  deviceModel?: string;
 }
 
-export default function ServiceSelector({ selectedServices, onServicesChange }: ServiceSelectorProps) {
+export default function ServiceSelector({ selectedServices, onServicesChange, deviceType = null, deviceModel = "" }: ServiceSelectorProps) {
   const [availableServices, setAvailableServices] = useState<Service[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [showNewServiceForm, setShowNewServiceForm] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +36,10 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    setSelectedCategory(null);
+  }, [deviceType, deviceModel]);
+
   async function loadServices() {
     const { data } = await supabase.from("services").select("*").order("name");
     if (data) setAvailableServices(data);
@@ -42,6 +50,30 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
       service.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
       !selectedServices.find((s) => s.id === service.id)
   );
+  const recommendedServices = getRecommendedServices(availableServices, {
+    deviceType,
+    deviceModel,
+    selectedServiceIds: selectedServices.map((service) => service.id),
+  });
+
+  const hasSelectedDevice = Boolean(deviceType && deviceModel.trim());
+  const serviceCategories = [
+    { key: "pantalla", label: "Pantalla", pattern: /pantalla|glass|tactil/i },
+    { key: "bateria", label: "Batería", pattern: /bateria|batería/i },
+    { key: "camara", label: "Cámara", pattern: /camara|cámara|face id/i },
+    { key: "carga", label: "Carga", pattern: /carga|conector|pin|base/i },
+    { key: "software", label: "Software", pattern: /software|reseteo|google|frp|actualización|actualizacion|virus/i },
+    { key: "mantenimiento", label: "Mantención", pattern: /limpieza|mantencion|manten|diagnostico|diagnóstico|baño quimico/i },
+    { key: "placa", label: "Placa", pattern: /placa|fpc|sensores|sim/i },
+    { key: "otros", label: "Otros", pattern: /.*/i },
+  ];
+
+  const servicesByCategory = serviceCategories.map((category) => ({
+    ...category,
+    services: availableServices.filter((service) => category.pattern.test(service.name) && !selectedServices.some((s) => s.id === service.id)),
+  }));
+
+  const selectedCategoryData = servicesByCategory.find((category) => category.key === selectedCategory);
 
   function handleServiceSelect(service: Service) {
     // Validar que el servicio no esté ya en la lista (protección contra duplicados)
@@ -151,6 +183,83 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
         </button>
       </div>
 
+      {!hasSelectedDevice && (
+        <div className="mb-3 p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+          ¿Servicios para qué dispositivo? Primero selecciona tipo y modelo en el asistente de dispositivo.
+        </div>
+      )}
+
+      {hasSelectedDevice && (
+        <div className="mb-3 p-3 rounded-md border border-slate-200 bg-slate-50">
+          {!selectedCategory && (
+            <>
+              <p className="text-xs font-semibold text-slate-700 mb-2">¿Qué tipo de servicio necesitas?</p>
+              <div className="flex flex-wrap gap-2">
+                {servicesByCategory
+                  .filter((category) => category.services.length > 0)
+                  .map((category) => (
+                    <button
+                      key={`category-${category.key}`}
+                      type="button"
+                      onClick={() => setSelectedCategory(category.key)}
+                      className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
+                    >
+                      {category.label} ({category.services.length})
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
+
+          {selectedCategory && selectedCategoryData && (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-700">
+                  Servicios disponibles: {selectedCategoryData.label}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory(null)}
+                  className="text-xs underline text-slate-600"
+                >
+                  Cambiar tipo
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedCategoryData.services.slice(0, 25).map((service) => (
+                  <button
+                    key={`category-service-${service.id}`}
+                    type="button"
+                    onClick={() => handleServiceSelect(service)}
+                    className="px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs hover:bg-emerald-100"
+                  >
+                    + {service.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {hasSelectedDevice && recommendedServices.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-slate-600 mb-2">Sugeridos para este equipo</p>
+          <div className="flex flex-wrap gap-2">
+            {recommendedServices.map((service) => (
+              <button
+                key={`recommended-${service.id}`}
+                type="button"
+                onClick={() => handleServiceSelect(service)}
+                className="px-3 py-1.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100"
+              >
+                + {service.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showResults && searchTerm && filteredServices.length > 0 && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
           {filteredServices.map((service) => {
@@ -255,6 +364,3 @@ export default function ServiceSelector({ selectedServices, onServicesChange }: 
     </div>
   );
 }
-
-
-
