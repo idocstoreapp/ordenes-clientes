@@ -8,6 +8,7 @@ create table if not exists public.device_catalog_items (
   type_key text null,
   item_key text not null,
   label text not null,
+  description text null,
   image_url text null,
   logo_url text null,
   sort_order integer not null default 0,
