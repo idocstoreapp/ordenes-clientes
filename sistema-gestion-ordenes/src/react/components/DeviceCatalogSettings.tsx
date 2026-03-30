@@ -192,9 +192,6 @@ export default function DeviceCatalogSettings() {
 
   return (
     <div className="space-y-5">
-      <div className=" p-3 text-sm text-blue-900">
-        Ahora puedes editar con contexto claro: cada marca/línea/modelo/variante muestra de qué padre cuelga y además puedes editar las cards del wizard (display + imagen).
-      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
