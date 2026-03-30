@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
-import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions } from "@/lib/deviceWizardData";
+import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions, getBrandImage, getModelImage } from "@/lib/deviceWizardData";
 import { getProblemDescriptionSuggestions, getQuickProblemClauses } from "@/lib/problemDescriptionAutocomplete";
 
 import DeviceChecklist from "./DeviceChecklist";
@@ -1060,8 +1060,14 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       key={`${device.id}-${option.id}`}
                       type="button"
                       onClick={() => applyDeviceType(device.id, option.id)}
-                      className="text-left rounded-md border p-3 transition-colors border-slate-200 hover:border-brand-light hover:bg-slate-50"
+                      className="text-left rounded-xl border p-2 transition-colors border-slate-200 hover:border-brand-light hover:bg-slate-50 overflow-hidden"
                     >
+                      <img
+                        src={option.imageUrl}
+                        alt={option.label}
+                        className="h-20 w-full rounded-lg object-cover mb-2"
+                        loading="lazy"
+                      />
                       <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
                       <p className="text-xs text-slate-600 mt-1">{option.description}</p>
                     </button>
@@ -1078,15 +1084,22 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     Volver
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                   {getWizardOptionsForDevice(device).map((brand) => (
                     <button
                       key={`${device.id}-brand-${brand.key}`}
                       type="button"
                       onClick={() => applyBrand(device.id, brand.key)}
-                      className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      className="rounded-xl border text-sm bg-white text-slate-700 border-slate-200 hover:bg-slate-50 p-2 text-left"
                     >
-                      {brand.icon} {brand.label} <span className="opacity-75">({brand.models.length})</span>
+                      <div className="h-16 rounded-lg bg-slate-50 overflow-hidden mb-2">
+                        <img src={getBrandImage(brand.key)} alt={brand.label} className="h-full w-full object-cover" loading="lazy" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <img src={brand.logoUrl} alt={`${brand.label} logo`} className="h-5 w-5 object-contain" loading="lazy" />
+                        <p className="font-semibold text-xs">{brand.icon} {brand.label}</p>
+                      </div>
+                      <span className="opacity-75 text-[11px]">{brand.models.length} modelos</span>
                     </button>
                   ))}
                 </div>
@@ -1109,7 +1122,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     Volver
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
                   {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => (
                     <button
                       key={`${device.id}-series-${series.key}`}
@@ -1118,9 +1131,11 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: series.key }));
                         setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
                       }}
-                      className="px-3 py-1.5 rounded-full border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left"
                     >
-                      {series.label} <span className="opacity-75">({series.models.length})</span>
+                      <img src={series.imageUrl} alt={series.label} className="h-14 w-full rounded-lg object-cover mb-2" loading="lazy" />
+                      <p className="font-semibold text-xs">{series.label}</p>
+                      <span className="opacity-75 text-[11px]">{series.models.length} variantes</span>
                     </button>
                   ))}
                 </div>
@@ -1139,23 +1154,32 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     Volver
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {(() => {
                     const brands = getWizardOptionsForDevice(device);
                     const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
                     if (!selectedBrand) return [];
                     const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
                     return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 30);
-                  })().map((model) => (
-                    <button
-                      key={`${device.id}-model-${model}`}
-                      type="button"
-                      onClick={() => applySuggestedModel(device.id, model)}
-                      className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-sm hover:bg-slate-100"
-                    >
-                      {model}
-                    </button>
-                  ))}
+                  })().map((model) => {
+                    const selectedBrandKey = selectedBrandByDevice[device.id] ?? undefined;
+                    return (
+                      <button
+                        key={`${device.id}-model-${model}`}
+                        type="button"
+                        onClick={() => applySuggestedModel(device.id, model)}
+                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left"
+                      >
+                        <img
+                          src={getModelImage(model, selectedBrandKey)}
+                          alt={model}
+                          className="h-14 w-full rounded-lg object-cover mb-2"
+                          loading="lazy"
+                        />
+                        <span>{model}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}

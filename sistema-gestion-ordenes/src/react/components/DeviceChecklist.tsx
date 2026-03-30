@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { DeviceChecklistItem as ChecklistItem, DeviceType } from "@/types";
 
@@ -53,6 +53,8 @@ export default function DeviceChecklist({
   const [newCustomItemName, setNewCustomItemName] = useState("");
   const [customStatuses, setCustomStatuses] = useState<string[]>([]);
   const [newCustomStatus, setNewCustomStatus] = useState("");
+  const [expandedByItem, setExpandedByItem] = useState<Record<string, boolean>>({});
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     async function loadChecklist() {
@@ -104,6 +106,7 @@ export default function DeviceChecklist({
       ...checklistData,
       [itemName]: value,
     });
+    setExpandedByItem((prev) => ({ ...prev, [itemName]: false }));
   }
 
   function handleAddCustomItem() {
@@ -158,6 +161,22 @@ export default function DeviceChecklist({
     ...customItems.filter(item => !items.some(dbItem => dbItem.item_name === item))
   ];
 
+  useEffect(() => {
+    const defaults: Record<string, boolean> = {};
+    allItems.forEach((itemName) => {
+      defaults[itemName] = !checklistData[itemName];
+    });
+    setExpandedByItem(defaults);
+  }, [deviceType, allItems.join("|")]);
+
+  useEffect(() => {
+    const firstPending = allItems.find((itemName) => !checklistData[itemName]);
+    if (!firstPending) return;
+    const ref = itemRefs.current[firstPending];
+    if (!ref) return;
+    ref.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [Object.entries(checklistData).map(([k, v]) => `${k}:${v}`).join("|"), allItems.join("|")]);
+
   function getStatusOptionsForItem(itemName: string) {
     const itemFromDb = items.find((item) => item.item_name === itemName);
     const statusOptionsFromDb = Array.isArray(itemFromDb?.status_options)
@@ -210,6 +229,9 @@ export default function DeviceChecklist({
           return (
             <div
               key={itemName}
+              ref={(el) => {
+                itemRefs.current[itemName] = el;
+              }}
               className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -226,22 +248,37 @@ export default function DeviceChecklist({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-                {statusOptions.map((statusOption) => {
-                  const isSelected = selectedValue === statusOption.value;
-                  return (
-                    <button
-                      key={statusOption.value}
-                      type="button"
-                      className={getStatusButtonClass(statusOption.value, isSelected)}
-                      aria-pressed={isSelected}
-                      onClick={() => handleItemChange(itemName, statusOption.value)}
-                    >
-                      {statusOption.label}
-                    </button>
-                  );
-                })}
-              </div>
+              {(expandedByItem[itemName] || !selectedValue) ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+                  {statusOptions.map((statusOption) => {
+                    const isSelected = selectedValue === statusOption.value;
+                    return (
+                      <button
+                        key={statusOption.value}
+                        type="button"
+                        className={getStatusButtonClass(statusOption.value, isSelected)}
+                        aria-pressed={isSelected}
+                        onClick={() => handleItemChange(itemName, statusOption.value)}
+                      >
+                        {statusOption.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Estado: {formatStatusLabel(selectedValue)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedByItem((prev) => ({ ...prev, [itemName]: true }))}
+                    className="rounded-md border border-slate-300 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
+                  >
+                    Editar
+                  </button>
+                </div>
+              )}
 
               <div className="mt-3 flex items-center justify-between gap-2">
                 <span className="text-xs text-slate-500">

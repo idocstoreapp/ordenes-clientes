@@ -5,27 +5,30 @@ export interface DeviceTypeOption {
   label: string;
   description: string;
   icon: string;
+  imageUrl: string;
 }
 
 export interface DeviceSeriesOption {
   key: string;
   label: string;
   models: string[];
+  imageUrl: string;
 }
 
 export interface DeviceBrandOption {
   key: string;
   label: string;
   icon: string;
+  logoUrl: string;
   models: string[];
   series: DeviceSeriesOption[];
 }
 
 export const DEVICE_TYPE_OPTIONS: DeviceTypeOption[] = [
-  { id: "iphone", label: "Celular", description: "iPhone, Android, etc.", icon: "📱" },
-  { id: "ipad", label: "Tablet", description: "iPad, Android Tablet, etc.", icon: "📱" },
-  { id: "macbook", label: "Notebook / Laptop", description: "MacBook, Windows Laptop, etc.", icon: "💻" },
-  { id: "apple_watch", label: "Smartwatch", description: "Apple Watch, Android Watch, etc.", icon: "⌚" },
+  { id: "iphone", label: "Celular", description: "iPhone, Samsung, Xiaomi, etc.", icon: "📱", imageUrl: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=480&q=80" },
+  { id: "ipad", label: "Tablet", description: "iPad, Galaxy Tab, Redmi Pad, etc.", icon: "📱", imageUrl: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=480&q=80" },
+  { id: "macbook", label: "Notebook / Laptop", description: "MacBook, Lenovo, Asus, HP, etc.", icon: "💻", imageUrl: "https://images.unsplash.com/photo-1517336714739-489689fd1ca8?auto=format&fit=crop&w=480&q=80" },
+  { id: "apple_watch", label: "Smartwatch", description: "Apple Watch, Galaxy Watch, Huawei Watch, etc.", icon: "⌚", imageUrl: "https://images.unsplash.com/photo-1544117519-31a4b719223d?auto=format&fit=crop&w=480&q=80" },
 ];
 
 const BRAND_RULES: Array<{ key: string; label: string; icon: string; pattern: RegExp }> = [
@@ -50,10 +53,63 @@ const BRAND_RULES: Array<{ key: string; label: string; icon: string; pattern: Re
 ];
 
 const FALLBACK_MODELS_BY_TYPE: Record<string, string[]> = {
-  iphone: ["iPhone 15 Pro", "iPhone 14", "Samsung S23 Ultra", "Redmi Note 13 Pro 5G", "Moto G54 5G"],
-  ipad: ["iPad 10", "iPad 9", "Samsung Tab A9+", "Lenovo TB-X306X"],
-  macbook: ["MacBook Air A2337", "MacBook Pro A2442", "Acer Swift 3", "Dell Inspiron 15 3511"],
-  apple_watch: ["Apple Watch SE 44mm", "Apple Watch Series 6 44mm", "Galaxy Watch Active 2", "Huawei Watch GT 3 Pro"],
+  iphone: ["iPhone 15 Pro Max", "iPhone 14 Plus", "Samsung Galaxy S24 Ultra", "Samsung Galaxy A55", "Redmi Note 13 Pro 5G", "Xiaomi 14", "Moto Edge 50", "Google Pixel 8 Pro"],
+  ipad: ["iPad 10", "iPad Air M2", "Samsung Galaxy Tab S9", "Samsung Tab A9+", "Xiaomi Pad 6", "Lenovo Tab M10"],
+  macbook: ["MacBook Air M3 13", "MacBook Pro M3 Pro 14", "Acer Swift 3", "Dell Inspiron 15 3511", "HP Victus 15", "Lenovo Ideapad 3"],
+  apple_watch: ["Apple Watch SE 44mm", "Apple Watch Series 9 45mm", "Apple Watch Ultra 2", "Galaxy Watch 6 Classic", "Huawei Watch GT 4"],
+};
+
+const BRAND_LOGOS: Record<string, string> = {
+  apple: "https://cdn.simpleicons.org/apple/111111",
+  samsung: "https://cdn.simpleicons.org/samsung/1428A0",
+  xiaomi: "https://cdn.simpleicons.org/xiaomi/FF6900",
+  motorola: "https://cdn.simpleicons.org/motorola/E1140A",
+  huawei: "https://cdn.simpleicons.org/huawei/CF0A2C",
+  honor: "https://cdn.simpleicons.org/honor/000000",
+  oppo: "https://cdn.simpleicons.org/oppo/2D683D",
+  vivo: "https://cdn.simpleicons.org/vivo/415FFF",
+  google: "https://cdn.simpleicons.org/google/4285F4",
+  apple_watch: "https://cdn.simpleicons.org/apple/111111",
+  lenovo: "https://cdn.simpleicons.org/lenovo/E2231A",
+  asus: "https://cdn.simpleicons.org/asus/000000",
+  acer: "https://cdn.simpleicons.org/acer/83B81A",
+  hp: "https://cdn.simpleicons.org/hp/0096D6",
+  dell: "https://cdn.simpleicons.org/dell/007DB8",
+  nintendo: "https://cdn.simpleicons.org/nintendo/E60012",
+  playstation: "https://cdn.simpleicons.org/playstation/003791",
+  other: "https://dummyimage.com/128x128/e2e8f0/475569&text=OTR",
+};
+
+const BRAND_IMAGE_CATALOG: Record<string, string> = {
+  apple: "https://images.unsplash.com/photo-1510557880182-3f8a8b8f0f4f?auto=format&fit=crop&w=480&q=80",
+  samsung: "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?auto=format&fit=crop&w=480&q=80",
+  xiaomi: "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=480&q=80",
+  motorola: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=480&q=80",
+  google: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=480&q=80",
+  huawei: "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=480&q=80",
+  lenovo: "https://images.unsplash.com/photo-1541807084-5c52b6b3adef?auto=format&fit=crop&w=480&q=80",
+  asus: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=480&q=80",
+  acer: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=480&q=80",
+  hp: "https://images.unsplash.com/photo-1517430816045-df4b7de11d1d?auto=format&fit=crop&w=480&q=80",
+  dell: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=480&q=80",
+  apple_watch: "https://images.unsplash.com/photo-1544117519-31a4b719223d?auto=format&fit=crop&w=480&q=80",
+  other: "https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=480&q=80",
+};
+
+const LINE_IMAGE_HINTS: Array<{ pattern: RegExp; imageUrl: string }> = [
+  { pattern: /iphone/i, imageUrl: "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=480&q=80" },
+  { pattern: /serie s|galaxy s/i, imageUrl: "https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?auto=format&fit=crop&w=480&q=80" },
+  { pattern: /serie a|galaxy a/i, imageUrl: "https://images.unsplash.com/photo-1616353071855-2abfe4f3a9f9?auto=format&fit=crop&w=480&q=80" },
+  { pattern: /redmi|xiaomi|poco/i, imageUrl: "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=480&q=80" },
+  { pattern: /watch|ultra|series/i, imageUrl: "https://images.unsplash.com/photo-1544117519-31a4b719223d?auto=format&fit=crop&w=480&q=80" },
+  { pattern: /macbook|thinkpad|ideapad|inspiron|victus|swift/i, imageUrl: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=480&q=80" },
+];
+
+const TYPE_PATTERNS: Record<string, RegExp> = {
+  iphone: /iphone|samsung|xiaomi|redmi|poco|moto|motorola|pixel|huawei|honor|oppo|vivo|android/i,
+  ipad: /ipad|tablet|tab|pad/i,
+  macbook: /macbook|laptop|notebook|acer|asus|lenovo|dell|hp|victus|ideapad|thinkpad|inspiron/i,
+  apple_watch: /watch|smartwatch|reloj/i,
 };
 
 function normalizeWhitespace(value: string): string {
@@ -96,6 +152,34 @@ function detectBrand(model: string): { key: string; label: string; icon: string 
   const normalized = model.toLowerCase();
   const found = BRAND_RULES.find((rule) => rule.pattern.test(normalized)) ?? BRAND_RULES[BRAND_RULES.length - 1];
   return { key: found.key, label: found.label, icon: found.icon };
+}
+
+function matchTypeWithPattern(model: string, selectedType: string | null): boolean {
+  if (!selectedType) return true;
+  const pattern = TYPE_PATTERNS[selectedType];
+  if (!pattern) return true;
+  return pattern.test(model);
+}
+
+function getLineImage(brandKey: string, lineLabel: string): string {
+  const match = LINE_IMAGE_HINTS.find((entry) => entry.pattern.test(lineLabel));
+  if (match) return match.imageUrl;
+  return BRAND_IMAGE_CATALOG[brandKey] ?? BRAND_IMAGE_CATALOG.other;
+}
+
+export function getBrandLogo(brandKey: string): string {
+  return BRAND_LOGOS[brandKey] ?? BRAND_LOGOS.other;
+}
+
+export function getBrandImage(brandKey: string): string {
+  return BRAND_IMAGE_CATALOG[brandKey] ?? BRAND_IMAGE_CATALOG.other;
+}
+
+export function getModelImage(model: string, brandKey?: string): string {
+  const match = LINE_IMAGE_HINTS.find((entry) => entry.pattern.test(model));
+  if (match) return match.imageUrl;
+  if (brandKey) return getBrandImage(brandKey);
+  return BRAND_IMAGE_CATALOG.other;
 }
 
 function detectSeries(brandKey: string, model: string): string {
@@ -154,7 +238,10 @@ export function buildDeviceWizardOptions(
   });
   const uniqueModels = Array.from(uniqueModelsMap.values());
   const filteredByType = selectedType
-    ? uniqueModels.filter((model) => detectType(model) === selectedType)
+    ? uniqueModels.filter((model) => {
+      const detected = detectType(model);
+      return detected === selectedType || (!detected && matchTypeWithPattern(model, selectedType));
+    })
     : uniqueModels;
 
   const rows = filteredByType.length > 0 ? filteredByType : uniqueModels;
@@ -169,6 +256,7 @@ export function buildDeviceWizardOptions(
         key: brand.key,
         label: brand.label,
         icon: brand.icon,
+        logoUrl: BRAND_LOGOS[brand.key] ?? BRAND_LOGOS.other,
         models: [],
         series: [],
       });
@@ -187,6 +275,7 @@ export function buildDeviceWizardOptions(
         key: seriesLabel.toLowerCase(),
         label: seriesLabel,
         models: [],
+        imageUrl: getLineImage(brand.key, seriesLabel),
       };
       brandBucket.series.push(seriesBucket);
     }
@@ -201,7 +290,11 @@ export function buildDeviceWizardOptions(
       ...brand,
       models: [...brand.models].sort(naturalSort),
       series: [...brand.series]
-        .map((series) => ({ ...series, models: [...series.models].sort(naturalSort) }))
+        .map((series) => ({
+          ...series,
+          imageUrl: getLineImage(brand.key, series.label),
+          models: [...series.models].sort(naturalSort),
+        }))
         .sort((a, b) => sortSeriesByBrand(brand.key, a, b)),
     }))
     .sort((a, b) => b.models.length - a.models.length || naturalSort(a.label, b.label));

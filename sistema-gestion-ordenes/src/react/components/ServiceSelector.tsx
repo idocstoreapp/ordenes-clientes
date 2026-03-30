@@ -58,14 +58,14 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
 
   const hasSelectedDevice = Boolean(deviceType && deviceModel.trim());
   const serviceCategories = [
-    { key: "pantalla", label: "Pantalla", pattern: /pantalla|glass|tactil/i },
-    { key: "bateria", label: "Batería", pattern: /bateria|batería/i },
-    { key: "camara", label: "Cámara", pattern: /camara|cámara|face id/i },
-    { key: "carga", label: "Carga", pattern: /carga|conector|pin|base/i },
-    { key: "software", label: "Software", pattern: /software|reseteo|google|frp|actualización|actualizacion|virus/i },
-    { key: "mantenimiento", label: "Mantención", pattern: /limpieza|mantencion|manten|diagnostico|diagnóstico|baño quimico/i },
-    { key: "placa", label: "Placa", pattern: /placa|fpc|sensores|sim/i },
-    { key: "otros", label: "Otros", pattern: /.*/i },
+    { key: "pantalla", label: "Pantalla", icon: "🖥️", pattern: /pantalla|glass|tactil/i },
+    { key: "bateria", label: "Batería", icon: "🔋", pattern: /bateria|batería/i },
+    { key: "camara", label: "Cámara", icon: "📷", pattern: /camara|cámara|face id/i },
+    { key: "carga", label: "Carga", icon: "🔌", pattern: /carga|conector|pin|base/i },
+    { key: "software", label: "Software", icon: "🧠", pattern: /software|reseteo|google|frp|actualización|actualizacion|virus/i },
+    { key: "mantenimiento", label: "Mantención", icon: "🧰", pattern: /limpieza|mantencion|manten|diagnostico|diagnóstico|baño quimico/i },
+    { key: "placa", label: "Placa", icon: "🧩", pattern: /placa|fpc|sensores|sim|flex/i },
+    { key: "otros", label: "Otros", icon: "⚙️", pattern: /.*/i },
   ];
 
   const servicesByCategory = serviceCategories.map((category) => ({
@@ -194,7 +194,7 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
           {!selectedCategory && (
             <>
               <p className="text-xs font-semibold text-slate-700 mb-2">¿Qué tipo de servicio necesitas?</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {servicesByCategory
                   .filter((category) => category.services.length > 0)
                   .map((category) => (
@@ -202,9 +202,10 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
                       key={`category-${category.key}`}
                       type="button"
                       onClick={() => setSelectedCategory(category.key)}
-                      className="px-3 py-1.5 rounded-full border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100"
+                      className="px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 text-xs hover:bg-slate-100 text-left"
                     >
-                      {category.label} ({category.services.length})
+                      <p className="font-semibold">{category.icon} {category.label}</p>
+                      <p className="text-[11px] opacity-80">{category.services.length} opciones</p>
                     </button>
                   ))}
               </div>
@@ -215,7 +216,7 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
             <>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-slate-700">
-                  Servicios disponibles: {selectedCategoryData.label}
+                  Servicios disponibles: {selectedCategoryData.icon} {selectedCategoryData.label}
                 </p>
                 <button
                   type="button"
