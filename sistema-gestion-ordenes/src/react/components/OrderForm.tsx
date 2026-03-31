@@ -117,6 +117,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [recentDeviceModels, setRecentDeviceModels] = useState<string[]>([]);
   const [selectedBrandByDevice, setSelectedBrandByDevice] = useState<Record<string, string | null>>({});
   const [selectedSeriesByDevice, setSelectedSeriesByDevice] = useState<Record<string, string | null>>({});
+  const [selectedModelByDevice, setSelectedModelByDevice] = useState<Record<string, string | null>>({});
   const [wizardStepByDevice, setWizardStepByDevice] = useState<Record<string, number>>({});
   const [catalog, setCatalog] = useState<CatalogSnapshot>({
     deviceTypes: [],
@@ -190,12 +191,14 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     updateDevice(deviceId, { deviceType: type });
     setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: null }));
     setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
     setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 2 }));
   };
 
   const applyBrand = (deviceId: string, brandId: string) => {
     setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
     setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+    setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
     setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
   };
 
@@ -314,10 +317,17 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       deviceModel: model,
       deviceType: detectedType,
     });
-    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 5 }));
+    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 6 }));
     setTimeout(() => {
       checklistSectionRefs.current[deviceId]?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
+  };
+
+  const applyCatalogSelection = (device: DeviceItem, modelName: string, variantName = "") => {
+    const brandName = catalog.brands.find((b) => b.id === Number(selectedBrandByDevice[device.id]))?.name ?? "";
+    const lineName = catalog.productLines.find((l) => l.id === Number(selectedSeriesByDevice[device.id]))?.name ?? "";
+    const displayName = buildDeviceDisplayName({ brandName, lineName, modelName, variantName });
+    applySuggestedModel(device.id, displayName);
   };
 
   const addCustomModelToCatalog = async (device: DeviceItem) => {
@@ -413,9 +423,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       card.brand_id === params.brandId &&
       card.product_line_id === params.lineId &&
       card.model_id === params.modelId &&
-      (params.variantId ? card.variant_id === params.variantId : true)
+      (typeof params.variantId === "number" ? card.variant_id === params.variantId : card.variant_id === null)
     );
-    return exact?.image_url ?? null;
+    if (exact?.image_url) return exact.image_url;
+    const fallback = catalogCards.find((card) =>
+      card.device_type_id === params.typeId &&
+      card.brand_id === params.brandId &&
+      card.product_line_id === params.lineId &&
+      card.model_id === params.modelId
+    );
+    return fallback?.image_url ?? null;
   };
   const mapCatalogCodeToDeviceType = (code: string): DeviceType => {
     const map: Record<string, DeviceType> = {
@@ -1223,7 +1240,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
 
           {/* Información del Dispositivo */}
           <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-            <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-slate-900">Asistente rápido</h4>
+              <button
+                type="button"
+                onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 99 }))}
+                className="text-xs font-semibold rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-amber-800 hover:bg-amber-100"
+              >
+                ¿No encuentras el dispositivo? Escribir manual
+              </button>
+            </div>
             {getWizardStep(device.id) === 1 && (
               <>
                 <p className="text-xs text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
@@ -1266,7 +1292,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       className="r text-sm bg-white text-slate-700  hover:bg-slate-10 p-2 text-left"
                     >
                       <div className="h-16  bg-white overflow-hidden mb-2">
-                        <img src={brand.logo_url } alt={brand.name} className="h-full w-full object-contain bg-white" loading="lazy" />
+                        <img src={brand.logo_url || "https://dummyimage.com/240x120/e2e8f0/475569&text=Marca"} alt={brand.name} className="h-full w-full object-contain bg-white" loading="lazy" />
                       </div>
                       <p className="font-semibold text-xs">{brand.name}</p>
                     </button>
@@ -1285,6 +1311,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     onClick={() => {
                       setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
                       setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
+                      setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
                       setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }));
                     }}
                   >
@@ -1298,6 +1325,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       type="button"
                       onClick={() => {
                         setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: String(series.id) }));
+                        setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
                         setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
                       }}
                       className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
@@ -1327,30 +1355,30 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {getModelsForDevice(device).slice(0, 50).map((model) => {
-                    const variants = getVariantsForModel(model.id);
-                    const firstVariant = variants[0]?.name ?? "";
                     const typeId = getTypeIdForDevice(device);
                     const brandId = Number(selectedBrandByDevice[device.id]) || null;
                     const lineId = Number(selectedSeriesByDevice[device.id]) || null;
-                    const displayName = buildDeviceDisplayName({
-                      brandName: catalog.brands.find((b) => b.id === Number(selectedBrandByDevice[device.id]))?.name ?? "",
-                      lineName: catalog.productLines.find((l) => l.id === Number(selectedSeriesByDevice[device.id]))?.name ?? "",
-                      modelName: model.name,
-                      variantName: firstVariant,
-                    });
-                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: variants[0]?.id ?? null });
+                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: null }) || model.image_url || null;
                     return (
                       <button
                         key={`${device.id}-model-${model.id}`}
                         type="button"
-                        onClick={() => applySuggestedModel(device.id, displayName)}
+                        onClick={() => {
+                          const variants = getVariantsForModel(model.id);
+                          if (variants.length > 0) {
+                            setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: String(model.id) }));
+                            setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 5 }));
+                            return;
+                          }
+                          applyCatalogSelection(device, model.name);
+                        }}
                         className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
                       >
                         <AdaptiveWizardCardImage
                           src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
-                          alt={displayName}
+                          alt={model.name}
                         />
-                        <span>{displayName}</span>
+                        <span>{model.name}</span>
                       </button>
                     );
                   })}
@@ -1382,7 +1410,47 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
               </>
             )}
 
-            {getWizardStep(device.id) === 5 && (
+            {getWizardStep(device.id) === 5 && selectedModelByDevice[device.id] && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-slate-600">5) Variante exacta</p>
+                  <button
+                    type="button"
+                    className="text-xs underline text-slate-600"
+                    onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }))}
+                  >
+                    Volver
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {getVariantsForModel(Number(selectedModelByDevice[device.id])).map((variant) => {
+                    const selectedModel = getModelsForDevice(device).find((model) => String(model.id) === selectedModelByDevice[device.id]);
+                    if (!selectedModel) return null;
+                    const typeId = getTypeIdForDevice(device);
+                    const brandId = Number(selectedBrandByDevice[device.id]) || null;
+                    const lineId = Number(selectedSeriesByDevice[device.id]) || null;
+                    const modelId = selectedModel.id;
+                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId, variantId: variant.id }) || variant.image_url || null;
+                    return (
+                      <button
+                        key={`${device.id}-variant-${variant.id}`}
+                        type="button"
+                        onClick={() => applyCatalogSelection(device, selectedModel.name, variant.name)}
+                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[220px]"
+                      >
+                        <AdaptiveWizardCardImage
+                          src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Variante"}
+                          alt={variant.name}
+                        />
+                        <span>{variant.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {getWizardStep(device.id) === 6 && (
               <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
                 <p className="text-sm">
                   Dispositivo seleccionado: <strong>{device.deviceModel}</strong>
@@ -1390,10 +1458,15 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                 <button
                   type="button"
                   className="text-xs underline mt-1"
-                  onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                  onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }))}
                 >
                   Cambiar modelo
                 </button>
+              </div>
+            )}
+            {getWizardStep(device.id) === 99 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900 text-sm">
+                Escribe el dispositivo manualmente en el campo <strong>“Dispositivo seleccionado”</strong> de abajo.
               </div>
             )}
           </div>
@@ -1403,22 +1476,39 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Dispositivo seleccionado *
           </label>
-          {device.deviceModel ? (
-            <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50">
-              <p className="font-medium text-emerald-900">{device.deviceModel}</p>
-              <button
-                type="button"
-                className="text-xs underline text-emerald-800 mt-1"
-                onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
-              >
-                Cambiar dispositivo
-              </button>
-            </div>
-          ) : (
-            <div className="p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-sm">
-              Completa el asistente rápido para seleccionar el dispositivo.
+          <input
+            ref={(el) => { deviceInputRefs.current[device.id] = el; }}
+            type="text"
+            className="w-full border border-slate-300 rounded-md px-3 py-2"
+            value={device.deviceModel}
+            onChange={(e) => updateDevice(device.id, { deviceModel: e.target.value })}
+            onFocus={() => setShowDeviceSuggestions((prev) => ({ ...prev, [device.id]: true }))}
+            placeholder="Ej: Samsung Galaxy S24 Ultra 512GB"
+            required
+          />
+          {showDeviceSuggestions[device.id] && (deviceSuggestions[device.id]?.length ?? 0) > 0 && (
+            <div
+              ref={(el) => { deviceSuggestionsRefs.current[device.id] = el; }}
+              className="absolute z-20 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg max-h-48 overflow-auto"
+            >
+              {deviceSuggestions[device.id].map((suggestion) => (
+                <button
+                  key={`${device.id}-s-${suggestion}`}
+                  type="button"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100"
+                  onClick={() => {
+                    applySuggestedModel(device.id, suggestion);
+                    setShowDeviceSuggestions((prev) => ({ ...prev, [device.id]: false }));
+                  }}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           )}
+          <p className="text-xs text-slate-500 mt-1">
+            Puedes usar el asistente o escribir el modelo manualmente.
+          </p>
         </div>
 
         <div>

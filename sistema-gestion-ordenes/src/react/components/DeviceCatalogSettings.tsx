@@ -119,6 +119,7 @@ export default function DeviceCatalogSettings() {
           product_line_id: Number(selectedLineId),
           name: form.name.trim(),
           normalized_name: form.name.trim().toLowerCase(),
+          image_url: form.image_url.trim() || null,
           is_active: form.is_active,
         });
       }
@@ -129,6 +130,7 @@ export default function DeviceCatalogSettings() {
           model_id: Number(selectedModelId),
           name: form.name.trim(),
           normalized_name: form.name.trim().toLowerCase(),
+          image_url: form.image_url.trim() || null,
           is_active: form.is_active,
         });
       }
@@ -160,6 +162,7 @@ export default function DeviceCatalogSettings() {
     }
     if (table === "models" || table === "variants") {
       payload.normalized_name = row.name.toLowerCase();
+      payload.image_url = row.image_url || null;
     }
 
     const { error } = await supabase.from(table).update(payload).eq("id", row.id);
@@ -231,7 +234,7 @@ export default function DeviceCatalogSettings() {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
           {activeLevel === "device_types" && <input value={form.code} onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="code (ej: phone)" />}
           <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="nombre" />
-          {(activeLevel === "device_types" || activeLevel === "product_lines") && <input value={form.image_url} onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="image_url" />}
+          {(activeLevel === "device_types" || activeLevel === "product_lines" || activeLevel === "models" || activeLevel === "variants") && <input value={form.image_url} onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="image_url" />}
           {activeLevel === "brands" && <input value={form.logo_url} onChange={(e) => setForm((prev) => ({ ...prev, logo_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="logo_url" />}
           <button type="button" onClick={createItem} className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark">Agregar</button>
         </div>
@@ -258,7 +261,7 @@ export default function DeviceCatalogSettings() {
                   <input defaultValue={row.code || ""} onChange={(e) => { row.code = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="code" />
                 )}
                 <input defaultValue={row.name || ""} onChange={(e) => { row.name = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="nombre" />
-                {(activeLevel === "device_types" || activeLevel === "product_lines") && (
+                {(activeLevel === "device_types" || activeLevel === "product_lines" || activeLevel === "models" || activeLevel === "variants") && (
                   <input defaultValue={row.image_url || ""} onChange={(e) => { row.image_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="image_url" />
                 )}
                 {activeLevel === "brands" && (
