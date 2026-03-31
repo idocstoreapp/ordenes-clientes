@@ -402,6 +402,15 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     return catalog.models.filter((model) => model.product_line_id === lineId && model.is_active);
   };
   const getVariantsForModel = (modelId: number) => catalog.variants.filter((variant) => variant.model_id === modelId && variant.is_active);
+  const getModelVariantOptionsForDevice = (device: DeviceItem) => {
+    return getModelsForDevice(device)
+      .flatMap((model) => {
+        const variants = getVariantsForModel(model.id);
+        if (variants.length === 0) return [{ model, variant: null as (typeof variants)[number] | null }];
+        return variants.map((variant) => ({ model, variant }));
+      })
+      .slice(0, 120);
+  };
   const getCardImage = (params: {
     typeId: number | null;
     brandId: number | null;
@@ -1348,9 +1357,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {getModelsForDevice(device).slice(0, 50).map((model) => {
-                    const variants = getVariantsForModel(model.id);
-                    const firstVariant = variants[0]?.name ?? "";
+                  {getModelVariantOptionsForDevice(device).map(({ model, variant }) => {
                     const typeId = getTypeIdForDevice(device);
                     const brandId = Number(selectedBrandByDevice[device.id]) || null;
                     const lineId = Number(selectedSeriesByDevice[device.id]) || null;
@@ -1358,12 +1365,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       brandName: catalog.brands.find((b) => b.id === Number(selectedBrandByDevice[device.id]))?.name ?? "",
                       lineName: catalog.productLines.find((l) => l.id === Number(selectedSeriesByDevice[device.id]))?.name ?? "",
                       modelName: model.name,
-                      variantName: firstVariant,
+                      variantName: variant?.name ?? "",
                     });
-                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: variants[0]?.id ?? null });
+                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: variant?.id ?? null });
                     return (
                       <button
-                        key={`${device.id}-model-${model.id}`}
+                        key={`${device.id}-model-${model.id}-variant-${variant?.id ?? "none"}`}
                         type="button"
                         onClick={() => applySuggestedModel(device.id, displayName)}
                         className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
