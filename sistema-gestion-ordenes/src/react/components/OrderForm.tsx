@@ -410,6 +410,30 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     return catalog.models.filter((model) => model.product_line_id === lineId && model.is_active);
   };
   const getVariantsForModel = (modelId: number) => catalog.variants.filter((variant) => variant.model_id === modelId && variant.is_active);
+  const getVariantsForDeviceModel = (device: DeviceItem, modelId: number) => {
+    const direct = getVariantsForModel(modelId);
+    if (direct.length > 0) return direct;
+
+    const selectedModel = getModelsForDevice(device).find((model) => model.id === modelId);
+    if (!selectedModel) return [];
+
+    const selectedName = (selectedModel.normalized_name || selectedModel.name).trim().toLowerCase();
+    const relatedModelIds = catalog.models
+      .filter((model) => model.is_active)
+      .filter((model) => ((model.normalized_name || model.name).trim().toLowerCase() === selectedName))
+      .map((model) => model.id);
+
+    if (relatedModelIds.length === 0) return [];
+
+    const byName = new Map<string, (typeof catalog.variants)[number]>();
+    catalog.variants
+      .filter((variant) => variant.is_active && relatedModelIds.includes(variant.model_id))
+      .forEach((variant) => {
+        const key = (variant.normalized_name || variant.name).trim().toLowerCase();
+        if (!byName.has(key)) byName.set(key, variant);
+      });
+    return Array.from(byName.values());
+  };
   const getCardImage = (params: {
     typeId: number | null;
     brandId: number | null;
@@ -1359,6 +1383,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     const brandId = Number(selectedBrandByDevice[device.id]) || null;
                     const lineId = Number(selectedSeriesByDevice[device.id]) || null;
                     const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: null }) || model.image_url || null;
+                    const variantsForModel = getVariantsForDeviceModel(device, model.id);
                     return (
                       <button
                         key={`${device.id}-model-${model.id}`}
@@ -1374,6 +1399,9 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                           alt={model.name}
                         />
                         <span>{model.name}</span>
+                        <span className="block text-[11px] text-slate-500 mt-1">
+                          {variantsForModel.length > 0 ? `${variantsForModel.length} variantes` : "Sin variantes detectadas"}
+                        </span>
                       </button>
                     );
                   })}
@@ -1418,7 +1446,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {getVariantsForModel(Number(selectedModelByDevice[device.id])).map((variant) => {
+                  {getVariantsForDeviceModel(device, Number(selectedModelByDevice[device.id])).map((variant) => {
                     const selectedModel = getModelsForDevice(device).find((model) => String(model.id) === selectedModelByDevice[device.id]);
                     if (!selectedModel) return null;
                     const typeId = getTypeIdForDevice(device);
@@ -1455,7 +1483,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     Usar solo modelo (sin variante)
                   </button>
                 </div>
-                {getVariantsForModel(Number(selectedModelByDevice[device.id])).length === 0 && (
+                {getVariantsForDeviceModel(device, Number(selectedModelByDevice[device.id])).length === 0 && (
                   <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                     Este modelo no tiene variantes cargadas. Puedes continuar sin variante o escribirla manualmente.
                   </div>
