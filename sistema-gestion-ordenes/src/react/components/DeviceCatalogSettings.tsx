@@ -124,7 +124,9 @@ export default function DeviceCatalogSettings() {
       }
 
       if (activeLevel === "variants") {
-        if (!selectedModelId) return alert("Selecciona un modelo.");
+        if (!selectedTypeId || !selectedBrandId || !selectedLineId || !selectedModelId) {
+          return alert("Para crear una variante debes seleccionar Tipo, Marca, Línea y Modelo.");
+        }
         await supabase.from("variants").insert({
           model_id: Number(selectedModelId),
           name: form.name.trim(),
@@ -228,6 +230,77 @@ export default function DeviceCatalogSettings() {
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
         <p className="font-semibold text-slate-900">Agregar en {activeLevel}</p>
+        {activeLevel === "variants" && (
+          <div className="rounded-md border border-slate-200 bg-white p-3 space-y-2">
+            <p className="text-xs text-slate-700 font-medium">Contexto obligatorio para la variante</p>
+            <p className="text-xs text-slate-500">
+              Selecciona rápidamente dónde pertenece la variante: dispositivo → marca → línea → modelo.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <select
+                value={selectedTypeId}
+                onChange={(e) => {
+                  setSelectedTypeId(e.target.value);
+                  setSelectedBrandId("");
+                  setSelectedLineId("");
+                  setSelectedModelId("");
+                }}
+                className="border rounded-md px-2 py-1.5 text-sm"
+              >
+                <option value="">Tipo *</option>
+                {catalog.deviceTypes.map((row) => (
+                  <option key={`variant-type-${row.id}`} value={row.id}>{row.name}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedBrandId}
+                onChange={(e) => {
+                  setSelectedBrandId(e.target.value);
+                  setSelectedLineId("");
+                  setSelectedModelId("");
+                }}
+                className="border rounded-md px-2 py-1.5 text-sm"
+              >
+                <option value="">Marca *</option>
+                {catalog.brands
+                  .filter((row) => !selectedTypeId || String(row.device_type_id) === selectedTypeId)
+                  .map((row) => (
+                    <option key={`variant-brand-${row.id}`} value={row.id}>{row.name}</option>
+                  ))}
+              </select>
+
+              <select
+                value={selectedLineId}
+                onChange={(e) => {
+                  setSelectedLineId(e.target.value);
+                  setSelectedModelId("");
+                }}
+                className="border rounded-md px-2 py-1.5 text-sm"
+              >
+                <option value="">Línea *</option>
+                {catalog.productLines
+                  .filter((row) => !selectedBrandId || String(row.brand_id) === selectedBrandId)
+                  .map((row) => (
+                    <option key={`variant-line-${row.id}`} value={row.id}>{row.name}</option>
+                  ))}
+              </select>
+
+              <select
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+                className="border rounded-md px-2 py-1.5 text-sm"
+              >
+                <option value="">Modelo *</option>
+                {catalog.models
+                  .filter((row) => !selectedLineId || String(row.product_line_id) === selectedLineId)
+                  .map((row) => (
+                    <option key={`variant-model-${row.id}`} value={row.id}>{row.name}</option>
+                  ))}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
           {activeLevel === "device_types" && <input value={form.code} onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="code (ej: phone)" />}
           <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="nombre" />
