@@ -1364,13 +1364,8 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         key={`${device.id}-model-${model.id}`}
                         type="button"
                         onClick={() => {
-                          const variants = getVariantsForModel(model.id);
-                          if (variants.length > 0) {
-                            setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: String(model.id) }));
-                            setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 5 }));
-                            return;
-                          }
-                          applyCatalogSelection(device, model.name);
+                          setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: String(model.id) }));
+                          setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 5 }));
                         }}
                         className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
                       >
@@ -1446,6 +1441,47 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       </button>
                     );
                   })}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      const selectedModel = getModelsForDevice(device).find((model) => String(model.id) === selectedModelByDevice[device.id]);
+                      if (!selectedModel) return;
+                      applyCatalogSelection(device, selectedModel.name);
+                    }}
+                  >
+                    Usar solo modelo (sin variante)
+                  </button>
+                </div>
+                {getVariantsForModel(Number(selectedModelByDevice[device.id])).length === 0 && (
+                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                    Este modelo no tiene variantes cargadas. Puedes continuar sin variante o escribirla manualmente.
+                  </div>
+                )}
+                <div className="mt-3 rounded-md border border-dashed border-slate-300 p-3">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">¿No aparece tu variante? Escríbela manualmente</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input
+                      value={customCatalogFormByDevice[device.id]?.variant ?? ""}
+                      onChange={(e) => setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { ...(prev[device.id] ?? { model: "", variant: "" }), variant: e.target.value } }))}
+                      className="border border-slate-300 rounded-md px-2 py-1.5 text-sm md:col-span-2"
+                      placeholder="Variante (ej: 128GB, Pro, Plus)"
+                    />
+                    <button
+                      type="button"
+                      className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark"
+                      onClick={() => {
+                        const selectedModel = getModelsForDevice(device).find((model) => String(model.id) === selectedModelByDevice[device.id]);
+                        const variant = (customCatalogFormByDevice[device.id]?.variant ?? "").trim();
+                        if (!selectedModel || !variant) return;
+                        applyCatalogSelection(device, selectedModel.name, variant);
+                      }}
+                    >
+                      Usar variante escrita
+                    </button>
+                  </div>
                 </div>
               </>
             )}
