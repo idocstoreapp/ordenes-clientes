@@ -50,11 +50,13 @@ export default function DeviceChecklist({
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [customItems, setCustomItems] = useState<string[]>([]);
-  const [newCustomItemName, setNewCustomItemName] = useState("");
-  const [customStatuses, setCustomStatuses] = useState<string[]>([]);
-  const [newCustomStatus, setNewCustomStatus] = useState("");
+  const [customItemStatuses, setCustomItemStatuses] = useState<Record<string, string[]>>({});
   const [expandedByItem, setExpandedByItem] = useState<Record<string, boolean>>({});
   const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
+  const [modalChecklistName, setModalChecklistName] = useState("");
+  const [modalStatuses, setModalStatuses] = useState<string[]>([]);
+  const [modalNewStatus, setModalNewStatus] = useState("");
   const [editingCompletedItem, setEditingCompletedItem] = useState<string | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -81,25 +83,37 @@ export default function DeviceChecklist({
   }, [deviceType]);
 
   useEffect(() => {
-    const key = `device-checklist-statuses:${deviceType}`;
+    const key = `device-checklist-custom-item-statuses:${deviceType}`;
     const raw = localStorage.getItem(key);
     if (!raw) {
-      setCustomStatuses([]);
+      setCustomItemStatuses({});
       return;
     }
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setCustomStatuses(parsed.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()));
+      if (parsed && typeof parsed === "object") {
+        const normalized = Object.entries(parsed).reduce<Record<string, string[]>>((acc, [itemName, statuses]) => {
+          if (typeof itemName !== "string" || !Array.isArray(statuses)) return acc;
+          const validStatuses = statuses
+            .filter((value) => typeof value === "string" && value.trim())
+            .map((value) => value.trim());
+          if (validStatuses.length > 0) {
+            acc[itemName] = Array.from(new Set(validStatuses));
+          }
+          return acc;
+        }, {});
+        setCustomItemStatuses(normalized);
+      } else {
+        setCustomItemStatuses({});
       }
     } catch {
-      setCustomStatuses([]);
+      setCustomItemStatuses({});
     }
   }, [deviceType]);
 
-  function saveCustomStatuses(statuses: string[]) {
-    const key = `device-checklist-statuses:${deviceType}`;
-    localStorage.setItem(key, JSON.stringify(statuses));
+  function saveCustomItemStatuses(next: Record<string, string[]>) {
+    const key = `device-checklist-custom-item-statuses:${deviceType}`;
+    localStorage.setItem(key, JSON.stringify(next));
   }
 
   function handleItemChange(itemName: string, value: string) {
@@ -112,50 +126,68 @@ export default function DeviceChecklist({
     setEditingCompletedItem((prev) => (prev === itemName ? null : prev));
   }
 
-  function handleAddCustomItem() {
-    if (!newCustomItemName.trim()) {
-      alert("Por favor ingresa un nombre para el item");
+  function handleOpenAddChecklistModal() {
+    setModalChecklistName("");
+    setModalNewStatus("");
+    setModalStatuses(DEFAULT_STATUS_OPTIONS.map((status) => status.value));
+    setShowAddChecklistModal(true);
+  }
+
+  function handleAddStatusInModal() {
+    const value = modalNewStatus.trim();
+    if (!value) {
+      alert("Ingresa un estado");
       return;
     }
-    
-    if (customItems.includes(newCustomItemName.trim())) {
-      alert("Este item ya existe");
+    const duplicated = modalStatuses.some((status) => status.toLowerCase() === value.toLowerCase());
+    if (duplicated) {
+      alert("Ese estado ya fue agregado");
+      return;
+    }
+    setModalStatuses((prev) => [...prev, value]);
+    setModalNewStatus("");
+  }
+
+  function handleRemoveStatusInModal(statusValue: string) {
+    setModalStatuses((prev) => prev.filter((status) => status !== statusValue));
+  }
+
+  function handleSaveCustomChecklist() {
+    const itemName = modalChecklistName.trim();
+    if (!itemName) {
+      alert("Por favor ingresa un nombre para el checklist");
       return;
     }
 
-    setCustomItems([...customItems, newCustomItemName.trim()]);
-    setNewCustomItemName("");
+    if (customItems.some((item) => item.toLowerCase() === itemName.toLowerCase()) || items.some((item) => item.item_name.toLowerCase() === itemName.toLowerCase())) {
+      alert("Este checklist ya existe");
+      return;
+    }
+
+    if (modalStatuses.length === 0) {
+      alert("Agrega al menos un estado");
+      return;
+    }
+
+    setCustomItems((prev) => [...prev, itemName]);
+    const nextStatuses = {
+      ...customItemStatuses,
+      [itemName]: modalStatuses,
+    };
+    setCustomItemStatuses(nextStatuses);
+    saveCustomItemStatuses(nextStatuses);
+    setShowAddChecklistModal(false);
   }
 
   function handleRemoveCustomItem(itemName: string) {
     setCustomItems(customItems.filter(item => item !== itemName));
+    const nextStatuses = { ...customItemStatuses };
+    delete nextStatuses[itemName];
+    setCustomItemStatuses(nextStatuses);
+    saveCustomItemStatuses(nextStatuses);
     const newChecklistData = { ...checklistData };
     delete newChecklistData[itemName];
     onChecklistChange(newChecklistData);
-  }
-
-  function handleAddCustomStatus() {
-    const value = newCustomStatus.trim();
-    if (!value) {
-      alert("Ingresa un estado personalizado");
-      return;
-    }
-    const duplicated = [...DEFAULT_STATUS_OPTIONS.map((option) => option.value), ...customStatuses]
-      .some((option) => option.toLowerCase() === value.toLowerCase());
-    if (duplicated) {
-      alert("Ese estado ya existe");
-      return;
-    }
-    const next = [...customStatuses, value];
-    setCustomStatuses(next);
-    saveCustomStatuses(next);
-    setNewCustomStatus("");
-  }
-
-  function handleRemoveCustomStatus(statusValue: string) {
-    const next = customStatuses.filter((status) => status !== statusValue);
-    setCustomStatuses(next);
-    saveCustomStatuses(next);
   }
 
   // Combinar items de BD y items personalizados
@@ -195,8 +227,12 @@ export default function DeviceChecklist({
       ? (itemFromDb?.status_options || []).filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
       : [];
 
+    const customItemOptionValues = customItemStatuses[itemName] || [];
+
     const optionValues = statusOptionsFromDb.length > 0
       ? statusOptionsFromDb
+      : customItemOptionValues.length > 0
+        ? customItemOptionValues
       : DEFAULT_STATUS_OPTIONS.map((option) => option.value);
 
     const currentValue = checklistData[itemName];
@@ -385,75 +421,104 @@ export default function DeviceChecklist({
         </div>
       )}
 
-      {/* Agregar item personalizado */}
-      <div className="mt-4 flex gap-2 border-t border-slate-200 pt-4">
-        <input
-          type="text"
-          value={newCustomItemName}
-          onChange={(e) => setNewCustomItemName(e.target.value)}
-          placeholder="Nombre del nuevo item..."
-          className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              handleAddCustomItem();
-            }
-          }}
-        />
+      <div className="mt-4 border-t border-slate-200 pt-4">
         <button
-          onClick={handleAddCustomItem}
           type="button"
-          className="rounded-xl bg-brand-light px-4 py-2 text-sm text-white hover:bg-brand-dark"
+          onClick={handleOpenAddChecklistModal}
+          className="rounded-xl bg-brand-light px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
         >
-          + Agregar Item
+          + Agregar nuevo checklist
         </button>
       </div>
 
-      {/* Estados personalizados */}
-      <div className="mt-4 border-t border-slate-200 pt-4">
-        <p className="mb-2 text-sm font-medium text-slate-700">
-          Estados personalizados para checklist de <span className="font-semibold">{deviceType}</span>
-        </p>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newCustomStatus}
-            onChange={(e) => setNewCustomStatus(e.target.value)}
-            placeholder="Ej: Chip entregado"
-            className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddCustomStatus();
-              }
-            }}
-          />
-          <button
-            onClick={handleAddCustomStatus}
-            type="button"
-            className="rounded-xl bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-800"
-          >
-            + Agregar Estado
-          </button>
-        </div>
+      {showAddChecklistModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-2xl md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h4 className="text-lg font-semibold text-slate-900">Agregar nuevo checklist</h4>
+              <button
+                type="button"
+                onClick={() => setShowAddChecklistModal(false)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
 
-        {customStatuses.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-3">
-            {customStatuses.map((status) => (
-              <span key={status} className="inline-flex items-center gap-2 bg-slate-100 text-slate-700 px-2 py-1 rounded text-xs">
-                {status}
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nombre de checklist</label>
+                <input
+                  type="text"
+                  value={modalChecklistName}
+                  onChange={(e) => setModalChecklistName(e.target.value)}
+                  placeholder="Ej: Pantalla, Bocina, Cámara..."
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium text-slate-700">Estados (puedes quitar o agregar más)</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={modalNewStatus}
+                    onChange={(e) => setModalNewStatus(e.target.value)}
+                    placeholder="Agregar otro estado"
+                    className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddStatusInModal();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handleAddStatusInModal}
+                    type="button"
+                    className="rounded-xl bg-slate-700 px-4 py-2 text-sm text-white hover:bg-slate-800"
+                  >
+                    + Estado
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {modalStatuses.map((status) => (
+                    <span key={status} className="inline-flex items-center gap-2 rounded bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                      {formatStatusLabel(status)}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveStatusInModal(status)}
+                        className="text-red-600 hover:text-red-700"
+                        title="Eliminar estado"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 border-t border-slate-200 pt-3">
                 <button
                   type="button"
-                  onClick={() => handleRemoveCustomStatus(status)}
-                  className="text-red-600 hover:text-red-700"
-                  title="Eliminar estado"
+                  onClick={() => setShowAddChecklistModal(false)}
+                  className="rounded-xl border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
                 >
-                  ✕
+                  Cancelar
                 </button>
-              </span>
-            ))}
+                <button
+                  type="button"
+                  onClick={handleSaveCustomChecklist}
+                  className="rounded-xl bg-brand-light px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+                >
+                  Guardar checklist
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
