@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
-import { DEVICE_TYPE_OPTIONS } from "@/lib/deviceWizardData";
 import { getProblemDescriptionSuggestions, getQuickProblemClauses } from "@/lib/problemDescriptionAutocomplete";
 import { buildDeviceDisplayName, ensureCatalogChain, fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
@@ -126,6 +125,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     variants: [],
   });
   const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
   const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -228,6 +228,8 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
         }
       } catch (error: any) {
         console.error("[OrderForm] Error cargando catálogo normalizado:", error);
+      } finally {
+        if (!cancelled) setCatalogLoading(false);
       }
     }
     loadCatalog();
@@ -426,16 +428,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     };
     return map[code] ?? code;
   };
-  const wizardTypeOptions = catalog.deviceTypes.length > 0
-    ? catalog.deviceTypes.filter((type) => type.is_active).map((type) => ({
+  const wizardTypeOptions = catalog.deviceTypes
+    .filter((type) => type.is_active)
+    .map((type) => ({
       id: mapCatalogCodeToDeviceType(type.code),
       rawCode: type.code,
       label: type.name,
       description: type.name,
       icon: "📱",
-      imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
-    }))
-    : DEVICE_TYPE_OPTIONS.map((option) => ({ ...option, rawCode: option.id }));
+      imageUrl: type.image_url || null,
+    }));
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -1227,25 +1229,39 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 1 && (
               <>
                 <p className="text-xs text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                  {wizardTypeOptions.map((option) => (
-                    <button
-                      key={`${device.id}-${option.id}`}
-                      type="button"
-                      onClick={() => applyDeviceType(device.id, option.id)}
-                      className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
-                    >
-                      <img
-                        src={option.imageUrl}
-                        alt={option.label}
-                        className="h-20 w-full rounded-lg object-cover mb-2"
-                        loading="lazy"
-                      />
-                      <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
-                      <p className="text-xs text-slate-600 mt-1">{option.description}</p>
-                    </button>
-                  ))}
-                </div>
+                {catalogLoading ? (
+                  <div className="text-xs text-slate-500 mb-4">Cargando catálogo...</div>
+                ) : wizardTypeOptions.length === 0 ? (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-2 mb-4">
+                    No hay tipos de dispositivo activos en base de datos.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                    {wizardTypeOptions.map((option) => (
+                      <button
+                        key={`${device.id}-${option.id}`}
+                        type="button"
+                        onClick={() => applyDeviceType(device.id, option.id)}
+                        className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
+                      >
+                        {option.imageUrl ? (
+                          <img
+                            src={option.imageUrl}
+                            alt={option.label}
+                            className="h-20 w-full rounded-lg object-cover mb-2"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-20 w-full rounded-lg bg-slate-100 border border-slate-200 mb-2 flex items-center justify-center text-2xl">
+                            {option.icon}
+                          </div>
+                        )}
+                        <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
+                        <p className="text-xs text-slate-600 mt-1">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -1302,10 +1318,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       }}
                       className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
                     >
-                      <AdaptiveWizardCardImage
-                        src={series.image_url || "https://dummyimage.com/320x520/e2e8f0/475569&text=L%C3%ADnea"}
-                        alt={series.name}
-                      />
+                      {series.image_url ? (
+                        <AdaptiveWizardCardImage
+                          src={series.image_url}
+                          alt={series.name}
+                        />
+                      ) : (
+                        <div className="h-32 md:h-40 w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200 flex items-center justify-center text-slate-400 text-xl">
+                          🏷️
+                        </div>
+                      )}
                       <p className="font-semibold text-xs">{series.name}</p>
                     </button>
                   ))}
@@ -1346,10 +1368,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         onClick={() => applySuggestedModel(device.id, displayName)}
                         className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
                       >
-                        <AdaptiveWizardCardImage
-                          src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
-                          alt={displayName}
-                        />
+                        {cardImage ? (
+                          <AdaptiveWizardCardImage
+                            src={cardImage}
+                            alt={displayName}
+                          />
+                        ) : (
+                          <div className="h-32 md:h-40 w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200 flex items-center justify-center text-slate-400 text-xl">
+                            📦
+                          </div>
+                        )}
                         <span>{displayName}</span>
                       </button>
                     );
