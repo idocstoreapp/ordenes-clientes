@@ -4,7 +4,6 @@ import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
 import { DEVICE_TYPE_OPTIONS } from "@/lib/deviceWizardData";
-import { getProblemDescriptionSuggestions, getQuickProblemClauses } from "@/lib/problemDescriptionAutocomplete";
 import { buildDeviceDisplayName, ensureCatalogChain, fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
 import DeviceChecklist from "./DeviceChecklist";
@@ -112,6 +111,9 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [selectedModelByDevice, setSelectedModelByDevice] = useState<Record<string, string | null>>({});
   const [selectedVariantByDevice, setSelectedVariantByDevice] = useState<Record<string, string | null>>({});
   const [wizardStepByDevice, setWizardStepByDevice] = useState<Record<string, number>>({});
+  const [flowStepByDevice, setFlowStepByDevice] = useState<Record<string, 1 | 2 | 3>>({});
+  const [finalizedDeviceById, setFinalizedDeviceById] = useState<Record<string, boolean>>({});
+  const [detailsOpenByDevice, setDetailsOpenByDevice] = useState<Record<string, boolean>>({});
   const [catalog, setCatalog] = useState<CatalogSnapshot>({
     deviceTypes: [],
     brands: [],
@@ -121,21 +123,9 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   });
   const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
   const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
-  const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const wizardPanelRef = useRef<HTMLDivElement | null>(null);
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
-const appendProblemText = (currentText: string, textToAdd: string): string => {
-    const current = currentText.trim();
-    const addition = textToAdd.trim();
-
-    if (!addition) return currentText;
-    if (current.toLowerCase().includes(addition.toLowerCase())) return currentText;
-
-    if (!current) return addition;
-    const separator = current.endsWith(".") ? " " : "; ";
-    return `${current}${separator}${addition}`;
-  };
   // Función helper para calcular el total de servicios de un equipo
   const getDeviceServiceTotal = (device: DeviceItem): number => {
     return device.selectedServices.reduce((sum, service) => {
@@ -171,6 +161,9 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     };
     setDevices([...devices, newDevice]);
     setWizardStepByDevice((prev) => ({ ...prev, [newDevice.id]: 1 }));
+    setFlowStepByDevice((prev) => ({ ...prev, [newDevice.id]: 1 }));
+    setFinalizedDeviceById((prev) => ({ ...prev, [newDevice.id]: false }));
+    setDetailsOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
   };
 
   const removeDevice = (deviceId: string) => {
@@ -179,6 +172,21 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       return;
     }
     setDevices(devices.filter(device => device.id !== deviceId));
+    setFlowStepByDevice((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
+    setFinalizedDeviceById((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
+    setDetailsOpenByDevice((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
   };
 
   const keepScrollPosition = (fn: () => void) => {
@@ -346,9 +354,8 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       deviceType: detectedType,
     });
     setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 6 }));
-    setTimeout(() => {
-      checklistSectionRefs.current[deviceId]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 80);
+    setFlowStepByDevice((prev) => ({ ...prev, [deviceId]: 1 }));
+    setFinalizedDeviceById((prev) => ({ ...prev, [deviceId]: false }));
   };
 
   const addCustomModelToCatalog = async (device: DeviceItem) => {
@@ -411,6 +418,8 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
   };
 
   const getWizardStep = (deviceId: string): number => wizardStepByDevice[deviceId] ?? 1;
+  const getFlowStep = (deviceId: string): 1 | 2 | 3 => flowStepByDevice[deviceId] ?? 1;
+  const isDeviceFinalized = (deviceId: string): boolean => Boolean(finalizedDeviceById[deviceId]);
   const getTypeIdForDevice = (device: DeviceItem): number | null => {
     if (!device.deviceType) return null;
     return catalog.deviceTypes.find((type) => mapCatalogCodeToDeviceType(type.code) === device.deviceType && type.is_active)?.id ?? null;
@@ -1765,111 +1774,115 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             </div>
           )}
 
-          {/* Checklist Dinámico */}
-          {device.deviceType && (
-            <div ref={(el) => { checklistSectionRefs.current[device.id] = el; }}>
-              <DeviceChecklist
-                deviceType={device.deviceType}
-                checklistData={device.checklistData}
-                onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
-              />
-            </div>
-          )}
-
-          {/* Descripción del Problema */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Descripción del Problema * (Máximo {MAX_DESCRIPTION_LENGTH} caracteres)
-            </label>
-            <textarea
-              className={`w-full border rounded-md px-3 py-2 min-h-[100px] ${
-                device.problemDescription.length > MAX_DESCRIPTION_LENGTH
-                  ? "border-red-500 bg-red-50"
-                  : "border-slate-300"
-              }`}
-              value={device.problemDescription}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                if (newValue.length <= MAX_DESCRIPTION_LENGTH) {
-                  updateDevice(device.id, { problemDescription: newValue });
-                }
-              }}
-              maxLength={MAX_DESCRIPTION_LENGTH}
-              required
-            />
-                        <div className="mt-3 space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-slate-600 mb-2">
-                  Sugerencias inteligentes según equipo/servicios
-                </p>
-                <div className="flex flex-col gap-2">
-                  {getProblemDescriptionSuggestions({
-                    deviceType: device.deviceType,
-                    selectedServiceNames: device.selectedServices.map((service) => service.name),
-                    currentText: device.problemDescription,
-                    limit: 3,
-                  }).map((suggestion) => (
-                    <button
-                      key={`${device.id}-${suggestion.slice(0, 40)}`}
-                      type="button"
-                      className="text-left text-xs px-3 py-2 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 transition-colors"
-                      onClick={() => {
-                        updateDevice(device.id, { problemDescription: suggestion.slice(0, MAX_DESCRIPTION_LENGTH) });
-                      }}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
+          {/* Flujo de checklist -> descripción -> servicios (sin scroll) */}
+          {device.deviceModel && !isDeviceFinalized(device.id) && (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 1 }))}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${getFlowStep(device.id) === 1 ? "bg-brand-light text-white" : "bg-slate-100 text-slate-700"}`}
+                >
+                  1. Checklist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${getFlowStep(device.id) === 2 ? "bg-brand-light text-white" : "bg-slate-100 text-slate-700"}`}
+                >
+                  2. Problema
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 3 }))}
+                  className={`rounded-full px-3 py-1 text-xs font-medium ${getFlowStep(device.id) === 3 ? "bg-brand-light text-white" : "bg-slate-100 text-slate-700"}`}
+                >
+                  3. Servicios
+                </button>
               </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-600 mb-2">
-                  Bloques rápidos de redacción
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {getQuickProblemClauses(device.deviceType, 7).map((clause) => (
-                    <button
-                      key={`${device.id}-clause-${clause.slice(0, 30)}`}
-                      type="button"
-                      className="text-xs px-2.5 py-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 transition-colors"
-                      onClick={() => {
-                        const nextValue = appendProblemText(device.problemDescription, clause);
-                        updateDevice(device.id, {
-                          problemDescription: nextValue.slice(0, MAX_DESCRIPTION_LENGTH),
-                        });
-                      }}
-                    >
-                      + {clause}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="mt-1 flex justify-between items-center">
-              <span className={`text-xs ${
-                device.problemDescription.length > MAX_DESCRIPTION_LENGTH
-                  ? "text-red-600 font-semibold"
-                  : device.problemDescription.length > MAX_DESCRIPTION_LENGTH * 0.9
-                  ? "text-amber-600"
-                  : "text-slate-500"
-              }`}>
-                {device.problemDescription.length > MAX_DESCRIPTION_LENGTH
-                  ? `⚠️ Excede el límite por ${device.problemDescription.length - MAX_DESCRIPTION_LENGTH} caracteres`
-                  : `${device.problemDescription.length} / ${MAX_DESCRIPTION_LENGTH} caracteres`}
-              </span>
-            </div>
-          </div>
 
-          {/* Servicios */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Servicios *
-            </label>
-            <ServiceSelector
-              selectedServices={device.selectedServices}
-              deviceType={device.deviceType}
-              deviceModel={device.deviceModel}
-              onServicesChange={(services) => {
+              {getFlowStep(device.id) === 1 && device.deviceType && (
+                <>
+                  <DeviceChecklist
+                    deviceType={device.deviceType}
+                    checklistData={device.checklistData}
+                    onChecklistChange={(newChecklist) => updateDevice(device.id, { checklistData: newChecklist })}
+                  />
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                      className="rounded-md bg-brand-light px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
+                    >
+                      Continuar: Descripción
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {getFlowStep(device.id) === 2 && (
+                <>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Descripción del Problema * (Máximo {MAX_DESCRIPTION_LENGTH} caracteres)
+                  </label>
+                  <textarea
+                    className={`w-full border rounded-md px-3 py-2 min-h-[100px] ${
+                      device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                        ? "border-red-500 bg-red-50"
+                        : "border-slate-300"
+                    }`}
+                    value={device.problemDescription}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      if (newValue.length <= MAX_DESCRIPTION_LENGTH) {
+                        updateDevice(device.id, { problemDescription: newValue });
+                      }
+                    }}
+                    maxLength={MAX_DESCRIPTION_LENGTH}
+                    required
+                  />
+                  <div className="mt-1 flex justify-between items-center">
+                    <span className={`text-xs ${
+                      device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                        ? "text-red-600 font-semibold"
+                        : device.problemDescription.length > MAX_DESCRIPTION_LENGTH * 0.9
+                        ? "text-amber-600"
+                        : "text-slate-500"
+                    }`}>
+                      {device.problemDescription.length > MAX_DESCRIPTION_LENGTH
+                        ? `⚠️ Excede el límite por ${device.problemDescription.length - MAX_DESCRIPTION_LENGTH} caracteres`
+                        : `${device.problemDescription.length} / ${MAX_DESCRIPTION_LENGTH} caracteres`}
+                    </span>
+                  </div>
+                  <div className="mt-4 flex justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 1 }))}
+                      className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Volver a checklist
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 3 }))}
+                      className="rounded-md bg-brand-light px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
+                    >
+                      Continuar: Servicios
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {getFlowStep(device.id) === 3 && (
+                <>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Servicios *
+                  </label>
+                  <ServiceSelector
+                    selectedServices={device.selectedServices}
+                    deviceType={device.deviceType}
+                    deviceModel={device.deviceModel}
+                    onServicesChange={(services) => {
                 console.log(`[OrderForm] onServicesChange llamado para equipo ${device.id}:`, {
                   servicios_anteriores: device.selectedServices.length,
                   servicios_nuevos: services.length,
@@ -1905,49 +1918,57 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   servicePrices: newPrices
                 });
                 console.log(`[OrderForm] Estado actualizado para equipo ${device.id}. Servicios únicos:`, uniqueServices.length);
-              }}
-            />
-            
-            {/* Lista de servicios con precios individuales */}
-            {device.selectedServices.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {device.selectedServices.map((service) => (
-                  <div key={service.id} className="flex items-center gap-3 bg-slate-50 p-3 rounded border border-slate-200">
-                    <span className="font-medium text-slate-900 flex-1">{service.name}</span>
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm text-slate-600 whitespace-nowrap">Precio (CLP):</label>
-                      <input
-                        type="text"
-                        className="w-32 border border-slate-300 rounded-md px-3 py-2"
-                        value={formatCLPInput(device.servicePrices[service.id] || 0)}
-                        onChange={(e) => {
-                          const newPrices = { ...device.servicePrices };
-                          newPrices[service.id] = parseCLPInput(e.target.value);
-                          updateDevice(device.id, { servicePrices: newPrices });
-                        }}
-                        required
-                      />
+                    }}
+                  />
+                  
+                  {/* Lista de servicios con precios individuales */}
+                  {device.selectedServices.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {device.selectedServices.map((service) => (
+                        <div key={service.id} className="flex items-center gap-3 bg-slate-50 p-3 rounded border border-slate-200">
+                          <span className="font-medium text-slate-900 flex-1">{service.name}</span>
+                          <div className="flex items-center gap-2">
+                            <label className="text-sm text-slate-600 whitespace-nowrap">Precio (CLP):</label>
+                            <input
+                              type="text"
+                              className="w-32 border border-slate-300 rounded-md px-3 py-2"
+                              value={formatCLPInput(device.servicePrices[service.id] || 0)}
+                              onChange={(e) => {
+                                const newPrices = { ...device.servicePrices };
+                                newPrices[service.id] = parseCLPInput(e.target.value);
+                                updateDevice(device.id, { servicePrices: newPrices });
+                              }}
+                              required
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  )}
 
-          {/* Costos */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Costo Repuesto (CLP)
-              </label>
-              <input
-                type="text"
-                className="w-full border border-slate-300 rounded-md px-3 py-2"
-                value={formatCLPInput(device.replacementCost)}
-                onChange={(e) => updateDevice(device.id, { replacementCost: parseCLPInput(e.target.value) })}
-              />
+                  <div className="mt-4 flex justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                      className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Volver a descripción
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinalizedDeviceById((prev) => ({ ...prev, [device.id]: true }));
+                        setDetailsOpenByDevice((prev) => ({ ...prev, [device.id]: false }));
+                      }}
+                      className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                    >
+                      Guardar dispositivo
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
+          )}
 
           {/* Total para este equipo */}
           <div className="bg-slate-50 p-4 rounded space-y-2 mt-4">
@@ -1972,6 +1993,104 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
               </div>
             </div>
           </div>
+
+          {isDeviceFinalized(device.id) && (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 overflow-hidden rounded-lg border border-emerald-200 bg-white">
+                  <img
+                    src={(() => {
+                      const typeId = getTypeIdForDevice(device);
+                      const brandId = Number(selectedBrandByDevice[device.id]) || null;
+                      const lineId = Number(selectedSeriesByDevice[device.id]) || null;
+                      const modelId = Number(selectedModelByDevice[device.id]) || 0;
+                      const variantId = selectedVariantByDevice[device.id] ? Number(selectedVariantByDevice[device.id]) : null;
+                      return (modelId ? getCardImage({ typeId, brandId, lineId, modelId, variantId }) : null) || "https://dummyimage.com/100x100/e2e8f0/475569&text=?";
+                    })()}
+                    alt={device.deviceModel || "Dispositivo"}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-emerald-900">{device.deviceModel || `Equipo ${deviceIndex + 1}`}</p>
+                  <p className="text-xs text-emerald-700">{device.selectedServices.length} servicio(s) registrados</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailsOpenByDevice((prev) => ({ ...prev, [device.id]: !prev[device.id] }))}
+                  className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                >
+                  {detailsOpenByDevice[device.id] ? "Ocultar detalles" : "Ver detalles del dispositivo"}
+                </button>
+              </div>
+
+              {detailsOpenByDevice[device.id] && (
+                <div className="mt-3 space-y-3 rounded-lg border border-emerald-200 bg-white p-3 text-sm">
+                  <div>
+                    <p className="font-semibold text-slate-800">Checklist</p>
+                    <p className="text-slate-600">{Object.keys(device.checklistData).length} items registrados</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-800">Descripción del problema</p>
+                    <p className="text-slate-600 whitespace-pre-wrap">{device.problemDescription || "Sin descripción"}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-800">Servicios</p>
+                    {device.selectedServices.length > 0 ? (
+                      <ul className="list-disc pl-5 text-slate-600">
+                        {device.selectedServices.map((service) => (
+                          <li key={`${device.id}-detail-${service.id}`}>
+                            {service.name} — {formatCLP(device.servicePrices[service.id] || 0)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-slate-600">Sin servicios.</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinalizedDeviceById((prev) => ({ ...prev, [device.id]: false }));
+                        setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 1 }));
+                      }}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Editar checklist
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinalizedDeviceById((prev) => ({ ...prev, [device.id]: false }));
+                        setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 2 }));
+                      }}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Editar descripción
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinalizedDeviceById((prev) => ({ ...prev, [device.id]: false }));
+                        setFlowStepByDevice((prev) => ({ ...prev, [device.id]: 3 }));
+                      }}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      Editar servicios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addNewDevice}
+                      className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100"
+                    >
+                      Agregar nuevo dispositivo
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
 
