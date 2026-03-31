@@ -33,31 +33,12 @@ interface DeviceCatalogCard {
 }
 
 function AdaptiveWizardCardImage({ src, alt }: { src: string; alt: string }) {
-  const [isVertical, setIsVertical] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
-
   return (
-    <div
-      className="w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200"
-      style={{
-        aspectRatio: isVertical ? "3 / 4" : "16 / 9",
-        minHeight: "8rem",
-      }}
-    >
+    <div className="w-full h-56 md:h-64 lg:h-72 rounded-xl bg-white overflow-hidden mb-2 shadow-sm flex items-center justify-center">
       <img
         src={src}
         alt={alt}
-        onLoad={(event) => {
-          const img = event.currentTarget;
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            setIsVertical(img.naturalHeight > img.naturalWidth);
-            setAspectRatio(img.naturalWidth / img.naturalHeight);
-          }
-        }}
-        className="h-full w-full object-contain p-1"
-        style={{
-          aspectRatio: `${aspectRatio}`,
-        }}
+        className="max-h-full max-w-full object-contain"
         loading="lazy"
       />
     </div>
@@ -129,6 +110,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [selectedBrandByDevice, setSelectedBrandByDevice] = useState<Record<string, string | null>>({});
   const [selectedSeriesByDevice, setSelectedSeriesByDevice] = useState<Record<string, string | null>>({});
   const [selectedModelByDevice, setSelectedModelByDevice] = useState<Record<string, string | null>>({});
+  const [selectedVariantByDevice, setSelectedVariantByDevice] = useState<Record<string, string | null>>({});
   const [wizardStepByDevice, setWizardStepByDevice] = useState<Record<string, number>>({});
   const [catalog, setCatalog] = useState<CatalogSnapshot>({
     deviceTypes: [],
@@ -233,6 +215,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setSelectedVariantByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 2 }));
     });
   };
@@ -242,6 +225,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
       setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setSelectedVariantByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
     });
   };
@@ -522,6 +506,9 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
     }))
     : DEVICE_TYPE_OPTIONS.map((option) => ({ ...option, rawCode: option.id }));
+
+  const wizardCardButtonClass = "bg-white border border-white rounded-xl p-2 shadow-sm transition hover:shadow-md text-left overflow-hidden min-h-[320px]";
+  const wizardCardInnerTextClass = "font-medium text-slate-900 text-sm";
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -1312,7 +1299,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
             {getWizardStep(device.id) === 1 && (
               <>
-                <p className="text-xs text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
+                <p className="text-xl text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
                   {wizardTypeOptions.map((option) => (
                     <button
@@ -1320,14 +1307,9 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => applyDeviceType(device.id, option.id)}
-                      className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
+                      className={wizardCardButtonClass}
                     >
-                      <img
-                        src={option.imageUrl}
-                        alt={option.label}
-                        className="h-20 w-full rounded-lg object-cover mb-2"
-                        loading="lazy"
-                      />
+                      <AdaptiveWizardCardImage src={option.imageUrl} alt={option.label} />
                       <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
                       <p className="text-xs text-slate-600 mt-1">{option.description}</p>
                     </button>
@@ -1339,7 +1321,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 2 && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-600">2) ¿Qué marca de {wizardTypeOptions.find((option) => option.id === device.deviceType)?.label.toLowerCase()}?</p>
+                  <p className="text-xl text-slate-600">2) ¿Qué marca de {wizardTypeOptions.find((option) => option.id === device.deviceType)?.label.toLowerCase()}?</p>
                   <button type="button" className="text-xs underline text-slate-600" onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 1 }))}>
                     Volver
                   </button>
@@ -1351,11 +1333,9 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => applyBrand(device.id, String(brand.id))}
-                      className="r text-sm bg-white text-slate-700  hover:bg-slate-10 p-2 text-left"
+                      className={wizardCardButtonClass}
                     >
-                      <div className="h-16  bg-white overflow-hidden mb-2">
-                        <img src={brand.logo_url || "https://dummyimage.com/320x160/e2e8f0/475569&text=Marca"} alt={brand.name} className="h-full w-full object-contain bg-white" loading="lazy" />
-                      </div>
+                      <AdaptiveWizardCardImage src={brand.logo_url || "https://dummyimage.com/320x160/e2e8f0/475569&text=Marca"} alt={brand.name} />
                       <p className="font-semibold text-xs">{brand.name}</p>
                     </button>
                   ))}
@@ -1366,7 +1346,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 3 && selectedBrandByDevice[device.id] && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-600">3) Selecciona serie / línea</p>
+                  <p className="text-xl text-slate-600">3) Selecciona serie / línea</p>
                   <button
                     type="button"
                     className="text-xs underline text-slate-600"
@@ -1394,7 +1374,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                           setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
                         });
                       }}
-                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
+                      className={wizardCardButtonClass}
                     >
                       <AdaptiveWizardCardImage
                         src={series.image_url || "https://dummyimage.com/320x520/e2e8f0/475569&text=L%C3%ADnea"}
@@ -1410,7 +1390,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 4 && selectedBrandByDevice[device.id] && selectedSeriesByDevice[device.id] && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-600">4) Modelo exacto</p>
+                  <p className="text-xl text-slate-600">4) Modelo exacto</p>
                   <button
                     type="button"
                     className="text-xs underline text-slate-600"
@@ -1441,13 +1421,14 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         onClick={() => {
                           const modelVariants = getVariantsForModel(model.id);
                           setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: String(model.id) }));
+                          setSelectedVariantByDevice((prev) => ({ ...prev, [device.id]: null }));
                           if (modelVariants.length > 0) {
                             setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 5 }));
                             return;
                           }
                           applySuggestedModel(device.id, displayName);
                         }}
-                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
+                        className={wizardCardButtonClass}
                       >
                         <AdaptiveWizardCardImage
                           src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
@@ -1488,7 +1469,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 5 && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-600">5) Variante</p>
+                  <p className="text-xl text-slate-600">5) Variante</p>
                   <button
                     type="button"
                     className="text-xs underline text-slate-600"
@@ -1522,17 +1503,16 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                         <button
                           key={`${device.id}-variant-${variant.id}`}
                           type="button"
-                          onClick={() => applySuggestedModel(device.id, displayName)}
-                          className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left"
+                          onClick={() => {
+                            setSelectedVariantByDevice((prev) => ({ ...prev, [device.id]: String(variant.id) }));
+                            applySuggestedModel(device.id, displayName);
+                          }}
+                          className={wizardCardButtonClass}
                         >
-                          <div className="h-20 rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200">
-                            <img
-                              src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Variante"}
-                              alt={displayName}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
+                          <AdaptiveWizardCardImage
+                            src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Variante"}
+                            alt={displayName}
+                          />
                           <span>{variant.name}</span>
                         </button>
                       );
@@ -1542,45 +1522,51 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
               </>
             )}
 
-            {getWizardStep(device.id) === 6 && (
-              <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900">
-                <p className="text-sm">
-                  Dispositivo seleccionado: <strong>{device.deviceModel}</strong>
-                </p>
-                <button
-                  type="button"
-                  className="text-xs underline mt-1"
-                  onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
-                >
-                  Cambiar modelo
-                </button>
-              </div>
-            )}
+            {getWizardStep(device.id) === 6 && null}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Dispositivo seleccionado *
-          </label>
-          {device.deviceModel ? (
-            <div className="p-3 rounded-md border border-emerald-200 bg-emerald-50">
-              <p className="font-medium text-emerald-900">{device.deviceModel}</p>
-              <button
-                type="button"
-                className="text-xs underline text-emerald-800 mt-1"
-                onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
-              >
-                Cambiar dispositivo
-              </button>
-            </div>
-          ) : (
-            <div className="p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-sm">
-              Completa el asistente rápido para seleccionar el dispositivo.
-            </div>
-          )}
-        </div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Dispositivo seleccionado *
+            </label>
+            {(() => {
+              const typeId = getTypeIdForDevice(device);
+              const brandId = Number(selectedBrandByDevice[device.id]) || null;
+              const lineId = Number(selectedSeriesByDevice[device.id]) || null;
+              const modelId = Number(selectedModelByDevice[device.id]) || 0;
+              const variantId = selectedVariantByDevice[device.id] ? Number(selectedVariantByDevice[device.id]) : null;
+              const cardImage = modelId ? getCardImage({ typeId, brandId, lineId, modelId, variantId }) : null;
+              const fullName = `${catalog.brands.find((b) => b.id === brandId)?.name ?? ""} ${catalog.productLines.find((l) => l.id === lineId)?.name ?? ""} ${catalog.models.find((m) => m.id === modelId)?.name ?? ""}${variantId ? ` ${catalog.variants.find((v) => v.id === variantId)?.name ?? ""}` : ""}`.trim();
 
+              if (device.deviceModel) {
+                return (
+                  <div className="flex items-center gap-3 p-4 rounded-xl border border-emerald-200 bg-emerald-50 shadow-sm">
+                    <div className="h-12 w-12 flex items-center justify-center rounded-full bg-white overflow-hidden border border-emerald-200">
+                      <img src={cardImage || "https://dummyimage.com/100x100/e2e8f0/475569&text=?"} alt={fullName || device.deviceModel || "Dispositivo"} className="h-full w-full object-cover" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-slate-900">{fullName || device.deviceModel}</p>
+                      <p className="text-xs text-slate-600">{device.deviceModel}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100"
+                      onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                    >
+                      Cambiar
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="p-3 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+                  Completa el asistente rápido para seleccionar el dispositivo.
+                </div>
+              );
+            })()}
+          </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Número de Serie

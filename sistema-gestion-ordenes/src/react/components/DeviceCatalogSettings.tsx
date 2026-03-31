@@ -203,9 +203,33 @@ export default function DeviceCatalogSettings() {
           image_url: row.image_url || null,
           is_active: row.is_active,
         };
-        const { error: cardError } = await supabase
-          .from("device_catalog_items")
-          .upsert(cardPayload, { onConflict: "device_type_id,brand_id,product_line_id,model_id,variant_id" });
+
+        const existingCard = catalogItems.find((item) =>
+          item.device_type_id === cardPayload.device_type_id &&
+          item.brand_id === cardPayload.brand_id &&
+          item.product_line_id === cardPayload.product_line_id &&
+          item.model_id === cardPayload.model_id &&
+          item.variant_id === cardPayload.variant_id
+        );
+
+        let cardError = null;
+        if (existingCard) {
+          const res = await supabase
+            .from("device_catalog_items")
+            .update({
+              display_name: cardPayload.display_name,
+              image_url: cardPayload.image_url,
+              is_active: cardPayload.is_active,
+            })
+            .eq("id", existingCard.id);
+          cardError = res.error;
+        } else {
+          const res = await supabase
+            .from("device_catalog_items")
+            .insert(cardPayload);
+          cardError = res.error;
+        }
+
         if (cardError) {
           return alert(`Se guardó ${table}, pero falló imagen card: ${cardError.message}`);
         }
