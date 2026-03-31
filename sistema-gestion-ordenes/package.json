@@ -8,7 +8,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "start": "astro preview",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "vercel:clean": "rm -rf .vercel .vercel/output",
+    "deploy:vercel": "npm run vercel:clean && npx vercel@latest deploy --prod"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.1",

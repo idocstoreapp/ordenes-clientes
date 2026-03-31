@@ -158,9 +158,27 @@ Las API routes (como `/api/send-order-email.ts`) funcionan en Vercel gracias a:
 - Agrega `RESEND_API_KEY` en Vercel Environment Variables
 - Haz un nuevo deploy
 
+### Error: `Invalid request: attribution.gitUser should NOT have additional property isBot`
+Este error suele venir de metadata vieja de Vercel CLI/local link del proyecto.
+
+Pasos recomendados:
+1. Limpiar metadata local de Vercel:
+   ```bash
+   npm run vercel:clean
+   ```
+2. Volver a linkear el proyecto:
+   ```bash
+   npx vercel@latest link
+   ```
+3. Hacer deploy con CLI actualizada:
+   ```bash
+   npm run deploy:vercel
+   ```
+
+Si haces deploy desde GitHub + Dashboard (sin CLI), reimporta el proyecto en Vercel para regenerar la vinculación Git.
+
 ## Enlaces Útiles
 
 - [Documentación de Vercel](https://vercel.com/docs)
 - [Documentación de Astro](https://docs.astro.build/en/getting-started/)
 - [Deploy de Astro en Vercel](https://docs.astro.build/en/guides/deploy/vercel/)
-

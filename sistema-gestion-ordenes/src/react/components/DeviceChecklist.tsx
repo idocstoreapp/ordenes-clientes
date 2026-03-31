@@ -54,6 +54,8 @@ export default function DeviceChecklist({
   const [customStatuses, setCustomStatuses] = useState<string[]>([]);
   const [newCustomStatus, setNewCustomStatus] = useState("");
   const [expandedByItem, setExpandedByItem] = useState<Record<string, boolean>>({});
+  const [showCompletedModal, setShowCompletedModal] = useState(false);
+  const [editingCompletedItem, setEditingCompletedItem] = useState<string | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -107,6 +109,7 @@ export default function DeviceChecklist({
       [itemName]: value,
     });
     setExpandedByItem((prev) => ({ ...prev, [itemName]: false }));
+    setEditingCompletedItem((prev) => (prev === itemName ? null : prev));
   }
 
   function handleAddCustomItem() {
@@ -160,6 +163,12 @@ export default function DeviceChecklist({
     ...items.map(item => item.item_name),
     ...customItems.filter(item => !items.some(dbItem => dbItem.item_name === item))
   ];
+
+  const pendingItems = allItems.filter((itemName) => !checklistData[itemName]);
+  const completedItems = allItems.filter((itemName) => Boolean(checklistData[itemName]));
+  const visibleItems = editingCompletedItem
+    ? [...pendingItems, editingCompletedItem].filter((item, index, arr) => arr.indexOf(item) === index)
+    : pendingItems;
 
   useEffect(() => {
     const defaults: Record<string, boolean> = {};
@@ -215,6 +224,21 @@ export default function DeviceChecklist({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
       <h3 className="mb-4 text-lg font-semibold text-slate-900 md:text-xl">Checklist de Verificación *</h3>
+
+      {completedItems.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-sm font-medium text-emerald-800">
+            {completedItems.length} checklist{completedItems.length > 1 ? "s" : ""} completado{completedItems.length > 1 ? "s" : ""}.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowCompletedModal(true)}
+            className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            Ver checklist completados
+          </button>
+        </div>
+      )}
       
       {items.length === 0 && customItems.length === 0 && (
         <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-3">
@@ -225,7 +249,7 @@ export default function DeviceChecklist({
       )}
 
       <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {allItems.map((itemName) => {
+        {visibleItems.map((itemName) => {
           const isCustom = customItems.includes(itemName) && !items.some(item => item.item_name === itemName);
           const selectedValue = checklistData[itemName] || "";
           const statusOptions = getStatusOptionsForItem(itemName);
@@ -301,6 +325,65 @@ export default function DeviceChecklist({
           );
         })}
       </div>
+
+      {visibleItems.length === 0 && allItems.length > 0 && (
+        <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-sm text-emerald-800">
+            ¡Excelente! Todos los items del checklist ya tienen estado asignado.
+          </p>
+        </div>
+      )}
+
+      {showCompletedModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/45 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-4 shadow-2xl md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h4 className="text-lg font-semibold text-slate-900">Checklist completados</h4>
+              <button
+                type="button"
+                onClick={() => setShowCompletedModal(false)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="max-h-[65vh] space-y-2 overflow-y-auto pr-1">
+              {completedItems.map((itemName) => {
+                const selectedValue = checklistData[itemName] || "";
+                const isCustom = customItems.includes(itemName) && !items.some(item => item.item_name === itemName);
+                return (
+                  <div
+                    key={itemName}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-800">{itemName}</p>
+                      <p className="text-xs text-slate-600">Estado: {formatStatusLabel(selectedValue)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isCustom && (
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">Personalizado</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCompletedModal(false);
+                          setEditingCompletedItem(itemName);
+                          setExpandedByItem((prev) => ({ ...prev, [itemName]: true }));
+                        }}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Editar checklist
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Agregar item personalizado */}
       <div className="mt-4 flex gap-2 border-t border-slate-200 pt-4">
