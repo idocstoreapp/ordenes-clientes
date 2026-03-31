@@ -78,6 +78,28 @@ export default function DeviceCatalogSettings() {
   const modelName = (id: number) => catalog.models.find((row) => row.id === id)?.name ?? `Modelo #${id}`;
   const variantName = (id: number | null) => (id ? catalog.variants.find((row) => row.id === id)?.name ?? `Variante #${id}` : "Sin variante");
 
+  const getModelContext = (modelId: number) => {
+    const model = catalog.models.find((row) => row.id === modelId);
+    if (!model) return null;
+    const line = catalog.productLines.find((row) => row.id === model.product_line_id);
+    if (!line) return null;
+    const brand = catalog.brands.find((row) => row.id === line.brand_id);
+    if (!brand) return null;
+    const type = catalog.deviceTypes.find((row) => row.id === brand.device_type_id);
+    if (!type) return null;
+    return { model, line, brand, type };
+  };
+
+  const getCatalogCardImageForLevel = (table: Level, rowId: number): string => {
+    if (table !== "models" && table !== "variants") return "";
+    if (table === "models") {
+      const card = catalogItems.find((item) => item.model_id === rowId && item.variant_id === null);
+      return card?.image_url || "";
+    }
+    const card = catalogItems.find((item) => item.variant_id === rowId);
+    return card?.image_url || "";
+  };
+
   async function createItem() {
     try {
       if (!form.name.trim()) return alert("Debes ingresar un nombre");
@@ -164,6 +186,32 @@ export default function DeviceCatalogSettings() {
 
     const { error } = await supabase.from(table).update(payload).eq("id", row.id);
     if (error) return alert(`Error guardando: ${error.message}`);
+
+    if (table === "models" || table === "variants") {
+      const modelId = table === "models" ? row.id : Number((row as any).model_id);
+      const context = getModelContext(modelId);
+      if (context) {
+        const cardPayload = {
+          device_type_id: context.type.id,
+          brand_id: context.brand.id,
+          product_line_id: context.line.id,
+          model_id: context.model.id,
+          variant_id: table === "variants" ? row.id : null,
+          display_name: table === "variants"
+            ? `${context.brand.name} ${context.line.name} ${context.model.name} ${row.name}`.replace(/\s+/g, " ").trim()
+            : `${context.brand.name} ${context.line.name} ${row.name}`.replace(/\s+/g, " ").trim(),
+          image_url: row.image_url || null,
+          is_active: row.is_active,
+        };
+        const { error: cardError } = await supabase
+          .from("device_catalog_items")
+          .upsert(cardPayload, { onConflict: "device_type_id,brand_id,product_line_id,model_id,variant_id" });
+        if (cardError) {
+          return alert(`Se guardó ${table}, pero falló imagen card: ${cardError.message}`);
+        }
+      }
+    }
+
     await loadCatalog();
   }
 
@@ -240,6 +288,7 @@ export default function DeviceCatalogSettings() {
       <div className="space-y-3">
         {filteredRows.map((rawRow: any) => {
           const row = rawRow as BaseRow;
+          row.image_url = getCatalogCardImageForLevel(activeLevel, row.id) || row.image_url || "";
           const context = activeLevel === "brands"
             ? `Tipo: ${typeName((rawRow as any).device_type_id)}`
             : activeLevel === "product_lines"
@@ -260,6 +309,9 @@ export default function DeviceCatalogSettings() {
                 <input defaultValue={row.name || ""} onChange={(e) => { row.name = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="nombre" />
                 {(activeLevel === "device_types" || activeLevel === "product_lines") && (
                   <input defaultValue={row.image_url || ""} onChange={(e) => { row.image_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="image_url" />
+                )}
+                {(activeLevel === "models" || activeLevel === "variants") && (
+                  <input defaultValue={row.image_url || ""} onChange={(e) => { row.image_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="image_url card wizard" />
                 )}
                 {activeLevel === "brands" && (
                   <input defaultValue={row.logo_url || ""} onChange={(e) => { row.logo_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="logo_url" />
