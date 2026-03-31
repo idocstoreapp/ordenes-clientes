@@ -397,7 +397,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
   const getBrandsForDevice = (device: DeviceItem) => {
     const typeId = getTypeIdForDevice(device);
     if (!typeId) return [];
-    return catalog.brands.filter((brand) => brand.device_type_id === typeId && brand.is_active);
+    const direct = catalog.brands.filter((brand) => brand.device_type_id === typeId && brand.is_active);
+    if (direct.length > 0) return direct;
+
+    // Fallback para catálogos con datos parcialmente migrados:
+    // si no hay marcas enlazadas al tipo, mostrar marcas activas para no bloquear el wizard.
+    return catalog.brands.filter((brand) => brand.is_active);
   };
   const getLinesForDevice = (device: DeviceItem) => {
     const brandId = Number(selectedBrandByDevice[device.id]);
@@ -459,23 +464,47 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     return fallback?.image_url ?? null;
   };
   const mapCatalogCodeToDeviceType = (code: string): DeviceType => {
-    const map: Record<string, DeviceType> = {
+    const normalized = code.trim().toLowerCase().replace(/\s+/g, "_");
+    const aliases: Record<string, DeviceType> = {
       phone: "iphone",
+      celular: "iphone",
+      mobile: "iphone",
+      smartphone: "iphone",
       tablet: "ipad",
+      ipad: "ipad",
       laptop: "macbook",
+      notebook: "macbook",
+      computador: "macbook",
+      computer: "macbook",
+      pc: "macbook",
+      macbook: "macbook",
       wearable: "apple_watch",
+      smartwatch: "apple_watch",
+      watch: "apple_watch",
+      reloj: "apple_watch",
     };
-    return map[code] ?? code;
+    return aliases[normalized] ?? (normalized as DeviceType);
   };
   const wizardTypeOptions = catalog.deviceTypes.length > 0
-    ? catalog.deviceTypes.filter((type) => type.is_active).map((type) => ({
-      id: mapCatalogCodeToDeviceType(type.code),
-      rawCode: type.code,
-      label: type.name,
-      description: type.name,
-      icon: "📱",
-      imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
-    }))
+    ? Array.from(
+      catalog.deviceTypes
+        .filter((type) => type.is_active)
+        .reduce((acc, type) => {
+          const mappedId = mapCatalogCodeToDeviceType(type.code);
+          if (!acc.has(mappedId)) {
+            acc.set(mappedId, {
+              id: mappedId,
+              rawCode: type.code,
+              label: type.name,
+              description: type.name,
+              icon: "📱",
+              imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
+            });
+          }
+          return acc;
+        }, new Map<string, { id: DeviceType; rawCode: string; label: string; description: string; icon: string; imageUrl: string }>())
+        .values()
+    )
     : DEVICE_TYPE_OPTIONS.map((option) => ({ ...option, rawCode: option.id }));
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)

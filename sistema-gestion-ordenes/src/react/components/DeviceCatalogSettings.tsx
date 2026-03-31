@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
 type Level = "device_types" | "brands" | "product_lines" | "models" | "variants";
+type SettingsMode = "type_editor" | "device_editor" | "variant_editor";
 
 interface DeviceCatalogItemRow {
   id: number;
@@ -29,6 +30,7 @@ export default function DeviceCatalogSettings() {
   const [catalog, setCatalog] = useState<CatalogSnapshot>({ deviceTypes: [], brands: [], productLines: [], models: [], variants: [] });
   const [catalogItems, setCatalogItems] = useState<DeviceCatalogItemRow[]>([]);
   const [activeLevel, setActiveLevel] = useState<Level>("device_types");
+  const [mode, setMode] = useState<SettingsMode>("type_editor");
   const [loading, setLoading] = useState(true);
   const [selectedTypeId, setSelectedTypeId] = useState<string>("");
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
@@ -195,6 +197,29 @@ export default function DeviceCatalogSettings() {
 
   return (
     <div className="space-y-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <button
+          type="button"
+          onClick={() => { setMode("type_editor"); setActiveLevel("device_types"); }}
+          className={`rounded-md border px-3 py-2 text-sm ${mode === "type_editor" ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}
+        >
+          1) Editar tipos de dispositivo
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMode("device_editor"); setActiveLevel("brands"); }}
+          className={`rounded-md border px-3 py-2 text-sm ${mode === "device_editor" ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}
+        >
+          2) Editar dispositivos (marca/línea/modelo)
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMode("variant_editor"); setActiveLevel("variants"); }}
+          className={`rounded-md border px-3 py-2 text-sm ${mode === "variant_editor" ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}
+        >
+          3) Editar variantes
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         {[
@@ -204,7 +229,12 @@ export default function DeviceCatalogSettings() {
           ["models", "Modelo"],
           ["variants", "Variante"],
         ].map(([value, label]) => (
-          <button key={value} type="button" onClick={() => setActiveLevel(value as Level)} className={`rounded-md border px-3 py-2 text-sm ${activeLevel === value ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}>
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveLevel(value as Level)}
+            className={`rounded-md border px-3 py-2 text-sm ${activeLevel === value ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}
+          >
             {label}
           </button>
         ))}
@@ -228,15 +258,39 @@ export default function DeviceCatalogSettings() {
           {catalog.models.filter((row) => !selectedLineId || String(row.product_line_id) === selectedLineId).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
         </select>
       </div>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-500">
+          Usa los filtros para cambiar de tipo (celular/tablet/notebook/smartwatch) y editar cualquier marca/línea/modelo/variante.
+        </p>
+        <button
+          type="button"
+          onClick={() => { setSelectedTypeId(""); setSelectedBrandId(""); setSelectedLineId(""); setSelectedModelId(""); }}
+          className="text-xs rounded border border-slate-300 px-2 py-1 hover:bg-slate-100"
+        >
+          Limpiar filtros
+        </button>
+      </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
         <p className="font-semibold text-slate-900">Agregar en {activeLevel}</p>
+        {activeLevel === "variants" && (
+          <p className="text-xs text-slate-600">
+            Para crear una variante primero selecciona: Tipo → Marca → Línea → Modelo.
+          </p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
           {activeLevel === "device_types" && <input value={form.code} onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="code (ej: phone)" />}
           <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="nombre" />
           {(activeLevel === "device_types" || activeLevel === "product_lines" || activeLevel === "models" || activeLevel === "variants") && <input value={form.image_url} onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="image_url" />}
           {activeLevel === "brands" && <input value={form.logo_url} onChange={(e) => setForm((prev) => ({ ...prev, logo_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="logo_url" />}
-          <button type="button" onClick={createItem} className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark">Agregar</button>
+          <button
+            type="button"
+            onClick={createItem}
+            disabled={activeLevel === "variants" && (!selectedTypeId || !selectedBrandId || !selectedLineId || !selectedModelId)}
+            className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Agregar
+          </button>
         </div>
       </div>
 
