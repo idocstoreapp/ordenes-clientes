@@ -34,9 +34,16 @@ interface DeviceCatalogCard {
 
 function AdaptiveWizardCardImage({ src, alt }: { src: string; alt: string }) {
   const [isVertical, setIsVertical] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
 
   return (
-    <div className="h-32 md:h-40 w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200">
+    <div
+      className="w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200"
+      style={{
+        aspectRatio: isVertical ? "3 / 4" : "16 / 9",
+        minHeight: "8rem",
+      }}
+    >
       <img
         src={src}
         alt={alt}
@@ -44,9 +51,13 @@ function AdaptiveWizardCardImage({ src, alt }: { src: string; alt: string }) {
           const img = event.currentTarget;
           if (img.naturalWidth > 0 && img.naturalHeight > 0) {
             setIsVertical(img.naturalHeight > img.naturalWidth);
+            setAspectRatio(img.naturalWidth / img.naturalHeight);
           }
         }}
-        className={`h-full w-full ${isVertical ? "object-contain p-1" : "object-cover"}`}
+        className="h-full w-full object-contain p-1"
+        style={{
+          aspectRatio: `${aspectRatio}`,
+        }}
         loading="lazy"
       />
     </div>
@@ -129,6 +140,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
   const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
   const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const wizardPanelRef = useRef<HTMLDivElement | null>(null);
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
 const appendProblemText = (currentText: string, textToAdd: string): string => {
@@ -192,10 +204,26 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       fn();
       return;
     }
+
+    // Des-focus para prevenir el scroll automático del browser al hacer click en un botón
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
     const currentScrollY = window.scrollY;
     fn();
-    requestAnimationFrame(() => {
+
+    const restore = () => {
+      if (wizardPanelRef.current) {
+        wizardPanelRef.current.focus({ preventScroll: true });
+      }
       window.scrollTo({ top: currentScrollY, behavior: "auto" });
+    };
+
+    requestAnimationFrame(() => {
+      restore();
+      setTimeout(restore, 15);
+      setTimeout(restore, 100);
     });
   };
 
@@ -210,10 +238,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
   };
 
   const applyBrand = (deviceId: string, brandId: string) => {
-    setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
-    setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
-    setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
-    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
+    keepScrollPosition(() => {
+      setSelectedBrandByDevice((prev) => ({ ...prev, [deviceId]: brandId }));
+      setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
+    });
   };
 
   // Cargar tipos de dispositivo personalizados (ej. Samsung) desde la configuración de checklists
@@ -425,16 +455,53 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     variantId?: number | null;
   }): string | null => {
     if (!params.typeId || !params.brandId || !params.lineId) return null;
+
+    const matchId = (a: number | string | null | undefined, b: number | string | null | undefined) => {
+      if (a === null || a === undefined || b === null || b === undefined) return false;
+      return String(a) === String(b);
+    };
+
+    // 1) Prioriza el card exacto (tipo, marca, línea, modelo, variante)
     const exact = catalogCards.find((card) =>
-      card.device_type_id === params.typeId &&
-      card.brand_id === params.brandId &&
-      card.product_line_id === params.lineId &&
-      card.model_id === params.modelId &&
+      matchId(card.device_type_id, params.typeId) &&
+      matchId(card.brand_id, params.brandId) &&
+      matchId(card.product_line_id, params.lineId) &&
+      matchId(card.model_id, params.modelId) &&
       (params.variantId === null || params.variantId === undefined
         ? card.variant_id === null
-        : card.variant_id === params.variantId)
+        : matchId(card.variant_id, params.variantId))
     );
-    return exact?.image_url ?? null;
+    if (exact?.image_url) {
+      console.debug("[OrderForm] getCardImage exact", params, exact);
+      return exact.image_url;
+    }
+
+    // 2) Modelo sin variante (imagen configurada directamente en modelo)
+    const modelCard = catalogCards.find((card) =>
+      matchId(card.model_id, params.modelId) &&
+      card.variant_id === null &&
+      !!card.image_url
+    );
+    if (modelCard?.image_url) {
+      console.debug("[OrderForm] getCardImage modelCard", params, modelCard);
+      return modelCard.image_url;
+    }
+
+    // 3) Cualquier card del mismo modelo (ej. variante tiene imagen)
+    const sameModelCard = catalogCards.find((card) => matchId(card.model_id, params.modelId) && !!card.image_url);
+    if (sameModelCard?.image_url) return sameModelCard.image_url;
+
+    // 4) Fallback por línea/marca/tipo
+    const line = catalog.productLines.find((l) => matchId(l.id, params.lineId));
+    if (line?.image_url) return line.image_url;
+
+    const brand = catalog.brands.find((b) => matchId(b.id, params.brandId));
+    if (brand?.logo_url) return brand.logo_url;
+
+    const type = catalog.deviceTypes.find((t) => matchId(t.id, params.typeId));
+    if (type?.image_url) return type.image_url;
+
+    return null;
   };
   const mapCatalogCodeToDeviceType = (code: string): DeviceType => {
     const map: Record<string, DeviceType> = {
@@ -1241,7 +1308,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
           </div>
 
           {/* Información del Dispositivo */}
-          <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+          <div ref={wizardPanelRef} tabIndex={-1} className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
             {getWizardStep(device.id) === 1 && (
               <>
@@ -1251,6 +1318,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     <button
                       key={`${device.id}-${option.id}`}
                       type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => applyDeviceType(device.id, option.id)}
                       className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
                     >
@@ -1281,6 +1349,7 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     <button
                       key={`${device.id}-brand-${brand.id}`}
                       type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => applyBrand(device.id, String(brand.id))}
                       className="r text-sm bg-white text-slate-700  hover:bg-slate-10 p-2 text-left"
                     >
@@ -1302,10 +1371,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                     type="button"
                     className="text-xs underline text-slate-600"
                     onClick={() => {
-                      setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
-                      setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
-                      setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
-                      setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }));
+                      keepScrollPosition(() => {
+                        setSelectedBrandByDevice((prev) => ({ ...prev, [device.id]: null }));
+                        setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: null }));
+                        setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
+                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }));
+                      });
                     }}
                   >
                     Volver
@@ -1317,9 +1388,11 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                       key={`${device.id}-series-${series.id}`}
                       type="button"
                       onClick={() => {
-                        setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: String(series.id) }));
-                        setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
-                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
+                        keepScrollPosition(() => {
+                          setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: String(series.id) }));
+                          setSelectedModelByDevice((prev) => ({ ...prev, [device.id]: null }));
+                          setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
+                        });
                       }}
                       className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
                     >
@@ -1341,7 +1414,11 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   <button
                     type="button"
                     className="text-xs underline text-slate-600"
-                    onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 3 }))}
+                    onClick={() => {
+                      keepScrollPosition(() => {
+                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 3 }));
+                      });
+                    }}
                   >
                     Volver
                   </button>

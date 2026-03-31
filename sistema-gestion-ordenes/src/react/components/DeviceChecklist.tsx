@@ -170,11 +170,14 @@ export default function DeviceChecklist({
   }, [deviceType, allItems.join("|")]);
 
   useEffect(() => {
-    const firstPending = allItems.find((itemName) => !checklistData[itemName]);
-    if (!firstPending) return;
-    const ref = itemRefs.current[firstPending];
-    if (!ref) return;
-    ref.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Deshabilitado scroll automático para evitar que la página se mueva al
+    // aparecer el checklist o al marcar items. El usuario ya ve el panel, no
+    // es necesario desplazar la vista.
+    // const firstPending = allItems.find((itemName) => !checklistData[itemName]);
+    // if (!firstPending) return;
+    // const ref = itemRefs.current[firstPending];
+    // if (!ref) return;
+    // ref.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [Object.entries(checklistData).map(([k, v]) => `${k}:${v}`).join("|"), allItems.join("|")]);
 
   function getStatusOptionsForItem(itemName: string) {
