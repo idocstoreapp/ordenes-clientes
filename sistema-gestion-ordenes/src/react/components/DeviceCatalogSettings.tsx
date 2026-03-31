@@ -1,408 +1,314 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
-type CatalogLevel = "type" | "brand" | "line" | "model" | "variant";
+type Level = "device_types" | "brands" | "product_lines" | "models" | "variants";
 
-interface DeviceCatalogItem {
-  id: string;
-  parent_id: string | null;
-  level: CatalogLevel;
-  type_key: string | null;
-  item_key: string;
-  label: string;
-  description: string | null;
+interface DeviceCatalogItemRow {
+  id: number;
+  device_type_id: number;
+  brand_id: number;
+  product_line_id: number;
+  model_id: number;
+  variant_id: number | null;
+  display_name: string;
   image_url: string | null;
-  logo_url: string | null;
-  sort_order: number;
   is_active: boolean;
 }
 
-const LEVELS: Array<{ value: CatalogLevel; label: string }> = [
-  { value: "type", label: "Tipo" },
-  { value: "brand", label: "Marca" },
-  { value: "line", label: "Línea" },
-  { value: "model", label: "Modelo" },
-  { value: "variant", label: "Variante" },
-];
-
-const TYPE_KEY_OPTIONS = [
-  { value: "iphone", label: "Celular" },
-  { value: "ipad", label: "Tablet" },
-  { value: "macbook", label: "Notebook" },
-  { value: "apple_watch", label: "Smartwatch" },
-];
+interface BaseRow {
+  id: number;
+  code?: string;
+  name: string;
+  image_url?: string | null;
+  logo_url?: string | null;
+  is_active: boolean;
+}
 
 export default function DeviceCatalogSettings() {
-  const [items, setItems] = useState<DeviceCatalogItem[]>([]);
-  const [activeLevel, setActiveLevel] = useState<CatalogLevel>("type");
+  const [catalog, setCatalog] = useState<CatalogSnapshot>({ deviceTypes: [], brands: [], productLines: [], models: [], variants: [] });
+  const [catalogItems, setCatalogItems] = useState<DeviceCatalogItemRow[]>([]);
+  const [activeLevel, setActiveLevel] = useState<Level>("device_types");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    parent_id: "",
-    type_key: "iphone",
-    item_key: "",
-    label: "",
-    description: "",
-    image_url: "",
-    logo_url: "",
-    sort_order: 0,
-    is_active: true,
-  });
-  const [drafts, setDrafts] = useState<Record<string, Partial<DeviceCatalogItem>>>({});
   const [selectedTypeId, setSelectedTypeId] = useState<string>("");
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [selectedLineId, setSelectedLineId] = useState<string>("");
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [form, setForm] = useState({ code: "", name: "", image_url: "", logo_url: "", is_active: true });
 
-  useEffect(() => {
-    loadItems();
-  }, []);
-
-  async function loadItems() {
+  async function loadCatalog() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("device_catalog_items")
-      .select("*")
-      .order("level")
-      .order("sort_order")
-      .order("label");
-
-    if (error) {
+    try {
+      const [snapshot, itemsRes] = await Promise.all([
+        fetchCatalogSnapshot(),
+        supabase.from("device_catalog_items").select("*").order("display_name"),
+      ]);
+      setCatalog(snapshot);
+      if (itemsRes.error) throw itemsRes.error;
+      setCatalogItems((itemsRes.data as DeviceCatalogItemRow[] | null) ?? []);
+    } catch (error: any) {
       alert(`Error cargando catálogo: ${error.message}`);
-      setLoading(false);
-      return;
     }
-    setItems((data as DeviceCatalogItem[]) ?? []);
-    const nextDrafts: Record<string, Partial<DeviceCatalogItem>> = {};
-    (data as DeviceCatalogItem[]).forEach((item) => {
-      nextDrafts[item.id] = { ...item };
-    });
-    setDrafts(nextDrafts);
     setLoading(false);
   }
 
-  const parentCandidates = useMemo(() => {
-    const parentLevelByLevel: Record<CatalogLevel, CatalogLevel | null> = {
-      type: null,
-      brand: "type",
-      line: "brand",
-      model: "line",
-      variant: "model",
-    };
-    const parentLevel = parentLevelByLevel[activeLevel];
-    if (!parentLevel) return [];
-    return items.filter((item) => item.level === parentLevel);
-  }, [items, activeLevel]);
+  useEffect(() => { loadCatalog(); }, []);
 
-  const visibleItems = useMemo(
-    () => {
-      const byLevel = items.filter((item) => item.level === activeLevel);
-      if (activeLevel === "type") return byLevel;
-      if (activeLevel === "brand" && selectedTypeId) return byLevel.filter((item) => item.parent_id === selectedTypeId);
-      if (activeLevel === "line" && selectedBrandId) return byLevel.filter((item) => item.parent_id === selectedBrandId);
-      if (activeLevel === "model" && selectedLineId) return byLevel.filter((item) => item.parent_id === selectedLineId);
-      if (activeLevel === "variant") {
-        const modelScope = selectedLineId
-          ? items.filter((item) => item.level === "model" && item.parent_id === selectedLineId).map((item) => item.id)
-          : [];
-        return modelScope.length > 0 ? byLevel.filter((item) => item.parent_id && modelScope.includes(item.parent_id)) : byLevel;
-      }
-      return byLevel;
-    },
-    [items, activeLevel, selectedTypeId, selectedBrandId, selectedLineId]
-  );
+  const filteredRows = useMemo(() => {
+    if (activeLevel === "device_types") return catalog.deviceTypes;
+    if (activeLevel === "brands") return catalog.brands.filter((b) => !selectedTypeId || String(b.device_type_id) === selectedTypeId);
+    if (activeLevel === "product_lines") return catalog.productLines.filter((l) => !selectedBrandId || String(l.brand_id) === selectedBrandId);
+    if (activeLevel === "models") return catalog.models.filter((m) => !selectedLineId || String(m.product_line_id) === selectedLineId);
+    return catalog.variants.filter((v) => !selectedModelId || String(v.model_id) === selectedModelId);
+  }, [activeLevel, catalog, selectedTypeId, selectedBrandId, selectedLineId, selectedModelId]);
 
-  const typeItems = useMemo(() => items.filter((item) => item.level === "type"), [items]);
-  const brandItems = useMemo(
-    () => items.filter((item) => item.level === "brand" && (!selectedTypeId || item.parent_id === selectedTypeId)),
-    [items, selectedTypeId]
-  );
-  const lineItems = useMemo(
-    () => items.filter((item) => item.level === "line" && (!selectedBrandId || item.parent_id === selectedBrandId)),
-    [items, selectedBrandId]
-  );
+  const filteredCatalogItems = useMemo(() => {
+    return catalogItems.filter((row) => {
+      if (selectedTypeId && String(row.device_type_id) !== selectedTypeId) return false;
+      if (selectedBrandId && String(row.brand_id) !== selectedBrandId) return false;
+      if (selectedLineId && String(row.product_line_id) !== selectedLineId) return false;
+      if (selectedModelId && String(row.model_id) !== selectedModelId) return false;
+      return true;
+    });
+  }, [catalogItems, selectedTypeId, selectedBrandId, selectedLineId, selectedModelId]);
+
+  const typeName = (id: number) => catalog.deviceTypes.find((row) => row.id === id)?.name ?? `Tipo #${id}`;
+  const brandName = (id: number) => catalog.brands.find((row) => row.id === id)?.name ?? `Marca #${id}`;
+  const lineName = (id: number) => catalog.productLines.find((row) => row.id === id)?.name ?? `Línea #${id}`;
+  const modelName = (id: number) => catalog.models.find((row) => row.id === id)?.name ?? `Modelo #${id}`;
+  const variantName = (id: number | null) => (id ? catalog.variants.find((row) => row.id === id)?.name ?? `Variante #${id}` : "Sin variante");
 
   async function createItem() {
-    if (!form.label.trim() || !form.item_key.trim()) {
-      alert("Completa al menos Clave y Nombre");
-      return;
-    }
-    setSaving(true);
-    const payload = {
-      parent_id: form.parent_id || null,
-      level: activeLevel,
-      type_key: form.type_key || null,
-      item_key: form.item_key.trim(),
-      label: form.label.trim(),
-      description: form.description.trim() || null,
-      image_url: form.image_url.trim() || null,
-      logo_url: form.logo_url.trim() || null,
-      sort_order: Number(form.sort_order) || 0,
-      is_active: form.is_active,
-    };
+    try {
+      if (!form.name.trim()) return alert("Debes ingresar un nombre");
 
-    const { error } = await supabase.from("device_catalog_items").insert(payload);
-    setSaving(false);
-    if (error) {
-      alert(`Error creando item: ${error.message}`);
-      return;
-    }
+      if (activeLevel === "device_types") {
+        await supabase.from("device_types").insert({
+          code: form.code.trim(),
+          name: form.name.trim(),
+          image_url: form.image_url.trim() || null,
+          is_active: form.is_active,
+        });
+      }
 
-    setForm({
-      parent_id: "",
-      type_key: form.type_key,
-      item_key: "",
-      label: "",
-      description: "",
-      image_url: "",
-      logo_url: "",
-      sort_order: 0,
-      is_active: true,
-    });
-    await loadItems();
+      if (activeLevel === "brands") {
+        if (!selectedTypeId) return alert("Selecciona un tipo de dispositivo.");
+        await supabase.from("brands").insert({
+          device_type_id: Number(selectedTypeId),
+          name: form.name.trim(),
+          normalized_name: form.name.trim().toLowerCase(),
+          logo_url: form.logo_url.trim() || null,
+          is_active: form.is_active,
+        });
+      }
+
+      if (activeLevel === "product_lines") {
+        if (!selectedBrandId) return alert("Selecciona una marca.");
+        await supabase.from("product_lines").insert({
+          brand_id: Number(selectedBrandId),
+          name: form.name.trim(),
+          normalized_name: form.name.trim().toLowerCase(),
+          image_url: form.image_url.trim() || null,
+          is_active: form.is_active,
+        });
+      }
+
+      if (activeLevel === "models") {
+        if (!selectedLineId) return alert("Selecciona una línea.");
+        await supabase.from("models").insert({
+          product_line_id: Number(selectedLineId),
+          name: form.name.trim(),
+          normalized_name: form.name.trim().toLowerCase(),
+          is_active: form.is_active,
+        });
+      }
+
+      if (activeLevel === "variants") {
+        if (!selectedModelId) return alert("Selecciona un modelo.");
+        await supabase.from("variants").insert({
+          model_id: Number(selectedModelId),
+          name: form.name.trim(),
+          normalized_name: form.name.trim().toLowerCase(),
+          is_active: form.is_active,
+        });
+      }
+
+      setForm({ code: "", name: "", image_url: "", logo_url: "", is_active: true });
+      await loadCatalog();
+    } catch (error: any) {
+      alert(`Error creando registro: ${error.message}`);
+    }
   }
 
-  async function saveItem(id: string) {
-    const draft = drafts[id];
-    if (!draft) return;
+  async function saveBaseRow(table: Level, row: BaseRow) {
+    const payload: Record<string, any> = {
+      name: row.name,
+      is_active: row.is_active,
+    };
+
+    if (table === "device_types") {
+      payload.code = row.code || "";
+      payload.image_url = row.image_url || null;
+    }
+    if (table === "brands") {
+      payload.logo_url = row.logo_url || null;
+      payload.normalized_name = row.name.toLowerCase();
+    }
+    if (table === "product_lines") {
+      payload.image_url = row.image_url || null;
+      payload.normalized_name = row.name.toLowerCase();
+    }
+    if (table === "models" || table === "variants") {
+      payload.normalized_name = row.name.toLowerCase();
+    }
+
+    const { error } = await supabase.from(table).update(payload).eq("id", row.id);
+    if (error) return alert(`Error guardando: ${error.message}`);
+    await loadCatalog();
+  }
+
+  async function removeBaseRow(table: Level, id: number) {
+    if (!window.confirm("¿Eliminar registro?")) return;
+    const { error } = await supabase.from(table).delete().eq("id", id);
+    if (error) return alert(`Error eliminando: ${error.message}`);
+    await loadCatalog();
+  }
+
+  async function saveCatalogCard(row: DeviceCatalogItemRow) {
     const { error } = await supabase
       .from("device_catalog_items")
       .update({
-        item_key: draft.item_key?.trim(),
-        label: draft.label?.trim(),
-        description: draft.description?.trim() || null,
-        image_url: draft.image_url?.trim() || null,
-        logo_url: draft.logo_url?.trim() || null,
-        sort_order: Number(draft.sort_order) || 0,
-        is_active: Boolean(draft.is_active),
-        type_key: draft.type_key || null,
+        display_name: row.display_name,
+        image_url: row.image_url || null,
+        is_active: row.is_active,
       })
-      .eq("id", id);
+      .eq("id", row.id);
 
-    if (error) {
-      alert(`Error actualizando: ${error.message}`);
-      return;
-    }
-    await loadItems();
+    if (error) return alert(`Error guardando card: ${error.message}`);
+    await loadCatalog();
   }
 
-  async function removeItem(id: string) {
-    const ok = window.confirm("¿Eliminar este elemento del catálogo?");
-    if (!ok) return;
-    const { error } = await supabase.from("device_catalog_items").delete().eq("id", id);
-    if (error) {
-      alert(`Error eliminando: ${error.message}`);
-      return;
-    }
-    await loadItems();
-  }
-
-  if (loading) {
-    return <p className="text-slate-600">Cargando catálogo de dispositivos...</p>;
-  }
+  if (loading) return <p className="text-slate-600">Cargando catálogo…</p>;
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-        Aquí puedes administrar tipos, marcas, líneas, modelos y variantes con nombre, descripción, tipo, imagen y logo.
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <select
-          value={selectedTypeId}
-          onChange={(e) => {
-            setSelectedTypeId(e.target.value);
-            setSelectedBrandId("");
-            setSelectedLineId("");
-          }}
-          className="border border-slate-300 rounded-md px-3 py-2 text-sm"
-        >
-          <option value="">Filtrar por tipo (todos)</option>
-          {typeItems.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
-          ))}
-        </select>
-        <select
-          value={selectedBrandId}
-          onChange={(e) => {
-            setSelectedBrandId(e.target.value);
-            setSelectedLineId("");
-          }}
-          className="border border-slate-300 rounded-md px-3 py-2 text-sm"
-        >
-          <option value="">Filtrar por marca (todas)</option>
-          {brandItems.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
-          ))}
-        </select>
-        <select
-          value={selectedLineId}
-          onChange={(e) => setSelectedLineId(e.target.value)}
-          className="border border-slate-300 rounded-md px-3 py-2 text-sm"
-        >
-          <option value="">Filtrar por línea (todas)</option>
-          {lineItems.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {LEVELS.map((level) => (
-          <button
-            key={level.value}
-            type="button"
-            onClick={() => setActiveLevel(level.value)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold border ${
-              activeLevel === level.value
-                ? "bg-brand-light text-white border-brand-light"
-                : "bg-white text-slate-700 border-slate-300"
-            }`}
-          >
-            {level.label}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {[
+          ["device_types", "Tipo"],
+          ["brands", "Marca"],
+          ["product_lines", "Línea"],
+          ["models", "Modelo"],
+          ["variants", "Variante"],
+        ].map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setActiveLevel(value as Level)} className={`rounded-md border px-3 py-2 text-sm ${activeLevel === value ? "bg-brand-light text-white border-brand-light" : "bg-white"}`}>
+            {label}
           </button>
         ))}
       </div>
 
-      <div className="rounded-lg border border-slate-200 p-4 bg-slate-50">
-        <h4 className="font-semibold text-slate-900 mb-3">Nuevo {LEVELS.find((l) => l.value === activeLevel)?.label}</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {parentCandidates.length > 0 && (
-            <select
-              value={form.parent_id}
-              onChange={(e) => setForm((prev) => ({ ...prev, parent_id: e.target.value }))}
-              className="border border-slate-300 rounded-md px-3 py-2"
-            >
-              <option value="">Sin padre</option>
-              {parentCandidates.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          )}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <select value={selectedTypeId} onChange={(e) => { setSelectedTypeId(e.target.value); setSelectedBrandId(""); setSelectedLineId(""); setSelectedModelId(""); }} className="border rounded-md px-3 py-2 text-sm">
+          <option value="">Tipo (todos)</option>
+          {catalog.deviceTypes.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </select>
+        <select value={selectedBrandId} onChange={(e) => { setSelectedBrandId(e.target.value); setSelectedLineId(""); setSelectedModelId(""); }} className="border rounded-md px-3 py-2 text-sm">
+          <option value="">Marca (todas)</option>
+          {catalog.brands.filter((row) => !selectedTypeId || String(row.device_type_id) === selectedTypeId).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </select>
+        <select value={selectedLineId} onChange={(e) => { setSelectedLineId(e.target.value); setSelectedModelId(""); }} className="border rounded-md px-3 py-2 text-sm">
+          <option value="">Línea (todas)</option>
+          {catalog.productLines.filter((row) => !selectedBrandId || String(row.brand_id) === selectedBrandId).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </select>
+        <select value={selectedModelId} onChange={(e) => setSelectedModelId(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
+          <option value="">Modelo (todos)</option>
+          {catalog.models.filter((row) => !selectedLineId || String(row.product_line_id) === selectedLineId).map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </select>
+      </div>
 
-          <select
-            value={form.type_key}
-            onChange={(e) => setForm((prev) => ({ ...prev, type_key: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          >
-            {TYPE_KEY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <input
-            placeholder="Clave única (ej: samsung_galaxy_s)"
-            value={form.item_key}
-            onChange={(e) => setForm((prev) => ({ ...prev, item_key: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          />
-          <input
-            placeholder="Nombre visible"
-            value={form.label}
-            onChange={(e) => setForm((prev) => ({ ...prev, label: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          />
-          <input
-            placeholder="Descripción"
-            value={form.description}
-            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          />
-          <input
-            placeholder="URL imagen"
-            value={form.image_url}
-            onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          />
-          <input
-            placeholder="URL logo (solo marca)"
-            value={form.logo_url}
-            onChange={(e) => setForm((prev) => ({ ...prev, logo_url: e.target.value }))}
-            className="border border-slate-300 rounded-md px-3 py-2"
-          />
-        </div>
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            onClick={createItem}
-            disabled={saving}
-            className="rounded-md bg-brand-light px-4 py-2 text-white hover:bg-brand-dark disabled:opacity-50"
-          >
-            {saving ? "Guardando..." : "Agregar al catálogo"}
-          </button>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
+        <p className="font-semibold text-slate-900">Agregar en {activeLevel}</p>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+          {activeLevel === "device_types" && <input value={form.code} onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="code (ej: phone)" />}
+          <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="nombre" />
+          {(activeLevel === "device_types" || activeLevel === "product_lines") && <input value={form.image_url} onChange={(e) => setForm((prev) => ({ ...prev, image_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="image_url" />}
+          {activeLevel === "brands" && <input value={form.logo_url} onChange={(e) => setForm((prev) => ({ ...prev, logo_url: e.target.value }))} className="border rounded-md px-2 py-1.5 text-sm" placeholder="logo_url" />}
+          <button type="button" onClick={createItem} className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark">Agregar</button>
         </div>
       </div>
 
-      <div className="space-y-2">
-        {visibleItems.map((item) => (
-          <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-slate-900 truncate">{item.label}</p>
-                <p className="text-xs text-slate-600 truncate">
-                  key: {item.item_key} · type: {item.type_key ?? "-"} · activo: {item.is_active ? "sí" : "no"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => saveItem(item.id)}
-                  className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50"
-                >
-                  Guardar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeItem(item.id)}
-                  className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-                >
-                  Eliminar
-                </button>
+      <div className="space-y-3">
+        {filteredRows.map((rawRow: any) => {
+          const row = rawRow as BaseRow;
+          const context = activeLevel === "brands"
+            ? `Tipo: ${typeName((rawRow as any).device_type_id)}`
+            : activeLevel === "product_lines"
+              ? `Marca: ${brandName((rawRow as any).brand_id)}`
+              : activeLevel === "models"
+                ? `Línea: ${lineName((rawRow as any).product_line_id)} · Marca: ${brandName(catalog.productLines.find((line) => line.id === (rawRow as any).product_line_id)?.brand_id || 0)}`
+                : activeLevel === "variants"
+                  ? `Modelo: ${modelName((rawRow as any).model_id)} · Línea: ${lineName(catalog.models.find((model) => model.id === (rawRow as any).model_id)?.product_line_id || 0)}`
+                  : "";
+
+          return (
+            <div key={`${activeLevel}-${row.id}`} className="rounded-lg border border-slate-200 bg-white p-3">
+              {context && <p className="text-xs text-slate-500 mb-2">{context}</p>}
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-center">
+                {activeLevel === "device_types" && (
+                  <input defaultValue={row.code || ""} onChange={(e) => { row.code = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="code" />
+                )}
+                <input defaultValue={row.name || ""} onChange={(e) => { row.name = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="nombre" />
+                {(activeLevel === "device_types" || activeLevel === "product_lines") && (
+                  <input defaultValue={row.image_url || ""} onChange={(e) => { row.image_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="image_url" />
+                )}
+                {activeLevel === "brands" && (
+                  <input defaultValue={row.logo_url || ""} onChange={(e) => { row.logo_url = e.target.value; }} className="border rounded-md px-2 py-1 text-sm" placeholder="logo_url" />
+                )}
+                <label className="text-xs flex items-center gap-1"><input defaultChecked={row.is_active} type="checkbox" onChange={(e) => { row.is_active = e.target.checked; }} /> Activo</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => saveBaseRow(activeLevel, row)} className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700">Guardar</button>
+                  <button type="button" onClick={() => removeBaseRow(activeLevel, row.id)} className="rounded border border-red-300 px-2 py-1 text-xs text-red-700">Eliminar</button>
+                </div>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+          );
+        })}
+      </div>
+
+      <div className="rounded-lg border border-slate-200 p-4 bg-white space-y-3">
+        <h4 className="font-semibold text-slate-900">Cards del wizard (device_catalog_items)</h4>
+        <p className="text-xs text-slate-500">
+          Aquí editas el nombre mostrado e imagen final de cada card (modelo/variante) con contexto completo.
+        </p>
+
+        {filteredCatalogItems.map((row) => (
+          <div key={`card-${row.id}`} className="rounded-md border border-slate-200 p-3 bg-slate-50 space-y-2">
+            <p className="text-xs text-slate-600">
+              {typeName(row.device_type_id)} → {brandName(row.brand_id)} → {lineName(row.product_line_id)} → {modelName(row.model_id)} → {variantName(row.variant_id)}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-center">
               <input
-                value={drafts[item.id]?.label ?? ""}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: { ...prev[item.id], label: e.target.value } }))}
-                className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                placeholder="Nombre"
+                defaultValue={row.display_name}
+                onChange={(e) => { row.display_name = e.target.value; }}
+                className="border rounded-md px-2 py-1.5 text-sm md:col-span-2"
+                placeholder="Nombre mostrado"
               />
               <input
-                value={drafts[item.id]?.item_key ?? ""}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: { ...prev[item.id], item_key: e.target.value } }))}
-                className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                placeholder="Clave"
+                defaultValue={row.image_url || ""}
+                onChange={(e) => { row.image_url = e.target.value; }}
+                className="border rounded-md px-2 py-1.5 text-sm md:col-span-2"
+                placeholder="URL imagen card"
               />
-              <input
-                value={drafts[item.id]?.description ?? ""}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: { ...prev[item.id], description: e.target.value } }))}
-                className="border border-slate-300 rounded-md px-2 py-1.5 text-sm md:col-span-2"
-                placeholder="Descripción"
-              />
-              <input
-                value={drafts[item.id]?.image_url ?? ""}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: { ...prev[item.id], image_url: e.target.value } }))}
-                className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                placeholder="URL imagen"
-              />
-              <input
-                value={drafts[item.id]?.logo_url ?? ""}
-                onChange={(e) => setDrafts((prev) => ({ ...prev, [item.id]: { ...prev[item.id], logo_url: e.target.value } }))}
-                className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
-                placeholder="URL logo"
-              />
+              <label className="text-xs flex items-center gap-1"><input defaultChecked={row.is_active} type="checkbox" onChange={(e) => { row.is_active = e.target.checked; }} /> Activo</label>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {drafts[item.id]?.image_url && <img src={drafts[item.id]?.image_url as string} alt={item.label} className="h-20 w-full rounded-md object-cover border border-slate-200" />}
-              {drafts[item.id]?.logo_url && <img src={drafts[item.id]?.logo_url as string} alt={`${item.label} logo`} className="h-20 w-full rounded-md object-contain border border-slate-200 bg-white" />}
+            <div className="flex justify-end">
+              <button type="button" onClick={() => saveCatalogCard(row)} className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700">Guardar card</button>
             </div>
           </div>
         ))}
-        {visibleItems.length === 0 && (
-          <p className="text-sm text-slate-500">No hay elementos en este nivel todavía.</p>
+
+        {filteredCatalogItems.length === 0 && (
+          <p className="text-sm text-slate-500">No hay cards para el filtro seleccionado.</p>
         )}
       </div>
     </div>

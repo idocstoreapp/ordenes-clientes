@@ -3,8 +3,9 @@ import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
-import { DEVICE_TYPE_OPTIONS, buildDeviceWizardOptions, getBrandImage, getModelImage } from "@/lib/deviceWizardData";
+import { DEVICE_TYPE_OPTIONS } from "@/lib/deviceWizardData";
 import { getProblemDescriptionSuggestions, getQuickProblemClauses } from "@/lib/problemDescriptionAutocomplete";
+import { buildDeviceDisplayName, ensureCatalogChain, fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
 import DeviceChecklist from "./DeviceChecklist";
 import CustomerSearch from "./CustomerSearch";
@@ -17,6 +18,39 @@ import { uploadPDFToStorage } from "@/lib/upload-pdf";
 interface OrderFormProps {
   technicianId: string;
   onSaved: () => void;
+}
+
+interface DeviceCatalogCard {
+  id: number;
+  device_type_id: number;
+  brand_id: number;
+  product_line_id: number;
+  model_id: number;
+  variant_id: number | null;
+  display_name: string;
+  image_url: string | null;
+  is_active: boolean;
+}
+
+function AdaptiveWizardCardImage({ src, alt }: { src: string; alt: string }) {
+  const [isVertical, setIsVertical] = useState(false);
+
+  return (
+    <div className="h-32 md:h-40 w-full rounded-lg bg-slate-100 overflow-hidden mb-2 border border-slate-200">
+      <img
+        src={src}
+        alt={alt}
+        onLoad={(event) => {
+          const img = event.currentTarget;
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            setIsVertical(img.naturalHeight > img.naturalWidth);
+          }
+        }}
+        className={`h-full w-full ${isVertical ? "object-contain p-1" : "object-cover"}`}
+        loading="lazy"
+      />
+    </div>
+  );
 }
 
 // Interfaz para un equipo individual
@@ -84,6 +118,15 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [selectedBrandByDevice, setSelectedBrandByDevice] = useState<Record<string, string | null>>({});
   const [selectedSeriesByDevice, setSelectedSeriesByDevice] = useState<Record<string, string | null>>({});
   const [wizardStepByDevice, setWizardStepByDevice] = useState<Record<string, number>>({});
+  const [catalog, setCatalog] = useState<CatalogSnapshot>({
+    deviceTypes: [],
+    brands: [],
+    productLines: [],
+    models: [],
+    variants: [],
+  });
+  const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
+  const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
   const checklistSectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const MAX_DESCRIPTION_LENGTH = 500; // Límite máximo de caracteres para la descripción
@@ -168,6 +211,26 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
       setCustomDeviceTypes(custom);
     }
     load();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCatalog() {
+      try {
+        const [snapshot, cardsRes] = await Promise.all([
+          fetchCatalogSnapshot(),
+          supabase.from("device_catalog_items").select("*").eq("is_active", true),
+        ]);
+        if (!cancelled) {
+          setCatalog(snapshot);
+          setCatalogCards((cardsRes.data as DeviceCatalogCard[] | null) ?? []);
+        }
+      } catch (error: any) {
+        console.error("[OrderForm] Error cargando catálogo normalizado:", error);
+      }
+    }
+    loadCatalog();
     return () => { cancelled = true; };
   }, []);
 
@@ -257,12 +320,122 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
     }, 80);
   };
 
-  const getWizardOptionsForDevice = (device: DeviceItem) => {
-    const detectType = (model: string) => detectDeviceTypeWithCustom(model, customDeviceTypes);
-    return buildDeviceWizardOptions(recentDeviceModels, detectType, device.deviceType);
+  const addCustomModelToCatalog = async (device: DeviceItem) => {
+    const brandId = Number(selectedBrandByDevice[device.id]);
+    const lineId = Number(selectedSeriesByDevice[device.id]);
+    const form = customCatalogFormByDevice[device.id] ?? { model: "", variant: "" };
+    const modelName = form.model.trim();
+    const variantName = form.variant.trim();
+    if (!brandId || !lineId || !modelName) {
+      alert("Debes seleccionar marca/línea y escribir el modelo.");
+      return;
+    }
+
+    const typeId = getTypeIdForDevice(device);
+    const brand = catalog.brands.find((b) => b.id === brandId);
+    const line = catalog.productLines.find((l) => l.id === lineId);
+    if (!typeId || !brand || !line) {
+      alert("No se pudo resolver el catálogo base. Recarga la página.");
+      return;
+    }
+
+    try {
+      const chain = await ensureCatalogChain({
+        deviceTypeId: typeId,
+        brandName: brand.name,
+        lineName: line.name,
+        modelName,
+        variantName: variantName || undefined,
+      });
+
+      const displayName = buildDeviceDisplayName({
+        brandName: brand.name,
+        lineName: line.name,
+        modelName,
+        variantName,
+      });
+
+      await supabase.from("device_catalog_items").upsert({
+        device_type_id: typeId,
+        brand_id: chain.brandId,
+        product_line_id: chain.lineId,
+        model_id: chain.modelId,
+        variant_id: chain.variantId,
+        display_name: displayName,
+        is_active: true,
+      }, { onConflict: "device_type_id,brand_id,product_line_id,model_id,variant_id" });
+
+      applySuggestedModel(device.id, displayName);
+      setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { model: "", variant: "" } }));
+      const [snapshot, cardsRes] = await Promise.all([
+        fetchCatalogSnapshot(),
+        supabase.from("device_catalog_items").select("*").eq("is_active", true),
+      ]);
+      setCatalog(snapshot);
+      setCatalogCards((cardsRes.data as DeviceCatalogCard[] | null) ?? []);
+    } catch (error: any) {
+      console.error("[OrderForm] Error creando modelo en catálogo:", error);
+      alert(`No se pudo crear el modelo en catálogo: ${error.message}`);
+    }
   };
 
   const getWizardStep = (deviceId: string): number => wizardStepByDevice[deviceId] ?? 1;
+  const getTypeIdForDevice = (device: DeviceItem): number | null => {
+    if (!device.deviceType) return null;
+    return catalog.deviceTypes.find((type) => mapCatalogCodeToDeviceType(type.code) === device.deviceType && type.is_active)?.id ?? null;
+  };
+  const getBrandsForDevice = (device: DeviceItem) => {
+    const typeId = getTypeIdForDevice(device);
+    if (!typeId) return [];
+    return catalog.brands.filter((brand) => brand.device_type_id === typeId && brand.is_active);
+  };
+  const getLinesForDevice = (device: DeviceItem) => {
+    const brandId = Number(selectedBrandByDevice[device.id]);
+    if (!brandId) return [];
+    return catalog.productLines.filter((line) => line.brand_id === brandId && line.is_active);
+  };
+  const getModelsForDevice = (device: DeviceItem) => {
+    const lineId = Number(selectedSeriesByDevice[device.id]);
+    if (!lineId) return [];
+    return catalog.models.filter((model) => model.product_line_id === lineId && model.is_active);
+  };
+  const getVariantsForModel = (modelId: number) => catalog.variants.filter((variant) => variant.model_id === modelId && variant.is_active);
+  const getCardImage = (params: {
+    typeId: number | null;
+    brandId: number | null;
+    lineId: number | null;
+    modelId: number;
+    variantId?: number | null;
+  }): string | null => {
+    if (!params.typeId || !params.brandId || !params.lineId) return null;
+    const exact = catalogCards.find((card) =>
+      card.device_type_id === params.typeId &&
+      card.brand_id === params.brandId &&
+      card.product_line_id === params.lineId &&
+      card.model_id === params.modelId &&
+      (params.variantId ? card.variant_id === params.variantId : true)
+    );
+    return exact?.image_url ?? null;
+  };
+  const mapCatalogCodeToDeviceType = (code: string): DeviceType => {
+    const map: Record<string, DeviceType> = {
+      phone: "iphone",
+      tablet: "ipad",
+      laptop: "macbook",
+      wearable: "apple_watch",
+    };
+    return map[code] ?? code;
+  };
+  const wizardTypeOptions = catalog.deviceTypes.length > 0
+    ? catalog.deviceTypes.filter((type) => type.is_active).map((type) => ({
+      id: mapCatalogCodeToDeviceType(type.code),
+      rawCode: type.code,
+      label: type.name,
+      description: type.name,
+      icon: "📱",
+      imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
+    }))
+    : DEVICE_TYPE_OPTIONS.map((option) => ({ ...option, rawCode: option.id }));
 
   // Cerrar sugerencias al hacer click fuera (para todos los equipos)
   useEffect(() => {
@@ -1055,12 +1228,12 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
               <>
                 <p className="text-xs text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                  {DEVICE_TYPE_OPTIONS.map((option) => (
+                  {wizardTypeOptions.map((option) => (
                     <button
                       key={`${device.id}-${option.id}`}
                       type="button"
                       onClick={() => applyDeviceType(device.id, option.id)}
-                      className="text-left rounded-xl border p-2 transition-colors border-slate-200 hover:border-brand-light hover:bg-slate-50 overflow-hidden"
+                      className="text-left  transition-colors  hover: hover:bg-slate-10 overflow-hidden"
                     >
                       <img
                         src={option.imageUrl}
@@ -1079,27 +1252,23 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
             {getWizardStep(device.id) === 2 && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-slate-600">2) ¿Qué marca de {DEVICE_TYPE_OPTIONS.find((option) => option.id === device.deviceType)?.label.toLowerCase()}?</p>
+                  <p className="text-xs text-slate-600">2) ¿Qué marca de {wizardTypeOptions.find((option) => option.id === device.deviceType)?.label.toLowerCase()}?</p>
                   <button type="button" className="text-xs underline text-slate-600" onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 1 }))}>
                     Volver
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                  {getWizardOptionsForDevice(device).map((brand) => (
+                  {getBrandsForDevice(device).map((brand) => (
                     <button
-                      key={`${device.id}-brand-${brand.key}`}
+                      key={`${device.id}-brand-${brand.id}`}
                       type="button"
-                      onClick={() => applyBrand(device.id, brand.key)}
-                      className="rounded-xl border text-sm bg-white text-slate-700 border-slate-200 hover:bg-slate-50 p-2 text-left"
+                      onClick={() => applyBrand(device.id, String(brand.id))}
+                      className="r text-sm bg-white text-slate-700  hover:bg-slate-10 p-2 text-left"
                     >
-                      <div className="h-16 rounded-lg bg-slate-50 overflow-hidden mb-2">
-                        <img src={getBrandImage(brand.key)} alt={brand.label} className="h-full w-full object-cover" loading="lazy" />
+                      <div className="h-16  bg-white overflow-hidden mb-2">
+                        <img src={brand.logo_url } alt={brand.name} className="h-full w-full object-contain bg-white" loading="lazy" />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <img src={brand.logoUrl} alt={`${brand.label} logo`} className="h-5 w-5 object-contain" loading="lazy" />
-                        <p className="font-semibold text-xs">{brand.icon} {brand.label}</p>
-                      </div>
-                      <span className="opacity-75 text-[11px]">{brand.models.length} modelos</span>
+                      <p className="font-semibold text-xs">{brand.name}</p>
                     </button>
                   ))}
                 </div>
@@ -1123,19 +1292,21 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
-                  {(getWizardOptionsForDevice(device).find((brand) => brand.key === selectedBrandByDevice[device.id])?.series ?? []).map((series) => (
+                  {getLinesForDevice(device).map((series) => (
                     <button
-                      key={`${device.id}-series-${series.key}`}
+                      key={`${device.id}-series-${series.id}`}
                       type="button"
                       onClick={() => {
-                        setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: series.key }));
+                        setSelectedSeriesByDevice((prev) => ({ ...prev, [device.id]: String(series.id) }));
                         setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 4 }));
                       }}
-                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left"
+                      className="rounded-xl border text-sm bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 p-2 text-left min-h-[220px]"
                     >
-                      <img src={series.imageUrl} alt={series.label} className="h-14 w-full rounded-lg object-cover mb-2" loading="lazy" />
-                      <p className="font-semibold text-xs">{series.label}</p>
-                      <span className="opacity-75 text-[11px]">{series.models.length} variantes</span>
+                      <AdaptiveWizardCardImage
+                        src={series.image_url || "https://dummyimage.com/320x520/e2e8f0/475569&text=L%C3%ADnea"}
+                        alt={series.name}
+                      />
+                      <p className="font-semibold text-xs">{series.name}</p>
                     </button>
                   ))}
                 </div>
@@ -1155,31 +1326,58 @@ const appendProblemText = (currentText: string, textToAdd: string): string => {
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  {(() => {
-                    const brands = getWizardOptionsForDevice(device);
-                    const selectedBrand = brands.find((brand) => brand.key === selectedBrandByDevice[device.id]) ?? brands[0];
-                    if (!selectedBrand) return [];
-                    const selectedSeries = selectedBrand.series.find((series) => series.key === selectedSeriesByDevice[device.id]);
-                    return (selectedSeries ? selectedSeries.models : selectedBrand.models).slice(0, 30);
-                  })().map((model) => {
-                    const selectedBrandKey = selectedBrandByDevice[device.id] ?? undefined;
+                  {getModelsForDevice(device).slice(0, 50).map((model) => {
+                    const variants = getVariantsForModel(model.id);
+                    const firstVariant = variants[0]?.name ?? "";
+                    const typeId = getTypeIdForDevice(device);
+                    const brandId = Number(selectedBrandByDevice[device.id]) || null;
+                    const lineId = Number(selectedSeriesByDevice[device.id]) || null;
+                    const displayName = buildDeviceDisplayName({
+                      brandName: catalog.brands.find((b) => b.id === Number(selectedBrandByDevice[device.id]))?.name ?? "",
+                      lineName: catalog.productLines.find((l) => l.id === Number(selectedSeriesByDevice[device.id]))?.name ?? "",
+                      modelName: model.name,
+                      variantName: firstVariant,
+                    });
+                    const cardImage = getCardImage({ typeId, brandId, lineId, modelId: model.id, variantId: variants[0]?.id ?? null });
                     return (
                       <button
-                        key={`${device.id}-model-${model}`}
+                        key={`${device.id}-model-${model.id}`}
                         type="button"
-                        onClick={() => applySuggestedModel(device.id, model)}
-                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left"
+                        onClick={() => applySuggestedModel(device.id, displayName)}
+                        className="px-2 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs md:text-sm hover:bg-slate-100 text-left min-h-[240px]"
                       >
-                        <img
-                          src={getModelImage(model, selectedBrandKey)}
-                          alt={model}
-                          className="h-14 w-full rounded-lg object-cover mb-2"
-                          loading="lazy"
+                        <AdaptiveWizardCardImage
+                          src={cardImage || "https://dummyimage.com/320x160/e2e8f0/475569&text=Modelo"}
+                          alt={displayName}
                         />
-                        <span>{model}</span>
+                        <span>{displayName}</span>
                       </button>
                     );
                   })}
+                </div>
+                <div className="mt-3 rounded-md border border-dashed border-slate-300 p-3">
+                  <p className="text-xs font-semibold text-slate-700 mb-2">¿No aparece? Agrégalo al catálogo</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <input
+                      value={customCatalogFormByDevice[device.id]?.model ?? ""}
+                      onChange={(e) => setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { ...(prev[device.id] ?? { model: "", variant: "" }), model: e.target.value } }))}
+                      className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                      placeholder="Modelo (ej: S24)"
+                    />
+                    <input
+                      value={customCatalogFormByDevice[device.id]?.variant ?? ""}
+                      onChange={(e) => setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { ...(prev[device.id] ?? { model: "", variant: "" }), variant: e.target.value } }))}
+                      className="border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+                      placeholder="Variante (opcional)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => addCustomModelToCatalog(device)}
+                      className="rounded-md bg-brand-light px-3 py-1.5 text-sm text-white hover:bg-brand-dark"
+                    >
+                      Guardar y usar
+                    </button>
+                  </div>
                 </div>
               </>
             )}
