@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 import { formatCLP, formatCLPInput, parseCLPInput } from "@/lib/currency";
 import type { Customer, Service, DeviceChecklistItem, DeviceType, User } from "@/types";
 import { detectDeviceTypeWithCustom, getSmartSuggestions } from "@/lib/deviceDatabase";
-import { DEVICE_TYPE_OPTIONS } from "@/lib/deviceWizardData";
 import { buildDeviceDisplayName, ensureCatalogChain, fetchCatalogSnapshot, type CatalogSnapshot } from "@/lib/device-catalog";
 
 import DeviceChecklist from "./DeviceChecklist";
@@ -126,6 +125,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     variants: [],
   });
   const [catalogCards, setCatalogCards] = useState<DeviceCatalogCard[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [customCatalogFormByDevice, setCustomCatalogFormByDevice] = useState<Record<string, { model: string; variant: string }>>({});
   const wizardPanelRef = useRef<HTMLDivElement | null>(null);
 
@@ -313,9 +313,13 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         if (!cancelled) {
           setCatalog(snapshot);
           setCatalogCards((cardsRes.data as DeviceCatalogCard[] | null) ?? []);
+          setCatalogLoaded(true);
         }
       } catch (error: any) {
         console.error("[OrderForm] Error cargando catálogo normalizado:", error);
+        if (!cancelled) {
+          setCatalogLoaded(true);
+        }
       }
     }
     loadCatalog();
@@ -564,7 +568,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       icon: "📱",
       imageUrl: type.image_url || "https://dummyimage.com/480x260/e2e8f0/475569&text=Tipo",
     }))
-    : DEVICE_TYPE_OPTIONS.map((option) => ({ ...option, rawCode: option.id }));
+    : [];
 
   const wizardCardButtonClass = "bg-white border border-white rounded-xl p-2 shadow-sm transition hover:shadow-md text-left overflow-hidden min-h-[320px]";
   const wizardCardInnerTextClass = "font-medium text-slate-900 text-sm";
@@ -1378,21 +1382,27 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             {getWizardStep(device.id) === 1 && (
               <>
                 <p className="text-xl text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                  {wizardTypeOptions.map((option) => (
-                    <button
-                      key={`${device.id}-${option.id}`}
-                      type="button"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => applyDeviceType(device.id, option.id)}
-                      className={wizardCardButtonClass}
-                    >
-                      <AdaptiveWizardCardImage src={option.imageUrl} alt={option.label} />
-                      <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
-                      <p className="text-xs text-slate-600 mt-1">{option.description}</p>
-                    </button>
-                  ))}
-                </div>
+                {!catalogLoaded ? (
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-600">
+                    Cargando catálogo de dispositivos...
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+                    {wizardTypeOptions.map((option) => (
+                      <button
+                        key={`${device.id}-${option.id}`}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyDeviceType(device.id, option.id)}
+                        className={wizardCardButtonClass}
+                      >
+                        <AdaptiveWizardCardImage src={option.imageUrl} alt={option.label} />
+                        <p className="font-medium text-slate-900 text-sm">{option.icon} {option.label}</p>
+                        <p className="text-xs text-slate-600 mt-1">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
