@@ -115,6 +115,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [flowStepByDevice, setFlowStepByDevice] = useState<Record<string, 1 | 2 | 3>>({});
   const [finalizedDeviceById, setFinalizedDeviceById] = useState<Record<string, boolean>>({});
   const [detailsOpenByDevice, setDetailsOpenByDevice] = useState<Record<string, boolean>>({});
+  const [serialFieldOpenByDevice, setSerialFieldOpenByDevice] = useState<Record<string, boolean>>({});
+  const [manualEditOpenByDevice, setManualEditOpenByDevice] = useState<Record<string, boolean>>({});
   const [catalog, setCatalog] = useState<CatalogSnapshot>({
     deviceTypes: [],
     brands: [],
@@ -165,6 +167,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setFlowStepByDevice((prev) => ({ ...prev, [newDevice.id]: 1 }));
     setFinalizedDeviceById((prev) => ({ ...prev, [newDevice.id]: false }));
     setDetailsOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
+    setSerialFieldOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
+    setManualEditOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
   };
 
   const removeDevice = (deviceId: string) => {
@@ -184,6 +188,16 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return next;
     });
     setDetailsOpenByDevice((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
+    setSerialFieldOpenByDevice((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
+    setManualEditOpenByDevice((prev) => {
       const next = { ...prev };
       delete next[deviceId];
       return next;
@@ -359,6 +373,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 6 }));
     setFlowStepByDevice((prev) => ({ ...prev, [deviceId]: 1 }));
     setFinalizedDeviceById((prev) => ({ ...prev, [deviceId]: false }));
+    setManualEditOpenByDevice((prev) => ({ ...prev, [deviceId]: false }));
   };
 
   const addCustomModelToCatalog = async (device: DeviceItem) => {
@@ -1307,6 +1322,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           </div>
 
           {/* Información del Dispositivo */}
+          {(!device.deviceModel || manualEditOpenByDevice[device.id]) ? (
           <div ref={wizardPanelRef} tabIndex={-1} className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
             {!manualEntryByDevice[device.id] && (
@@ -1315,6 +1331,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   type="button"
                   onClick={() => {
                     setManualEntryByDevice((prev) => ({ ...prev, [device.id]: true }));
+                    setManualEditOpenByDevice((prev) => ({ ...prev, [device.id]: true }));
                     setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 6 }));
                     updateDevice(device.id, { deviceType: null, deviceModel: "" });
                   }}
@@ -1549,6 +1566,21 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               </>
             )}
           </div>
+          ) : (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Dispositivo seleccionado</p>
+                <p className="text-sm font-semibold text-emerald-900">{device.deviceModel}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualEditOpenByDevice((prev) => ({ ...prev, [device.id]: true }))}
+                className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+              >
+                Editar dispositivo
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
@@ -1565,7 +1597,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               const cardImage = modelId ? getCardImage({ typeId, brandId, lineId, modelId, variantId }) : null;
               const fullName = `${catalog.brands.find((b) => b.id === brandId)?.name ?? ""} ${catalog.productLines.find((l) => l.id === lineId)?.name ?? ""} ${catalog.models.find((m) => m.id === modelId)?.name ?? ""}${variantId ? ` ${catalog.variants.find((v) => v.id === variantId)?.name ?? ""}` : ""}`.trim();
 
-              if (isManual) {
+              if (isManual && (!device.deviceModel || manualEditOpenByDevice[device.id])) {
                 const suggestions = deviceSuggestions[device.id] || [];
                 return (
                   <div className="space-y-2 p-2 border border-slate-200 rounded-md bg-white">
@@ -1598,6 +1630,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                         type="button"
                         onClick={() => {
                           setManualEntryByDevice((prev) => ({ ...prev, [device.id]: false }));
+                          setManualEditOpenByDevice((prev) => ({ ...prev, [device.id]: false }));
                           setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 1 }));
                           updateDevice(device.id, { deviceModel: "" });
                         }}
@@ -1609,6 +1642,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                         type="button"
                         onClick={() => {
                           if (device.deviceModel.trim()) {
+                            setManualEditOpenByDevice((prev) => ({ ...prev, [device.id]: false }));
                             setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 6 }));
                           }
                         }}
@@ -1634,7 +1668,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                     <button
                       type="button"
                       className="rounded-md border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-100"
-                      onClick={() => setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 2 }))}
+                      onClick={() => {
+                        setManualEditOpenByDevice((prev) => ({ ...prev, [device.id]: true }));
+                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: isManual ? 6 : 2 }));
+                      }}
                     >
                       Cambiar
                     </button>
@@ -1650,15 +1687,43 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             })()}
           </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Número de Serie
-          </label>
-          <input
-            type="text"
-            className="w-full border border-slate-300 rounded-md px-3 py-2"
-            value={device.deviceSerial}
-            onChange={(e) => updateDevice(device.id, { deviceSerial: e.target.value })}
-          />
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Número de Serie (opcional)
+            </label>
+            {!serialFieldOpenByDevice[device.id] && !device.deviceSerial && (
+              <button
+                type="button"
+                onClick={() => setSerialFieldOpenByDevice((prev) => ({ ...prev, [device.id]: true }))}
+                className="text-xs rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 text-slate-700"
+              >
+                + Agregar número de serie
+              </button>
+            )}
+          </div>
+          {(serialFieldOpenByDevice[device.id] || !!device.deviceSerial) ? (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="w-full border border-slate-300 rounded-md px-3 py-2"
+                value={device.deviceSerial}
+                onChange={(e) => updateDevice(device.id, { deviceSerial: e.target.value })}
+                placeholder="Ej: R58N12345AB"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  updateDevice(device.id, { deviceSerial: "" });
+                  setSerialFieldOpenByDevice((prev) => ({ ...prev, [device.id]: false }));
+                }}
+                className="rounded-md border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+              >
+                Quitar
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">No agregado.</p>
+          )}
         </div>
 
         <div>
@@ -1955,6 +2020,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                     selectedServices={device.selectedServices}
                     deviceType={device.deviceType}
                     deviceModel={device.deviceModel}
+                    showSelectedServicesList={false}
                     onServicesChange={(services) => {
                 console.log(`[OrderForm] onServicesChange llamado para equipo ${device.id}:`, {
                   servicios_anteriores: device.selectedServices.length,
@@ -2044,6 +2110,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           )}
 
           {/* Total para este equipo */}
+          {isDeviceFinalized(device.id) && (
           <div className="bg-slate-50 p-4 rounded space-y-2 mt-4">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-600">Subtotal:</span>
@@ -2066,6 +2133,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               </div>
             </div>
           </div>
+          )}
 
           {isDeviceFinalized(device.id) && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
@@ -2151,13 +2219,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                       className="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                     >
                       Editar servicios
-                    </button>
-                    <button
-                      type="button"
-                      onClick={addNewDevice}
-                      className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100"
-                    >
-                      Agregar nuevo dispositivo
                     </button>
                   </div>
                 </div>
