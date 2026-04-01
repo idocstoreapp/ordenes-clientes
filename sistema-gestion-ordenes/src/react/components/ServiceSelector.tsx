@@ -8,9 +8,16 @@ interface ServiceSelectorProps {
   onServicesChange: (services: Service[]) => void;
   deviceType?: string | null;
   deviceModel?: string;
+  showSelectedServicesList?: boolean;
 }
 
-export default function ServiceSelector({ selectedServices, onServicesChange, deviceType = null, deviceModel = "" }: ServiceSelectorProps) {
+export default function ServiceSelector({
+  selectedServices,
+  onServicesChange,
+  deviceType = null,
+  deviceModel = "",
+  showSelectedServicesList = true,
+}: ServiceSelectorProps) {
   const [availableServices, setAvailableServices] = useState<Service[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [showResults, setShowResults] = useState(false);
@@ -376,20 +383,22 @@ export default function ServiceSelector({ selectedServices, onServicesChange, de
         </div>
       )}
 
-      <div className="space-y-2">
-        {selectedServices.map((service) => (
-          <div key={service.id} className="flex items-center justify-between bg-slate-50 p-3 rounded border border-slate-200">
-            <span className="font-medium text-slate-900">{service.name}</span>
-            <button
-              type="button"
-              onClick={() => onServicesChange(selectedServices.filter((s) => s.id !== service.id))}
-              className="text-red-600 hover:text-red-800 text-sm font-medium"
-            >
-              Eliminar
-            </button>
-          </div>
-        ))}
-      </div>
+      {showSelectedServicesList && (
+        <div className="space-y-2">
+          {selectedServices.map((service) => (
+            <div key={service.id} className="flex items-center justify-between bg-slate-50 p-3 rounded border border-slate-200">
+              <span className="font-medium text-slate-900">{service.name}</span>
+              <button
+                type="button"
+                onClick={() => onServicesChange(selectedServices.filter((s) => s.id !== service.id))}
+                className="text-red-600 hover:text-red-800 text-sm font-medium"
+              >
+                Eliminar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
