@@ -457,7 +457,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         is_active: true,
       };
 
-      const existingCardRes = await supabase
+      const cardSelect = supabase
         .from("device_catalog_items")
         .select("id")
         .match({
@@ -465,9 +465,15 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           brand_id: chain.brandId,
           product_line_id: chain.lineId,
           model_id: chain.modelId,
-          variant_id: chain.variantId,
-        })
-        .maybeSingle();
+        });
+
+      if (chain.variantId === null || chain.variantId === undefined) {
+        cardSelect.is("variant_id", null);
+      } else {
+        cardSelect.eq("variant_id", chain.variantId);
+      }
+
+      const existingCardRes = await cardSelect.maybeSingle();
 
       if (existingCardRes.error) {
         throw existingCardRes.error;
