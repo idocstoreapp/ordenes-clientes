@@ -116,6 +116,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [finalizedDeviceById, setFinalizedDeviceById] = useState<Record<string, boolean>>({});
   const [detailsOpenByDevice, setDetailsOpenByDevice] = useState<Record<string, boolean>>({});
   const [serialFieldOpenByDevice, setSerialFieldOpenByDevice] = useState<Record<string, boolean>>({});
+  const [unlockFieldOpenByDevice, setUnlockFieldOpenByDevice] = useState<Record<string, boolean>>({});
   const [manualEditOpenByDevice, setManualEditOpenByDevice] = useState<Record<string, boolean>>({});
   const [catalog, setCatalog] = useState<CatalogSnapshot>({
     deviceTypes: [],
@@ -146,6 +147,31 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     );
   };
 
+  const resetDevice = (deviceId: string) => {
+    updateDevice(deviceId, {
+      deviceType: null,
+      deviceModel: "",
+      deviceSerial: "",
+      unlockType: "none",
+      deviceUnlockCode: "",
+      deviceUnlockPattern: [],
+      problemDescription: "",
+      checklistData: {},
+      selectedServices: [],
+      replacementCost: 0,
+      serviceValue: 0,
+      servicePrices: {},
+    });
+    setManualEntryByDevice((prev) => ({ ...prev, [deviceId]: false }));
+    setManualEditOpenByDevice((prev) => ({ ...prev, [deviceId]: false }));
+    setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 1 }));
+    setFlowStepByDevice((prev) => ({ ...prev, [deviceId]: 1 }));
+    setFinalizedDeviceById((prev) => ({ ...prev, [deviceId]: false }));
+    setDetailsOpenByDevice((prev) => ({ ...prev, [deviceId]: false }));
+    setSerialFieldOpenByDevice((prev) => ({ ...prev, [deviceId]: false }));
+    setUnlockFieldOpenByDevice((prev) => ({ ...prev, [deviceId]: false }));
+  };
+
   const addNewDevice = () => {
     const newDevice: DeviceItem = {
       id: `device-${Date.now()}-${Math.random()}`,
@@ -168,6 +194,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
     setFinalizedDeviceById((prev) => ({ ...prev, [newDevice.id]: false }));
     setDetailsOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
     setSerialFieldOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
+    setUnlockFieldOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
     setManualEditOpenByDevice((prev) => ({ ...prev, [newDevice.id]: false }));
   };
 
@@ -198,6 +225,11 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       return next;
     });
     setManualEditOpenByDevice((prev) => {
+      const next = { ...prev };
+      delete next[deviceId];
+      return next;
+    });
+    setUnlockFieldOpenByDevice((prev) => {
       const next = { ...prev };
       delete next[deviceId];
       return next;
@@ -1322,6 +1354,8 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           </div>
 
           {/* Información del Dispositivo */}
+          {!isDeviceFinalized(device.id) && (
+          <>
           {(!device.deviceModel || manualEditOpenByDevice[device.id]) ? (
           <div ref={wizardPanelRef} tabIndex={-1} className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
@@ -1581,7 +1615,10 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               </button>
             </div>
           )}
+          </>
+          )}
 
+          {!isDeviceFinalized(device.id) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="relative">
             <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -1727,10 +1764,23 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Código/Patrón de Desbloqueo
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-slate-700">
+              Código/Patrón de Desbloqueo (opcional)
+            </label>
+            {!unlockFieldOpenByDevice[device.id] && device.unlockType === "none" && (
+              <button
+                type="button"
+                onClick={() => setUnlockFieldOpenByDevice((prev) => ({ ...prev, [device.id]: true }))}
+                className="text-xs rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 text-slate-700"
+              >
+                + Agregar código/patrón
+              </button>
+            )}
+          </div>
+          {(unlockFieldOpenByDevice[device.id] || device.unlockType !== "none") ? (
           <div className="space-y-2">
+            <div className="flex gap-2">
             <select
               className="w-full border border-slate-300 rounded-md px-3 py-2"
               value={device.unlockType}
@@ -1755,6 +1805,17 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               <option value="code">Código numérico</option>
               <option value="pattern">Patrón de desbloqueo</option>
             </select>
+            <button
+              type="button"
+              onClick={() => {
+                updateDevice(device.id, { unlockType: "none", deviceUnlockCode: "", deviceUnlockPattern: [] });
+                setUnlockFieldOpenByDevice((prev) => ({ ...prev, [device.id]: false }));
+              }}
+              className="rounded-md border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+            >
+              Quitar
+            </button>
+            </div>
             
             {device.unlockType === "code" && (
               <input
@@ -1779,15 +1840,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   >
                     Cambiar Patrón
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updateDevice(device.id, { deviceUnlockPattern: [], unlockType: "none" });
-                    }}
-                    className="px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50"
-                  >
-                    Eliminar
-                  </button>
                 </div>
               </div>
             )}
@@ -1802,6 +1854,9 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               </button>
             )}
           </div>
+          ) : (
+            <p className="text-xs text-slate-500">No agregado.</p>
+          )}
         </div>
         
         {showPatternDrawer?.deviceId === device.id && (
@@ -1818,6 +1873,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           />
         )}
       </div>
+      )}
 
           {/* Modal para seleccionar categoría de dispositivo */}
           {showDeviceCategoryModal?.deviceId === device.id && (
@@ -2109,32 +2165,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
             </div>
           )}
 
-          {/* Total para este equipo */}
-          {isDeviceFinalized(device.id) && (
-          <div className="bg-slate-50 p-4 rounded space-y-2 mt-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">Subtotal:</span>
-              <span className="text-sm font-medium text-slate-700">
-                {formatCLP((device.replacementCost + getDeviceServiceTotal(device)) / 1.19)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-600">IVA (19%):</span>
-              <span className="text-sm font-medium text-slate-700">
-                {formatCLP(device.replacementCost + getDeviceServiceTotal(device) - (device.replacementCost + getDeviceServiceTotal(device)) / 1.19)}
-              </span>
-            </div>
-            <div className="border-t border-slate-300 pt-2 mt-2">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-medium text-slate-700">Total Equipo {deviceIndex + 1}:</span>
-                <span className="text-xl font-bold text-brand">
-                  {formatCLP(device.replacementCost + getDeviceServiceTotal(device))}
-                </span>
-              </div>
-            </div>
-          </div>
-          )}
-
           {isDeviceFinalized(device.id) && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex items-center gap-3">
@@ -2156,13 +2186,28 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                   <p className="text-sm font-semibold text-emerald-900">{device.deviceModel || `Equipo ${deviceIndex + 1}`}</p>
                   <p className="text-xs text-emerald-700">{device.selectedServices.length} servicio(s) registrados</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpenByDevice((prev) => ({ ...prev, [device.id]: !prev[device.id] }))}
-                  className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
-                >
-                  {detailsOpenByDevice[device.id] ? "Ocultar detalles" : "Ver detalles del dispositivo"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDetailsOpenByDevice((prev) => ({ ...prev, [device.id]: !prev[device.id] }))}
+                    className="rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                  >
+                    {detailsOpenByDevice[device.id] ? "Ocultar detalles" : "Ver detalles"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (devices.length === 1) {
+                        resetDevice(device.id);
+                        return;
+                      }
+                      removeDevice(device.id);
+                    }}
+                    className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50"
+                  >
+                    Eliminar dispositivo
+                  </button>
+                </div>
               </div>
 
               {detailsOpenByDevice[device.id] && (
