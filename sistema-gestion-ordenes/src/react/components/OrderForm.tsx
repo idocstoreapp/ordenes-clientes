@@ -97,6 +97,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
   const [createdOrderServices, setCreatedOrderServices] = useState<Array<{ quantity: number; unit_price: number; total_price: number; service_name: string }>>([]);
   const [showDeviceCategoryModal, setShowDeviceCategoryModal] = useState<{ deviceId: string; deviceModel: string } | null>(null);
   const [pendingDeviceModel, setPendingDeviceModel] = useState("");
+  const [manualEntryByDevice, setManualEntryByDevice] = useState<Record<string, boolean>>({});
   
   // Referencias para sugerencias de dispositivos (una por equipo)
   const deviceInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -224,6 +225,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedVariantByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setManualEntryByDevice((prev) => ({ ...prev, [deviceId]: false }));
       setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 2 }));
     });
   };
@@ -234,6 +236,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
       setSelectedSeriesByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedModelByDevice((prev) => ({ ...prev, [deviceId]: null }));
       setSelectedVariantByDevice((prev) => ({ ...prev, [deviceId]: null }));
+      setManualEntryByDevice((prev) => ({ ...prev, [deviceId]: false }));
       setWizardStepByDevice((prev) => ({ ...prev, [deviceId]: 3 }));
     });
   };
@@ -1306,6 +1309,21 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
           {/* Información del Dispositivo */}
           <div ref={wizardPanelRef} tabIndex={-1} className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
             <h4 className="text-sm font-semibold text-slate-900 mb-3">Asistente rápido</h4>
+            {!manualEntryByDevice[device.id] && (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualEntryByDevice((prev) => ({ ...prev, [device.id]: true }));
+                    setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 6 }));
+                    updateDevice(device.id, { deviceType: null, deviceModel: "" });
+                  }}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                >
+                  ¿No encuentras el dispositivo? Escríbelo manual
+                </button>
+              </div>
+            )}
             {getWizardStep(device.id) === 1 && (
               <>
                 <p className="text-xl text-slate-600 mb-3">1) ¿Qué dispositivo vas a recibir?</p>
@@ -1530,8 +1548,6 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
                 </div>
               </>
             )}
-
-            {getWizardStep(device.id) === 6 && null}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1540,6 +1556,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               Dispositivo seleccionado *
             </label>
             {(() => {
+              const isManual = !!manualEntryByDevice[device.id];
               const typeId = getTypeIdForDevice(device);
               const brandId = Number(selectedBrandByDevice[device.id]) || null;
               const lineId = Number(selectedSeriesByDevice[device.id]) || null;
@@ -1547,6 +1564,62 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
               const variantId = selectedVariantByDevice[device.id] ? Number(selectedVariantByDevice[device.id]) : null;
               const cardImage = modelId ? getCardImage({ typeId, brandId, lineId, modelId, variantId }) : null;
               const fullName = `${catalog.brands.find((b) => b.id === brandId)?.name ?? ""} ${catalog.productLines.find((l) => l.id === lineId)?.name ?? ""} ${catalog.models.find((m) => m.id === modelId)?.name ?? ""}${variantId ? ` ${catalog.variants.find((v) => v.id === variantId)?.name ?? ""}` : ""}`.trim();
+
+              if (isManual) {
+                const suggestions = deviceSuggestions[device.id] || [];
+                return (
+                  <div className="space-y-2 p-2 border border-slate-200 rounded-md bg-white">
+                    <input
+                      type="text"
+                      value={device.deviceModel}
+                      placeholder="Escribe el modelo manualmente..."
+                      onChange={(e) => {
+                        updateDevice(device.id, { deviceModel: e.target.value });
+                        setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 6 }));
+                      }}
+                      className="w-full border border-slate-300 rounded-md px-2 py-2"
+                    />
+                    {suggestions.length > 0 && (
+                      <div className="max-h-40 overflow-auto border border-slate-200 rounded-md bg-white">
+                        {suggestions.map((item) => (
+                          <button
+                            key={item}
+                            type="button"
+                            onClick={() => applySuggestedModel(device.id, item)}
+                            className="w-full text-left px-2 py-1 hover:bg-slate-100"
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManualEntryByDevice((prev) => ({ ...prev, [device.id]: false }));
+                          setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 1 }));
+                          updateDevice(device.id, { deviceModel: "" });
+                        }}
+                        className="rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                      >
+                        Volver al asistente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (device.deviceModel.trim()) {
+                            setWizardStepByDevice((prev) => ({ ...prev, [device.id]: 6 }));
+                          }
+                        }}
+                        className="rounded-md bg-brand-light px-2 py-1 text-xs text-white hover:bg-brand-dark"
+                      >
+                        Usar valor manual
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
 
               if (device.deviceModel) {
                 return (
