@@ -79,36 +79,62 @@ export async function ensureCatalogChain(params: {
   const modelName = params.modelName.trim();
   const variantName = params.variantName?.trim() ?? "";
 
-  const { data: insertedBrand, error: brandError } = await supabase
-    .from("brands")
-    .upsert({ device_type_id: params.deviceTypeId, name: brandName, normalized_name: brandName.toLowerCase(), is_active: true }, { onConflict: "device_type_id,normalized_name" })
-    .select("*")
-    .single();
-  if (brandError) throw brandError;
+  async function upsertOrSelect(table: string, matchCondition: Record<string, any>, payload: Record<string, any>) {
+    // Buscar registro existente
+    const { data: existingData, error: selectError } = await supabase
+      .from(table)
+      .select("*")
+      .match(matchCondition)
+      .maybeSingle();
 
-  const { data: insertedLine, error: lineError } = await supabase
-    .from("product_lines")
-    .upsert({ brand_id: insertedBrand.id, name: lineName, normalized_name: lineName.toLowerCase(), is_active: true }, { onConflict: "brand_id,normalized_name" })
-    .select("*")
-    .single();
-  if (lineError) throw lineError;
+    if (selectError) throw selectError;
 
-  const { data: insertedModel, error: modelError } = await supabase
-    .from("models")
-    .upsert({ product_line_id: insertedLine.id, name: modelName, normalized_name: modelName.toLowerCase(), is_active: true }, { onConflict: "product_line_id,normalized_name" })
-    .select("*")
-    .single();
-  if (modelError) throw modelError;
+    if (existingData) {
+      const { error: updateError } = await supabase
+        .from(table)
+        .update(payload)
+        .eq("id", (existingData as any).id);
+      if (updateError) throw updateError;
+      return existingData;
+    }
+
+    const { data: insertedData, error: insertError } = await supabase
+      .from(table)
+      .insert(payload)
+      .select("*")
+      .maybeSingle();
+
+    if (insertError) throw insertError;
+
+    return insertedData;
+  }
+
+  const insertedBrand = await upsertOrSelect(
+    "brands",
+    { device_type_id: params.deviceTypeId, normalized_name: brandName.toLowerCase() },
+    { device_type_id: params.deviceTypeId, name: brandName, normalized_name: brandName.toLowerCase(), is_active: true }
+  );
+
+  const insertedLine = await upsertOrSelect(
+    "product_lines",
+    { brand_id: (insertedBrand as any).id, normalized_name: lineName.toLowerCase() },
+    { brand_id: (insertedBrand as any).id, name: lineName, normalized_name: lineName.toLowerCase(), is_active: true }
+  );
+
+  const insertedModel = await upsertOrSelect(
+    "models",
+    { product_line_id: (insertedLine as any).id, normalized_name: modelName.toLowerCase() },
+    { product_line_id: (insertedLine as any).id, name: modelName, normalized_name: modelName.toLowerCase(), is_active: true }
+  );
 
   let variantId: number | null = null;
   if (variantName) {
-    const { data: insertedVariant, error: variantError } = await supabase
-      .from("variants")
-      .upsert({ model_id: insertedModel.id, name: variantName, normalized_name: variantName.toLowerCase(), is_active: true }, { onConflict: "model_id,normalized_name" })
-      .select("*")
-      .single();
-    if (variantError) throw variantError;
-    variantId = insertedVariant.id;
+    const insertedVariant = await upsertOrSelect(
+      "variants",
+      { model_id: (insertedModel as any).id, normalized_name: variantName.toLowerCase() },
+      { model_id: (insertedModel as any).id, name: variantName, normalized_name: variantName.toLowerCase(), is_active: true }
+    );
+    variantId = (insertedVariant as any).id;
   }
 
   return {

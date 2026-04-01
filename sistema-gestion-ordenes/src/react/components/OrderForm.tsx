@@ -447,7 +447,7 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         variantName,
       });
 
-      await supabase.from("device_catalog_items").upsert({
+      const cardPayload = {
         device_type_id: typeId,
         brand_id: chain.brandId,
         product_line_id: chain.lineId,
@@ -455,7 +455,39 @@ export default function OrderForm({ technicianId, onSaved }: OrderFormProps) {
         variant_id: chain.variantId,
         display_name: displayName,
         is_active: true,
-      }, { onConflict: "device_type_id,brand_id,product_line_id,model_id,variant_id" });
+      };
+
+      const existingCardRes = await supabase
+        .from("device_catalog_items")
+        .select("id")
+        .match({
+          device_type_id: typeId,
+          brand_id: chain.brandId,
+          product_line_id: chain.lineId,
+          model_id: chain.modelId,
+          variant_id: chain.variantId,
+        })
+        .maybeSingle();
+
+      if (existingCardRes.error) {
+        throw existingCardRes.error;
+      }
+
+      if (existingCardRes.data) {
+        const updateRes = await supabase
+          .from("device_catalog_items")
+          .update(cardPayload)
+          .eq("id", existingCardRes.data.id);
+
+        if (updateRes.error) {
+          throw updateRes.error;
+        }
+      } else {
+        const insertRes = await supabase.from("device_catalog_items").insert(cardPayload);
+        if (insertRes.error) {
+          throw insertRes.error;
+        }
+      }
 
       applySuggestedModel(device.id, displayName);
       setCustomCatalogFormByDevice((prev) => ({ ...prev, [device.id]: { model: "", variant: "" } }));
