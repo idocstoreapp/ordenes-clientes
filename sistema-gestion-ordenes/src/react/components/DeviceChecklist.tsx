@@ -126,6 +126,26 @@ export default function DeviceChecklist({
     setEditingCompletedItem((prev) => (prev === itemName ? null : prev));
   }
 
+  function handleMarkAllAsNotTested() {
+    const allAsNotTested = allItems.reduce<Record<string, string>>((acc, itemName) => {
+      acc[itemName] = "no_probado";
+      return acc;
+    }, {});
+
+    onChecklistChange({
+      ...checklistData,
+      ...allAsNotTested,
+    });
+
+    setExpandedByItem((prev) =>
+      allItems.reduce<Record<string, boolean>>(
+        (acc, itemName) => ({ ...acc, [itemName]: false }),
+        { ...prev },
+      ),
+    );
+    setEditingCompletedItem(null);
+  }
+
   function handleOpenAddChecklistModal() {
     setModalChecklistName("");
     setModalNewStatus("");
@@ -281,6 +301,23 @@ export default function DeviceChecklist({
           <p className="mb-2 text-sm text-yellow-800">
             No hay checklist configurado para este tipo de dispositivo. Puedes crear items personalizados abajo.
           </p>
+        </div>
+      )}
+
+      {allItems.length > 0 && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-700">
+              ¿No puedes probar ninguna función ahora? Puedes marcar todo como <span className="font-semibold">No probado</span> y continuar al siguiente paso.
+            </p>
+            <button
+              type="button"
+              onClick={handleMarkAllAsNotTested}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Marcar todo como no probado
+            </button>
+          </div>
         </div>
       )}
 
