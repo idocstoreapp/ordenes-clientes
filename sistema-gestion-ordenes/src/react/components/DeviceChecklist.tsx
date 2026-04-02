@@ -304,7 +304,7 @@ export default function DeviceChecklist({
         </div>
       )}
 
-      {allItems.length > 0 && (
+      {allItems.length > 0 && completedItems.length !== allItems.length && (
         <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-700">
