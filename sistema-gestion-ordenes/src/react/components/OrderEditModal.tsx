@@ -213,24 +213,83 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
       const currentServicesSignature = getServicesSignature(selectedServices);
       const servicesChanged = currentServicesSignature !== initialServicesSignature;
 
-      // Solo tocar order_services cuando realmente cambian.
-      // Esto evita duplicados al editar campos no relacionados (ej: descripción).
-      if (servicesChanged) {
-        const { error: deleteServicesError } = await supabase
+      // Sincronizar servicios cuando cambian (alta/baja) o cambia el valor total ingresado.
+      // Se hace de forma idempotente para evitar duplicados en order_services.
+      if (servicesChanged || serviceValue !== (order.labor_cost || 0)) {
+        const { data: existingOrderServices, error: existingServicesError } = await supabase
           .from("order_services")
-          .delete()
+          .select("id, service_id")
           .eq("order_id", order.id);
 
-        if (deleteServicesError) throw deleteServicesError;
+        if (existingServicesError) throw existingServicesError;
 
-        const servicesToInsert = selectedServices.map((service) => ({
-          order_id: order.id,
-          service_id: service.id,
-          service_name: service.name,
-          quantity: 1,
-          unit_price: serviceValue,
-          total_price: serviceValue,
-        }));
+        const uniqueSelectedServices = selectedServices.filter(
+          (service, index, allServices) =>
+            allServices.findIndex((s) => s.id === service.id) === index
+        );
+
+        const selectedById = new Map(uniqueSelectedServices.map((service) => [service.id, service]));
+        const existingByServiceId = new Map<string, any[]>();
+
+        for (const row of existingOrderServices || []) {
+          const rows = existingByServiceId.get(row.service_id) || [];
+          rows.push(row);
+          existingByServiceId.set(row.service_id, rows);
+        }
+
+        // Eliminar filas de servicios que ya no están seleccionados y duplicados existentes.
+        for (const [serviceId, rows] of existingByServiceId.entries()) {
+          if (!selectedById.has(serviceId)) {
+            const { error: removeServiceError } = await supabase
+              .from("order_services")
+              .delete()
+              .in("id", rows.map((row) => row.id));
+
+            if (removeServiceError) throw removeServiceError;
+            continue;
+          }
+
+          // Si hay duplicados históricos del mismo servicio, dejar solo uno.
+          if (rows.length > 1) {
+            const duplicateIds = rows.slice(1).map((row) => row.id);
+            const { error: removeDuplicatesError } = await supabase
+              .from("order_services")
+              .delete()
+              .in("id", duplicateIds);
+
+            if (removeDuplicatesError) throw removeDuplicatesError;
+          }
+        }
+
+        // Actualizar servicios que ya existen.
+        for (const service of uniqueSelectedServices) {
+          if (existingByServiceId.has(service.id)) {
+            const { error: updateServiceError } = await supabase
+              .from("order_services")
+              .update({
+                service_name: service.name,
+                quantity: 1,
+                unit_price: serviceValue,
+                total_price: serviceValue,
+              })
+              .eq("order_id", order.id)
+              .eq("service_id", service.id);
+
+            if (updateServiceError) throw updateServiceError;
+          }
+        }
+
+        // Insertar servicios nuevos.
+        const servicesToInsert = uniqueSelectedServices
+          .filter((service) => !existingByServiceId.has(service.id))
+          .map((service) => ({
+            order_id: order.id,
+            service_id: service.id,
+            service_name: service.name,
+            quantity: 1,
+            unit_price: serviceValue,
+            total_price: serviceValue,
+          }));
 
         if (servicesToInsert.length > 0) {
           const { error: insertServicesError } = await supabase
@@ -605,8 +664,6 @@ export default function OrderEditModal({ order, onClose, onSaved }: OrderEditMod
     </div>
   );
 }
-
-
 
 
 
